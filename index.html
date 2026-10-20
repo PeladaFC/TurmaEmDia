@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#8B6B47">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Turma em Dia">
+<meta name="apple-mobile-web-app-title" content="T.E.D.">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -173,25 +173,49 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 .capa.compacta{padding:30px 24px 22px}
 .capa.compacta .capa-marca{width:52px;height:52px;margin-bottom:10px}
 .capa.compacta .capa-nome{font-size:1.8rem}
-#abertura{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:#fff;
-  background:linear-gradient(160deg,var(--accent),color-mix(in srgb,var(--accent) 65%,#000));transition:opacity .45s ease}
+#abertura{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff;
+  background:radial-gradient(120% 90% at 50% 38%,color-mix(in srgb,var(--accent) 90%,#fff),color-mix(in srgb,var(--accent) 62%,#000));transition:opacity .7s ease}
 #abertura.saindo{opacity:0}
-#abertura .ab-marca{width:96px;height:96px;--marca-borda:var(--accent)}
-#abertura .ab-marca svg{width:100%;height:100%}
-#abertura .ab-marca svg rect:first-child{fill:rgba(255,255,255,.18);stroke:#fff;stroke-width:3}
+#abertura .ab-marca{width:84px;height:84px;--marca-borda:var(--accent)}
+#abertura .ab-marca svg{width:100%;height:100%;overflow:visible}
+#abertura .ab-marca svg rect:first-child{fill:rgba(255,255,255,.14);stroke:#fff;stroke-width:3}
 #abertura .ab-marca svg rect:not(:first-child){fill:#fff}
-#abertura .ab-nome{font-family:var(--f-display);font-weight:800;font-size:2.4rem;letter-spacing:-.02em}
+#abertura .ab-nome{font-family:var(--f-display);font-weight:800;font-size:2.5rem;letter-spacing:-.015em;display:flex;align-items:baseline;white-space:nowrap;line-height:1.15}
+#abertura .ab-nome span{display:inline-block}
+#abertura .ab-c,#abertura .ab-p{overflow:hidden;vertical-align:bottom}
+/* o E vira e: as duas letras ficam uma sobre a outra; o E encolhe até a altura do e enquanto um some e o outro aparece */
+#abertura .ab-E{position:relative;width:var(--wE)}
+#abertura .ab-E i{font-style:normal}
+#abertura .ab-E .e0{visibility:hidden;display:inline-block;width:0}
+#abertura .ab-E .e1,#abertura .ab-E .e2{position:absolute;left:0;top:0;transform-origin:0 80%}
+#abertura .ab-E .e2{opacity:0}
 @media (prefers-reduced-motion:no-preference){
-  #abertura .ab-marca{animation:abMarca .9s cubic-bezier(.2,.8,.2,1) both}
-  #abertura .ab-marca path{stroke-dasharray:60;stroke-dashoffset:60;animation:abCheck .6s .55s ease-out forwards}
-  #abertura .ab-nome{animation:abNome .7s .45s ease-out both}
+  #abertura .ab-marca{animation:abMarca 1s cubic-bezier(.22,1,.36,1) both}
+  #abertura .ab-marca path{stroke-dasharray:60;stroke-dashoffset:60;animation:abCheck .7s .55s cubic-bezier(.65,0,.35,1) forwards}
+  #abertura .ab-nome{animation:abNome .9s .7s cubic-bezier(.22,1,.36,1) both}
+  #abertura .ab-p{width:var(--w);animation:abFecha .7s cubic-bezier(.65,0,.35,1) var(--t0) forwards}
+  #abertura .ab-c{width:0;opacity:0;transform:translateY(.12em);
+    animation:abAbre .8s cubic-bezier(.65,0,.35,1) var(--d) forwards,abSobe .7s cubic-bezier(.22,1,.36,1) calc(var(--d) + 180ms) forwards}
+  #abertura .ab-E{animation:abLarg .8s cubic-bezier(.65,0,.35,1) var(--t0) forwards}
+  #abertura .ab-E .e1{animation:abEncolhe .8s cubic-bezier(.65,0,.35,1) var(--t0) forwards}
+  #abertura .ab-E .e2{transform:scaleY(1.35);animation:abCresce .8s cubic-bezier(.65,0,.35,1) var(--t0) forwards}
+}
+@media (prefers-reduced-motion:reduce){ #abertura .ab-p{display:none} #abertura .ab-E{width:var(--we)} #abertura .ab-E .e1{display:none} #abertura .ab-E .e2{opacity:1;transform:none} }
+@keyframes abMarca{from{opacity:0;transform:translateY(10px) scale(.92)}to{opacity:1;transform:none}}
+@keyframes abCheck{to{stroke-dashoffset:0}}
+@keyframes abNome{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@keyframes abFecha{to{width:0;opacity:0}}
+@keyframes abAbre{to{width:var(--w)}}
+@keyframes abSobe{to{opacity:1;transform:none}}
+@keyframes abLarg{to{width:var(--we)}}
+@keyframes abEncolhe{to{opacity:0;transform:scaleY(.74)}}
+@keyframes abCresce{to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:no-preference){
   .sobe{animation:sobe .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d,0ms)}
   .intro.saindo,.login.saindo{animation:sai .3s ease-in forwards}
   .intro-barra i{animation:barra 8s linear forwards}
 }
-@keyframes abMarca{from{opacity:0;transform:scale(.6) translateY(10px)}to{opacity:1;transform:none}}
 @keyframes abCheck{to{stroke-dashoffset:0}}
-@keyframes abNome{from{opacity:0;transform:translateY(12px);letter-spacing:.08em}to{opacity:1;transform:none}}
 @keyframes sobe{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}
 @keyframes sai{to{opacity:0;transform:translateY(-12px)}}
 @keyframes barra{from{width:0}to{width:100%}}

@@ -139,12 +139,39 @@ function vantagensApp() {
 /* Abertura como app: 1) marca e nome aparecem e somem; 2) os tópicos do que o app faz sobem um a um; 3) entrada. */
 let ABERTURA = null, INTRO_VISTA = ls.get('escolinha.introVista') === '1';
 const MOVIMENTO = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+/* T.E.D. → Turma em Dia: começa com "T.E.D."; os pontos somem, o T, o E e o D se afastam e as letras entram no meio.
+   As três palavras se completam juntas. Larguras medidas com a própria fonte, para o movimento ser liso. */
+function nomeAbertura(el, t0) {
+  const m = document.createElement('span'); m.style.cssText = 'position:absolute;visibility:hidden;white-space:pre'; el.appendChild(m);
+  const medir = ch => { m.textContent = ch; return m.getBoundingClientRect().width; };
+  const passo = 110, grupos = [['T', 'urma'], ['E', 'm'], ['D', 'ia']], wE = medir('E'), we = medir('e');
+  let html = '';
+  grupos.forEach(([L, r], g) => {
+    if (g) html += `<span class="ab-c" style="--w:${medir(' ')}px;--d:${t0}ms">&nbsp;</span>`;
+    html += g === 1 ? `<span class="ab-E" style="--wE:${wE}px;--we:${we}px"><i class="e0">E</i><i class="e1">E</i><i class="e2">e</i></span>` : `<span>${L}</span>`;
+    html += `<span class="ab-p" style="--w:${medir('.')}px">.</span>`;
+    [...r].forEach((ch, i) => { html += `<span class="ab-c" style="--w:${medir(ch)}px;--d:${t0 + 150 + (4 - r.length + i) * passo}ms">${ch}</span>`; });
+  });
+  el.innerHTML = html; el.style.setProperty('--t0', t0 + 'ms');
+  return t0 + 150 + 4 * passo + 900;
+}
+
 function mostrarAbertura() {
   const el = document.createElement('div'); el.id = 'abertura'; el.setAttribute('aria-hidden', 'true');
   el.innerHTML = `<div class="ab-marca">${MARCA_SVG}</div><div class="ab-nome">${esc(NOME_APP())}</div>`;
   document.body.appendChild(el);
-  const dura = MOVIMENTO ? 1900 : 500;
-  ABERTURA = new Promise(ok => setTimeout(() => { el.classList.add('saindo'); setTimeout(() => { el.remove(); ok(); }, MOVIMENTO ? 450 : 50); }, dura));
+  ABERTURA = (async () => {
+    let dura = 500;
+    if (MOVIMENTO) {
+      // espera a fonte (no máximo meio segundo) para medir as letras certinho
+      try { await Promise.race([document.fonts.load('800 40px "Bricolage Grotesque"'), new Promise(r => setTimeout(r, 500))]); } catch (e) { }
+      dura = nomeAbertura(el.querySelector('.ab-nome'), 2200) + 700;
+    }
+    await new Promise(r => setTimeout(r, dura));
+    el.classList.add('saindo');
+    await new Promise(r => setTimeout(r, MOVIMENTO ? 700 : 50));
+    el.remove();
+  })();
   return ABERTURA;
 }
 function telaIntro(depois) {
