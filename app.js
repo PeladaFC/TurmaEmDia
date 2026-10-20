@@ -1436,6 +1436,7 @@ function tAlunas(v) {
   const vis = grupos.filter(g => !q || String(g.r.nome).toLowerCase().includes(q) || String(g.r.telefone || '').includes(q) || g.al.some(([, a]) => String(a.nome).toLowerCase().includes(q)));
   const reps = repetidos(), nAtivas = Object.values(S.alunas).filter(a => C.ativaNoMes(a, mes)).length;
   v.innerHTML = `
+    ${avisoMudancasTermo()}
     <div class="headrow"><h2>Alunos por responsável</h2><button class="add" id="ana">+ Aluno(a)</button></div>
     <div class="sub num">${nAtivas} alunos ativos · ${Object.keys(S.resps).length} responsáveis</div>
     ${(() => { const at = Object.entries(S.alunas).filter(([, a]) => C.ativaNoMes(a, mes) && !a.anonimizadoEm), sem = at.filter(([id]) => termoDe(id).st !== 'ok').length, atest = at.filter(([id]) => termoDe(id).atest).length;
@@ -1451,6 +1452,7 @@ function tAlunas(v) {
   $('ana').onclick = () => sheetAluna();
   v.querySelectorAll('[data-resp]').forEach(li => li.onclick = () => sheetResp(li.dataset.resp));
   v.querySelectorAll('[data-al]').forEach(li => li.onclick = () => sheetAluna(li.dataset.al));
+  v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vmud));
   v.querySelectorAll('[data-nova]').forEach(li => li.onclick = () => sheetAluna(null, li.dataset.nova));
   v.querySelectorAll('[data-nao]').forEach(b => b.onclick = () => B.set(`escolas/${S.eid}/config/geral`, { naoRepetidos: [...(S.cfg.naoRepetidos || []), b.dataset.nao] }, { merge: true }));
   v.querySelectorAll('[data-junta]').forEach(b => b.onclick = () => juntarResps(...b.dataset.junta.split('+')));
@@ -1509,6 +1511,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
   // professor(a) vê primeiro as próprias turmas; administração vê todas
   const listaT = ordenar(S.turmas).filter(([tid, t]) => adm || t.professoraId === S.prof || minhas.has(tid));
   sheet(`<h3>${ed ? esc(a.nome) : 'Novo(a) aluno(a)'}</h3>
+    ${ed && adm ? cartaoTermo(alid) : ''}
     ${mudA.map(m => cartaoFaixa(m, false)).join('')}
     <div class="field"><label for="anome">Nome do(a) aluno(a)</label><input id="anome" maxlength="60" value="${esc(a ? a.nome : '')}"></div>
     <div class="two"><div class="field"><label for="anasc">Data de nascimento</label><input id="anasc" type="date" max="${hoje()}" value="${esc(a ? a.nascimento || '' : '')}"></div>
@@ -1535,9 +1538,6 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         <div class="chips">${['Combinado na matrícula', 'Dificuldade financeira', 'Atleta destaque', 'Filho(a) de funcionário'].map(m => `<button type="button" class="pick" data-mot="${esc(m)}">${esc(m)}</button>`).join('')}</div></div></div>
     <div class="note">Só vale o desconto que você escolher aqui.</div>
     <div class="filha" style="padding:12px" id="aconta"></div>` : `<div class="note">Desconto e valor da mensalidade ficam com a administração.</div>`}
-    ${ed && adm ? (() => { const x = termoDe(alid); return `<div class="field"><span class="lb">Termo de matrícula</span><div class="conta-box ${x.st === 'ok' && !x.atest ? '' : 'vazia'}">
-      <div class="headrow"><span>${esc(ROT_TERMO[x.st])}${x.t ? ` <span class="sub">em ${esc(dataBR(new Date(x.t.em).toISOString().slice(0, 10)))}</span>` : ''}</span>${x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.as === 'conferir' ? '<span class="chip">Conferir atestado</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st === 'ok' ? '<span class="chip pago">OK</span>' : ''}</div>
-      ${x.t ? `<button type="button" class="btn ghost btn-mini" id="avtermo">Ver termo</button>` : '<span class="sub">O responsável preenche pelo app, na tela de pagar ou em Meus filhos.</span>'}</div></div>`; })() : ''}
     <div class="two"><div class="field"><label for="aini">Cobrar a partir de</label><input id="aini" type="month" value="${esc(a ? a.inicio || mes : mes)}"></div>
     <div class="field" id="afimw"><label for="afim">Último mês cobrado</label><input id="afim" type="month" value="${esc(a && a.fim ? a.fim : mesMais(mes, -1))}"></div></div>
     ${ed ? `<label class="check"><input type="checkbox" id="aativa" ${ativa ? 'checked' : ''}> Aluno(a) ativo(a)</label>` : ''}
@@ -2355,6 +2355,7 @@ function sheetVerTermo(alid) {
     ${adm ? '<button class="btn ghost" data-fechar>Fechar</button>' : `<div class="note">Se algo mudou na saúde de ${esc(primeiro(a.nome))} (alergia, remédio, contato de emergência) ou se quiser mudar a autorização de imagem, informe aqui. A escola é avisada e a versão anterior fica guardada.</div>
       <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="vtmudar">${x.st === 'vencido' ? 'Renovar termo' : 'Informar mudança'}</button></div>`}`, () => {
     if (adm) ligarAtestadoAdm(alid, () => sheetVerTermo(alid));
+    if (adm && t.vistoAdm !== t.em) B.set(`escolas/${S.eid}/saude/${alid}`, { vistoAdm: t.em }, { merge: true }).catch(() => { });
     if ($('vtmudar')) $('vtmudar').onclick = () => sheetTermo(alid);
     if ($('vtciente')) $('vtciente').onclick = async () => {
       $('vtciente').disabled = true; const agora = Date.now();
@@ -2365,9 +2366,30 @@ function sheetVerTermo(alid) {
   });
 }
 // administração: aviso forte no topo de Cobranças enquanto ninguém deu ciente
+// termo assinado (ou renovado) que a administração ainda não abriu
+const termoNovo = id => { const t = S.saude[id]; return !!(t && t.em && t.vistoAdm !== t.em); };
+// cartão do termo na ficha do aluno: em destaque, com o que importa de saúde à vista
+function cartaoTermo(alid) {
+  const x = termoDe(alid), t = x.t, r = (t && t.respostas) || {}, wa = (() => { const rr = respDe(alid); return waLink(rr.telefone, `Olá, ${primeiro(rr.nome) || 'tudo bem'}! Aqui é da ${S.escola.nome || 'escola'}. Falta preencher o termo de matrícula de ${primeiro((S.alunas[alid] || {}).nome)} (saúde, contato de emergência e autorizações). Leva uns 3 minutos, pelo app: ${LINK_APP}`); })();
+  if (!t) return `<div class="termo-card aviso"><div class="tc-cab"><span class="tc-ic" aria-hidden="true">!</span><span class="grow"><b>Termo de matrícula não assinado</b><span class="s">Saúde, contato de emergência e autorizações. O responsável preenche pelo app.</span></span></div>
+    ${wa ? `<div class="at-botoes"><a class="btn btn-mini" href="${esc(wa)}" target="_blank" rel="noopener">Pedir pelo WhatsApp</a></div>` : ''}</div>`;
+  const pend = x.pend || [], campos = [...new Set(pend.flatMap(p => itensMudou(p.mudou).map(([k]) => k)))];
+  const sims = PERGUNTAS_SAUDE.filter(([k]) => r[k]).map(([k]) => ROT_SAUDE[k]);
+  const destaque = [...sims.map(n => ['Saúde', n]), t.alergias ? ['Alergia', t.alergias] : null, t.remedios ? ['Remédio', t.remedios] : null, t.imagem === false ? ['Imagem', 'não autoriza uso de imagem'] : null].filter(Boolean);
+  const tipo = pend.length ? 'alerta' : x.st === 'vencido' || x.atest ? 'aviso' : 'ok';
+  const titulo = pend.length ? 'O termo de saúde mudou' : x.st === 'vencido' ? 'Termo de matrícula vencido' : x.as === 'conferir' ? 'Termo assinado · atestado para conferir' : x.atest ? 'Termo assinado · falta atestado médico' : 'Termo de matrícula assinado';
+  const sub = pend.length ? `${esc(campos.slice(0, 4).join(', '))}${campos.length > 4 ? ' e mais' : ''} · ${horaCurta(pend.at(-1).em)}. Veja o que mudou e toque em "Ciente".`
+    : `Por ${esc(t.assinatura.nome)} em ${horaCurta(t.em)}`;
+  return `<div class="termo-card ${tipo}"><div class="tc-cab"><span class="tc-ic" aria-hidden="true">${tipo === 'ok' ? '✓' : '!'}</span><span class="grow"><b>${titulo}</b><span class="s">${sub}</span></span>${termoNovo(alid) && !pend.length ? '<span class="chip pago">Novo</span>' : ''}</div>
+    ${destaque.length ? `<ul class="tc-lista">${destaque.map(([k, v]) => `<li><span>${esc(k)}</span><b>${esc(v)}</b></li>`).join('')}</ul>` : '<div class="tc-nada">Nenhum problema de saúde, alergia ou remédio informado.</div>'}
+    <div class="at-botoes"><button type="button" class="btn ${tipo === 'alerta' ? '' : 'ghost'} btn-mini" id="avtermo">${pend.length ? 'Ver o que mudou' : 'Ver termo completo'}</button></div></div>`;
+}
 function avisoMudancasTermo() {
   if (!S.admin) return '';
-  return porNome(S.alunas).map(([id, a]) => ({ id, a, x: termoDe(id) })).filter(r => r.x.pend && r.x.pend.length).map(({ id, a, x }) => {
+  const novos = porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && termoNovo(id) && !(termoDe(id).pend || []).length);
+  const faixaNovos = novos.length ? `<button class="faixa-resumo ok" data-vmud="${esc(novos[0][0])}"><span class="grow"><b>${novos.length === 1 ? `Termo de matrícula assinado: ${esc(primeiro(novos[0][1].nome))}` : `${novos.length} termos de matrícula assinados`}</b><span class="s">${novos.length === 1 ? 'Toque para ver as informações de saúde.' : esc(novos.map(([, a]) => primeiro(a.nome)).join(', ')) + '. Toque para ver o primeiro.'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : '';
+  return faixaNovos + 
+porNome(S.alunas).map(([id, a]) => ({ id, a, x: termoDe(id) })).filter(r => r.x.pend && r.x.pend.length).map(({ id, a, x }) => {
     const campos = [...new Set(x.pend.flatMap(p => itensMudou(p.mudou).map(([k]) => k)))];
     return `<button class="faixa-resumo alerta" data-vmud="${esc(id)}"><span class="grow"><b>O termo de ${esc(primeiro(a.nome))} mudou</b><span class="s">${esc(campos.slice(0, 3).join(', '))}${campos.length > 3 ? ` e mais ${campos.length - 3}` : ''} · ${dataCurta(x.pend.at(-1).em)}. Toque para ver e dar ciente.</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`;
   }).join('');
