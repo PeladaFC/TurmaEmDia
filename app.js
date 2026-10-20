@@ -141,9 +141,12 @@ let ABERTURA = null, INTRO_VISTA = ls.get('escolinha.introVista') === '1';
 const MOVIMENTO = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 function mostrarAbertura() {
   const el = document.createElement('div'); el.id = 'abertura'; el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = `<div class="ab-marca">${MARCA_SVG}</div><div class="ab-nome">${esc(NOME_APP())}</div>`;
+  // T.E.D.: começa só com "TED"; as outras letras vão entrando no meio e o T, o E e o D se afastam até formar "Turma em Dia"
+  let n = 0; const letra = ch => `<span class="ab-c${ch === ' ' ? ' esp' : ''}" style="--d:${1300 + 100 * n++}ms">${ch === ' ' ? '&nbsp;' : esc(ch)}</span>`;
+  const nome = [['T', 'urma'], ['E', 'm'], ['D', 'ia']].map(([L, r], i) => `${i ? letra(' ') : ''}<span class="ab-L${i === 1 ? " ab-E" : ""}">${i === 1 ? "e" : L}</span>${[...r].map(letra).join('')}`).join('');
+  el.innerHTML = `<div class="ab-marca">${MARCA_SVG}</div><div class="ab-nome" aria-label="Turma em Dia">${nome}</div>`;
   document.body.appendChild(el);
-  const dura = MOVIMENTO ? 1900 : 500;
+  const dura = MOVIMENTO ? 3100 : 500;
   ABERTURA = new Promise(ok => setTimeout(() => { el.classList.add('saindo'); setTimeout(() => { el.remove(); ok(); }, MOVIMENTO ? 450 : 50); }, dura));
   return ABERTURA;
 }
