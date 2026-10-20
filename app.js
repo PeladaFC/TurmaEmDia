@@ -39,6 +39,8 @@ async function backendReal() {
   };
 }
 function backendMock() {
+  // igual ao Firestore: lista dentro de lista não é aceita (pega o erro já no modo de teste)
+  const aninhada = (v, p, dentro) => { if (Array.isArray(v)) { if (dentro) throw new Error('Nested arrays are not supported (' + p + ')'); v.forEach(x => aninhada(x, p, true)); } else if (v && typeof v === 'object') Object.values(v).forEach(x => aninhada(x, p, false)); };
   const store = new Map(), docL = new Map(), colL = [], users = new Map();
   let authCb = null, cur = null;
   const clone = x => x == null ? x : JSON.parse(JSON.stringify(x));
@@ -58,7 +60,7 @@ function backendMock() {
     google: async () => api.cadastrar('Teste Google', 'g' + Date.now() + '@gmail.com', 'x'),
     reset: async () => { }, sair: async () => setA(null), token: async () => cur ? 'mock' : null,
     get: async p => clone(store.get(p)) ?? null,
-    set: async (p, d, o) => { store.set(p, o && o.merge ? merge(store.get(p), clone(d)) : clone(d)); fire(p); },
+    set: async (p, d, o) => { aninhada(d, p); store.set(p, o && o.merge ? merge(store.get(p), clone(d)) : clone(d)); fire(p); },
     tirar: async (p, campo) => { const d = clone(store.get(p)) || {}; const ks = campo.split('.'); let o = d; for (const k of ks.slice(0, -1)) o = o[k] || {}; delete o[ks.at(-1)]; store.set(p, d); fire(p); },
     del: async p => { store.delete(p); fire(p); },
     ouvirDoc: (p, cb) => { setTimeout(() => cb(clone(store.get(p)) ?? null), 0); if (!docL.has(p)) docL.set(p, []); docL.get(p).push(cb); return () => docL.set(p, docL.get(p).filter(x => x !== cb)); },
@@ -2315,10 +2317,12 @@ function camposTermo(t) {
 }
 function difTermo(antes, depois) {
   const a = Object.fromEntries(camposTermo(antes));
-  return camposTermo(depois).filter(([k, v]) => String(a[k] ?? '').trim() !== String(v).trim()).map(([k, v]) => [k, a[k] || '', v]);
+  return camposTermo(depois).filter(([k, v]) => String(a[k] ?? '').trim() !== String(v).trim()).map(([k, v]) => ({ campo: k, antes: a[k] || '', depois: v }));
 }
 const horaCurta = ms => { const d = new Date(ms); return `${dataCurta(ms)} às ${String(d.getHours()).padStart(2, '0')}h${String(d.getMinutes()).padStart(2, '0')}`; };
-const listaMudou = mudou => `<ul class="mud-lista">${mudou.map(([k, a, d]) => `<li><span class="mud-rot">${esc(k)}</span><span class="mud-val"><s>${esc(a || 'nada')}</s><span aria-hidden="true">→</span><b>${esc(d || 'nada')}</b></span></li>`).join('')}</ul>`;
+// o banco não aceita lista dentro de lista: cada mudança é { campo, antes, depois } (lê também o formato antigo)
+const itensMudou = mudou => (mudou || []).map(x => Array.isArray(x) ? x : [x.campo, x.antes, x.depois]);
+const listaMudou = mudou => `<ul class="mud-lista">${itensMudou(mudou).map(([k, a, d]) => `<li><span class="mud-rot">${esc(k)}</span><span class="mud-val"><s>${esc(a || 'nada')}</s><span aria-hidden="true">→</span><b>${esc(d || 'nada')}</b></span></li>`).join('')}</ul>`;
 // corpo do termo (o mesmo para a escola e para a família); "marcar" destaca o que mudou e ainda não foi visto
 function corpoTermo(t, marcar = new Set()) {
   const m = (rot, html) => marcar.has(rot) ? `<mark class="mudou">${html}</mark>` : html;
@@ -2332,7 +2336,7 @@ function corpoTermo(t, marcar = new Set()) {
 // leitura do termo: a escola vê o que mudou, dá ciente e vê o histórico; a família vê o termo e pode informar uma mudança
 function sheetVerTermo(alid) {
   const a = S.alunas[alid] || {}, x = termoDe(alid), t = x.t, adm = !!S.admin; if (!t) return;
-  const alts = t.alteracoes || [], pend = x.pend || [], marcar = new Set(adm ? pend.flatMap(p => p.mudou.map(([k]) => k)) : []);
+  const alts = t.alteracoes || [], pend = x.pend || [], marcar = new Set(adm ? pend.flatMap(p => itensMudou(p.mudou).map(([k]) => k)) : []);
   const ult = alts.filter(m => (m.mudou || []).length).pop();
   sheet(`<h3>Termo de ${esc(primeiro(a.nome))}</h3>
     <div class="sub">${alts.length ? 'Última versão assinada' : 'Assinado'} por ${esc(t.assinatura.nome)} em ${horaCurta(t.em)}${x.st === 'vencido' ? ' · <b style="color:var(--out)">vencido, ' + (adm ? 'pedir renovação' : 'precisa renovar') + '</b>' : ''}</div>
@@ -2364,7 +2368,7 @@ function sheetVerTermo(alid) {
 function avisoMudancasTermo() {
   if (!S.admin) return '';
   return porNome(S.alunas).map(([id, a]) => ({ id, a, x: termoDe(id) })).filter(r => r.x.pend && r.x.pend.length).map(({ id, a, x }) => {
-    const campos = [...new Set(x.pend.flatMap(p => p.mudou.map(([k]) => k)))];
+    const campos = [...new Set(x.pend.flatMap(p => itensMudou(p.mudou).map(([k]) => k)))];
     return `<button class="faixa-resumo alerta" data-vmud="${esc(id)}"><span class="grow"><b>O termo de ${esc(primeiro(a.nome))} mudou</b><span class="s">${esc(campos.slice(0, 3).join(', '))}${campos.length > 3 ? ` e mais ${campos.length - 3}` : ''} · ${dataCurta(x.pend.at(-1).em)}. Toque para ver e dar ciente.</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`;
   }).join('');
 }
