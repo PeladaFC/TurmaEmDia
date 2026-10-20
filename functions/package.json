@@ -1,0 +1,12 @@
+{
+  "name": "escolinha-servidor",
+  "private": true,
+  "description": "Servidor da Escolinha: Pix automático pelo Mercado Pago (Firebase Cloud Functions)",
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "scripts": { "test": "node teste.js" },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0"
+  }
+}

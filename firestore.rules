@@ -1,0 +1,155 @@
+rules_version = '2';
+// Turma em Dia · regras de segurança do Firestore
+// Regra de ouro: cada responsável só vê os próprios filhos e o que é deles; a administração vê e mexe em tudo
+// da escola; segredos, cobranças Pix, convites de administração e respostas de evento só o servidor grava.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() { return request.auth != null; }
+    function eu() { return request.auth.uid; }
+    function base(eid) { return /databases/$(database)/documents/escolas/$(eid); }
+    function escola(eid) { return get(base(eid)).data; }
+    function escolaDepois(eid) { return getAfter(base(eid)).data; }
+    function admin(eid) { return logado() && exists(base(eid)) && eu() in escola(eid).admins; }
+    function adminDepois(eid) { return logado() && eu() in escolaDepois(eid).admins; }
+    function membro(eid) { return logado() && exists(/databases/$(database)/documents/escolas/$(eid)/membros/$(eu())); }
+    // o cadastro de responsável rid está ligado à conta de quem pede?
+    function meu(eid, rid) { return logado() && rid is string && exists(/databases/$(database)/documents/escolas/$(eid)/membros/$(eu())/vinculos/$(rid)); }
+    function ridDaAluna(eid, alid) { return get(/databases/$(database)/documents/escolas/$(eid)/alunas/$(alid)).data.responsavelId; }
+    function minhaAluna(eid, alid) { return meu(eid, ridDaAluna(eid, alid)); }
+    // só mexe nestes campos
+    function soMuda(campos) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(campos); }
+
+    match /users/{uid} {
+      allow read, write: if logado() && eu() == uid;
+    }
+    // Credenciais da plataforma e convites de administração: só o servidor.
+    match /servidor/{doc=**} { allow read, write: if false; }
+    match /convitesAdm/{doc} { allow read, write: if false; }
+
+    // Código do responsável → escola + cadastro do responsável.
+    match /codigos/{codigo} {
+      allow get: if logado();
+      allow list: if false;
+      allow create: if logado() && adminDepois(request.resource.data.eid);
+      allow update, delete: if logado() && admin(resource.data.eid);
+    }
+
+    match /escolas/{eid} {
+      allow read: if admin(eid) || membro(eid);
+      allow create: if logado()
+        && request.resource.data.dono == eu()
+        && request.resource.data.admins == [eu()];
+      // Só o dono muda quem é administração (e não pode sair); os outros só podem sair sozinhos.
+      // Convites e dados de quem administra são gravados pelo servidor.
+      allow update: if admin(eid)
+        && request.resource.data.dono == resource.data.dono
+        && request.resource.data.dono in request.resource.data.admins
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['convitesAdm', 'adminsInfo'])
+        && (request.resource.data.admins == resource.data.admins
+            || eu() == resource.data.dono
+            || request.resource.data.admins == resource.data.admins.removeAll([eu()]));
+      allow delete: if logado() && resource.data.dono == eu();
+
+      // Conta de quem paga. Ela mesma entra, com o código certo do responsável.
+      match /membros/{uid} {
+        allow read: if admin(eid) || (logado() && eu() == uid);
+        allow create: if logado() && eu() == uid
+          && get(/databases/$(database)/documents/codigos/$(request.resource.data.codigo)).data.eid == eid;
+        allow update: if admin(eid) || (logado() && eu() == uid && soMuda(['nome', 'email', 'consentimento', 'pedidoExclusao']));
+        allow delete: if admin(eid) || (logado() && eu() == uid);
+        // Cadastros de responsável ligados a esta conta. Pelo código: ela mesma.
+        // Pelo telefone/CPF (sugestão aceita): só o servidor, que confere os dados.
+        match /vinculos/{rid} {
+          allow read: if admin(eid) || (logado() && eu() == uid);
+          allow create: if logado() && eu() == uid
+            && get(/databases/$(database)/documents/codigos/$(request.resource.data.codigo)).data.eid == eid
+            && get(/databases/$(database)/documents/codigos/$(request.resource.data.codigo)).data.rid == rid;
+          allow delete: if admin(eid);
+        }
+      }
+
+      match /responsaveis/{rid} {
+        allow read: if admin(eid) || meu(eid, rid);
+        allow write: if adminDepois(eid);
+      }
+      match /alunas/{alid} {
+        allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
+        allow write: if adminDepois(eid);
+      }
+      // Ficha de pagamentos de cada aluno (o id é o do aluno).
+      match /pagamentos/{alid} {
+        allow read: if admin(eid) || minhaAluna(eid, alid);
+        allow write: if adminDepois(eid);
+      }
+      // Acordos de atrasados: cada família vê os dela (campo rid).
+      match /acordos/{aid} {
+        allow read: if admin(eid) || meu(eid, resource.data.rid);
+        allow write: if adminDepois(eid);
+      }
+      match /cobrancas/{doc} {
+        allow read: if admin(eid) || (logado() && resource.data.uid == eu());
+        allow write: if false;
+      }
+
+      match /segredos/{doc} { allow read, write: if false; }
+      match /config/mp {
+        allow read: if admin(eid);
+        allow update: if admin(eid) && soMuda(['confirmada']);
+      }
+      match /config/geral {
+        allow read: if admin(eid) || membro(eid);
+        allow write: if adminDepois(eid);
+      }
+
+      // Turmas, locais, grupos, eventos e taxas: quem paga lê; a administração escreve.
+      // A resposta "vai / não vai" da família passa pelo servidor (eventoResposta).
+      match /turmas/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
+      match /locais/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
+      match /grupos/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
+      match /extras/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
+
+      // Professores: telefone, chave Pix e conta ficam só com a administração.
+      // As famílias leem só o nome, na cópia profsPublico que o servidor mantém.
+      match /professoras/{pid} { allow read, write: if admin(eid); }
+      match /profsPublico/{pid} { allow read: if admin(eid) || membro(eid); allow write: if false; }
+
+      // Caixa (entradas e saídas avulsas): só administração.
+      match /lancamentos/{doc} { allow read, write: if admin(eid); }
+
+      // Pedidos das famílias (LGPD): a família cria o próprio e vê; a administração responde.
+      match /pedidos/{pid} {
+        allow read: if admin(eid) || (logado() && resource.data.uid == eu());
+        allow create: if membro(eid) && request.resource.data.uid == eu()
+          && request.resource.data.tipo == 'exclusao' && request.resource.data.status == 'pendente';
+        allow update, delete: if admin(eid);
+      }
+
+      // Termo de matrícula (dados de saúde, sensíveis): só a família do aluno e a administração.
+      // A família não apaga o histórico de mudanças, não marca "ciente" nem "atestado conferido".
+      match /saude/{alid} {
+        function daFamilia() {
+          return meu(eid, request.resource.data.responsavelId)
+            && request.resource.data.responsavelId == ridDaAluna(eid, alid);
+        }
+        function mesmo(campo) {
+          return request.resource.data.get(['atestado', campo], null) == resource.data.get(['atestado', campo], null);
+        }
+        allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
+        allow create: if admin(eid) || (daFamilia() && request.resource.data.get(['atestado', 'recebidoEm'], null) == null);
+        allow update: if admin(eid) || (daFamilia()
+          && request.resource.data.get('alteracoes', []).hasAll(resource.data.get('alteracoes', []))
+          && request.resource.data.get('alteracoes', []).size() >= resource.data.get('alteracoes', []).size()
+          && mesmo('recebidoEm') && mesmo('recusa'));
+        allow delete: if admin(eid);
+      }
+      // Foto ou PDF do atestado (pequeno: o app reduz a foto).
+      match /atestados/{alid} {
+        allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
+        allow write: if admin(eid) || (meu(eid, request.resource.data.responsavelId)
+          && request.resource.data.responsavelId == ridDaAluna(eid, alid)
+          && request.resource.data.arquivo is string && request.resource.data.arquivo.size() < 1000000);
+      }
+    }
+  }
+}
