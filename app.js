@@ -13,6 +13,8 @@ async function backendReal() {
   const [{ initializeApp }, A, F] = await Promise.all([import(FB + 'firebase-app.js'), import(FB + 'firebase-auth.js'), import(FB + 'firebase-firestore.js')]);
   const app = initializeApp(CFG.firebase);
   const auth = A.getAuth(app); auth.languageCode = 'pt';
+  // continua logado no aparelho até tocar em "Sair" (também no app instalado na tela inicial)
+  await A.setPersistence(auth, A.browserLocalPersistence).catch(() => { });
   const fs = F.initializeFirestore(app, { ignoreUndefinedProperties: true });
   const ref = p => F.doc(fs, p);
   const erro = e => { const x = new Error(e.message); x.code = (e.code || '').replace(/^(auth|firestore)\//, ''); throw x; };
@@ -135,7 +137,7 @@ function vantagensApp() {
   return `<section><h2>O que o app faz</h2><ul class="vantagens">${vant.map(([ic, t, d]) => `<li><span class="vant-ic">${ICO[ic] || ''}</span><span class="grow"><b>${esc(t)}</b><span class="s">${esc(d)}</span></span></li>`).join('')}</ul></section>`;
 }
 /* Abertura como app: 1) marca e nome aparecem e somem; 2) os tópicos do que o app faz sobem um a um; 3) entrada. */
-let ABERTURA = null, INTRO_VISTA = false;
+let ABERTURA = null, INTRO_VISTA = ls.get('escolinha.introVista') === '1';
 const MOVIMENTO = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 function mostrarAbertura() {
   const el = document.createElement('div'); el.id = 'abertura'; el.setAttribute('aria-hidden', 'true');
@@ -146,7 +148,7 @@ function mostrarAbertura() {
   return ABERTURA;
 }
 function telaIntro(depois) {
-  INTRO_VISTA = true;
+  INTRO_VISTA = true; ls.set('escolinha.introVista', '1');
   const vant = [['cobr', 'Cobrança por aluno', 'Mensalidade, evento, competição e taxa, cada um com seu vencimento. Pix com baixa automática.'],
     ['filhas', 'A família escolhe o que pagar', 'De um filho ou de todos, num Pix só, pelo celular.'],
     ['caixa', 'Tudo organizado para a escola', 'Atrasados, acordos, relatório de cada professor(a) e o caixa do mês.']];
@@ -2942,13 +2944,13 @@ async function semearMock() {
     const minha = ++vez;
     pararOuvintes(); fecharSheet(); EU = u; $('toast').hidden = true;
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
-    if (u) INTRO_VISTA = true; // já entrou: ao sair, vai direto para a entrada
+    if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
     if (!u) { S = null; return telaLogin(); }
     const perfil = await B.get('users/' + u.uid).catch(() => null);
     if (minha !== vez) return;
     MINHAS = (perfil && perfil.escolas) || {};
-    CONVITES = await convitesPara(u).catch(() => []); if (minha !== vez) return;
-    if (CONVITES.length) return telaInicio();
+    // convite para a administração: procura sem atrasar a abertura da escola
+    convitesPara(u).then(c => { CONVITES = c || []; if (minha !== vez || !CONVITES.length) return; if (!S) telaInicio(); else aviso('Você tem um convite para a administração de outra escola. Veja em Ajustes → Minhas escolas.'); }).catch(() => { });
     if (MP_VOLTA && ls.get('escolinha.mpVolta') && MINHAS[ls.get('escolinha.mpVolta')]) return abrirEscola(ls.get('escolinha.mpVolta'));
     const ult = ls.get('escolinha.ultima');
     if (ult && MINHAS[ult]) return abrirEscola(ult);
