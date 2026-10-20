@@ -9,10 +9,10 @@ PROJ="${1:-$(curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main
 [ -n "$PROJ" ] && [ "$PROJ" != "SEU-PROJETO" ] || { echo "Não achei o id do projeto. Use: bash configurar-mp.sh id-do-projeto"; exit 1; }
 echo "Projeto: $PROJ"
 echo "==> Credenciais da aplicação do Mercado Pago (Suas integrações → sua aplicação → Credenciais de produção)"
-read -r -p "Client ID (só números): " CID </dev/tty
+CID="${CID:-}"; [ -n "$CID" ] && echo "Client ID: $CID" || read -r -p "Client ID (só números): " CID </dev/tty
 read -r -s -p "Client Secret (não aparece enquanto digita/cola): " CSEC </dev/tty; echo
-read -r -p "Comissão do app em % [1]: " COM </dev/tty; COM=${COM:-1}
-read -r -p "Domínio próprio do app, se tiver (deixe vazio se usa github.io): " DOM </dev/tty
+if [ -n "${COM:-}" ]; then :; else read -r -p "Comissão do app em % [1]: " COM </dev/tty; fi; COM=${COM:-1}
+if [ -n "${CID_PRONTO:-}" ]; then DOM=""; else read -r -p "Domínio próprio do app, se tiver (deixe vazio se usa github.io): " DOM </dev/tty; fi
 CID=$(echo "$CID" | tr -d '[:space:]'); CSEC=$(echo "$CSEC" | tr -d '[:space:]'); DOM=$(echo "$DOM" | tr -d '[:space:]')
 [[ "$CID" =~ ^[0-9]+$ ]] || { echo "Client ID inválido (deve ter só números)."; exit 1; }
 [ -n "$CSEC" ] || { echo "Client Secret vazio."; exit 1; }
