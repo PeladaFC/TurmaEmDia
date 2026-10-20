@@ -270,11 +270,13 @@ async function responderConvite(c, aceita) {
   CONVITES = CONVITES.filter(x => x.eid !== c.eid);
   if (aceita) { aviso('Pronto! Agora você faz parte da administração.'); abrirEscola(c.eid); } else { aviso('Convite recusado'); telaInicio(); }
 }
+let VOLTA_ESCOLA = null; // escola de onde veio para "Minhas escolas": a seta volta para ela
 function telaInicio() {
+  if (S && S.eid) VOLTA_ESCOLA = S.eid;
   pararOuvintes(); S = null;
-  const lista = Object.entries(MINHAS);
+  const lista = Object.entries(MINHAS), volta = VOLTA_ESCOLA && MINHAS[VOLTA_ESCOLA] ? VOLTA_ESCOLA : null;
   RAIZ().innerHTML = `<div class="wrap" style="padding-top:20px">
-    <div class="brand"><span class="marca-mini">${MARCA_SVG}</span><h1><small>Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}</small>${esc(NOME_APP())}</h1><div class="acts"><button class="icon-btn" id="isair" aria-label="Sair da conta">${ICO.voltar}</button></div></div>
+    <div class="brand"><span class="marca-mini">${MARCA_SVG}</span><h1><small>Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}</small>${esc(NOME_APP())}</h1><div class="acts">${volta ? `<button class="icon-btn" id="ivolta" aria-label="Voltar para ${esc(MINHAS[volta].nome || 'a escola')}">${ICO.voltar}</button>` : ''}</div></div>
     ${CONVITES.map(c => `<div class="hero consent"><div class="label">Convite</div><b>${esc(c.porNome || 'A escola')} convidou você para a administração da ${esc(c.escola || 'escola')}</b>
       <span class="sub">Você vai ver e cuidar das turmas, alunos e cobranças da escola. O convite vale até ${new Date(c.expira).toLocaleDateString('pt-BR')}.</span>
       <div class="actions"><button class="btn ghost" data-recusa-conv="${esc(c.eid)}">Recusar</button><button class="btn" data-aceita-conv="${esc(c.eid)}">Aceitar</button></div></div>`).join('')}
@@ -293,11 +295,13 @@ function telaInicio() {
       <h2>Dirijo uma escola</h2>
       <button class="btn ghost" id="icriar">Criar minha escola</button>
     </section>
+    <button class="btn ghost" id="isair" style="margin-top:8px">Sair da conta</button>
   </div>`;
   RAIZ().querySelectorAll('[data-e]').forEach(li => li.onclick = () => abrirEscola(li.dataset.e));
   RAIZ().querySelectorAll('[data-aceita-conv],[data-recusa-conv]').forEach(b => b.onclick = async () => { const eid = b.dataset.aceitaConv || b.dataset.recusaConv, c = CONVITES.find(x => x.eid === eid); if (!c) return; b.disabled = true;
     try { await responderConvite(c, !!b.dataset.aceitaConv); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
-  $('isair').onclick = () => B.sair();
+  if ($('ivolta')) $('ivolta').onclick = () => abrirEscola(volta);
+  $('isair').onclick = () => confirmar('Sair da conta?', 'Para entrar de novo, você vai precisar do seu e-mail e senha (ou da conta Google).', 'Sair', () => { VOLTA_ESCOLA = null; B.sair(); });
   $('icriar').onclick = () => sheetCriarEscola();
   $('ientrar').onclick = async () => {
     const cod = $('icod').value.trim().toUpperCase(), err = m => $('ierr').textContent = m;
@@ -361,6 +365,7 @@ let SHEET_VOLTAR = null, PROX_VOLTAR = null;
 const abrirDe = (pai, filho) => { PROX_VOLTAR = pai; filho(); };
 function voltar() {
   if ($('overlay').innerHTML) { const v = SHEET_VOLTAR; if (v) { SHEET_VOLTAR = null; v(); } else fecharSheet(); return true; }
+  if (!S && VOLTA_ESCOLA && MINHAS[VOLTA_ESCOLA] && EU && document.getElementById('ivolta')) { abrirEscola(VOLTA_ESCOLA); return true; }
   if (S && S.hist && S.hist.length) { S.tab = S.hist.pop(); ls.set('escolinha.tab.' + S.papel, S.tab); render(); window.scrollTo(0, 0); return true; }
   return false;
 }
