@@ -616,22 +616,10 @@ function aplicarTema(cor) {
   TEMA_ATUAL = { claro, escuro }; pintarTema();
   const mt = document.querySelector('meta[name="theme-color"]'); if (mt) mt.content = ac;
 }
-function aplicarLogo(logo) {
-  /* Ícone da aba e do "Adicionar à Tela de Início" (o iPhone usa o ícone que estiver na hora de adicionar).
-     A logo da escola só vira ícone para quem está em UMA escola; quem está em mais de uma fica com o ícone do Turma em Dia.
-     O ícone é sempre quadrado e com fundo claro, porque o iPhone pinta de preto o que é transparente. */
-  const usar = logo && Object.keys(MINHAS).length <= 1;
-  const por = src => ['icon', 'apple-touch-icon'].forEach(rel => { let l = document.querySelector(`link[rel="${rel}"]`); if (!l) { l = document.createElement('link'); l.rel = rel; document.head.appendChild(l); }
-    if (!l.dataset.padrao) l.dataset.padrao = l.getAttribute('href') || ''; l.href = src || l.dataset.padrao; });
-  if (!usar) return por(null);
-  const img = new Image();
-  img.onload = () => { try {
-    const N = 180, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d');
-    g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, N, N);
-    const m = N * 0.14, f = Math.min((N - 2 * m) / img.width, (N - 2 * m) / img.height), w = img.width * f, h = img.height * f;
-    g.drawImage(img, (N - w) / 2, (N - h) / 2, w, h); por(c.toDataURL('image/png'));
-  } catch (e) { por(logo); } };
-  img.onerror = () => por(null); img.src = logo;
+function aplicarLogo() {
+  /* O ícone é sempre o do Turma em Dia (aba, tela inicial, Android e iPhone), igual ao que vai para as lojas.
+     A logo da escola aparece só dentro do app: no topo e no relatório em PDF. */
+  ['icon', 'apple-touch-icon'].forEach(rel => { const l = document.querySelector(`link[rel="${rel}"]`); if (l && l.dataset.padrao) l.href = l.dataset.padrao; });
 }
 let MARCA_ATUAL = '', PREVIA_MARCA = false;
 let TEMA_ATUAL = null;
