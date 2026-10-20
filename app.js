@@ -1459,6 +1459,12 @@ function sheetResp(rid) {
   });
 }
 function sheetAluna(alid, ridPadrao, turmaPadrao) {
+  // aluno novo sem nenhuma turma cadastrada: primeiro a turma, depois volta para o cadastro com ela marcada
+  if (!alid && !turmaPadrao && !Object.keys(S.turmas).length) return sheet(`<h3>Primeiro, cadastre uma turma</h3>
+    <div class="sub">Todo aluno(a) precisa estar em uma turma, porque é a turma que define o valor da mensalidade. Cadastre a turma e o app volta para o cadastro do aluno(a), com a turma já marcada.</div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Agora não</button><button type="button" class="btn" id="aprimt">Cadastrar turma</button></div>`, () => {
+    $('aprimt').onclick = () => sheetTurma(null, tid => sheetAluna(null, ridPadrao, tid));
+  });
   const a = alid ? S.alunas[alid] : null, ed = !!a, mes = mesHoje(), adm = S.admin;
   const ativa = a ? C.ativaNoMes(a, mes) || (a.inicio && a.inicio > mes) : true;
   const d0 = (a && a.desc) || {}, modo0 = d0.isenta ? 'isenta' : d0.v != null && d0.v !== '' ? 'valor' : Number(d0.pct) > 0 ? 'pct' : Number(d0.menos) > 0 ? 'menos' : 'nenhum';
@@ -1644,12 +1650,12 @@ function tLancar(v) {
   v.querySelectorAll('[data-x]').forEach(li => li.onclick = () => sheetExtra(li.dataset.x));
   v.querySelectorAll('[data-g]').forEach(e => e.onclick = () => sheetGrupo(e.dataset.g));
 }
-function sheetSimples({ titulo, campos, salvar, excluir, bloqueio, montar }) {
+function sheetSimples({ titulo, campos, salvar, excluir, bloqueio, montar, depois }) {
   sheet(`<h3>${esc(titulo)}</h3>${campos}<div class="err" id="serr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="sok">Salvar</button></div>
     ${excluir ? `<button class="btn ghost" id="sdel" style="color:var(--out)">Excluir</button>` : ''}`, s => {
     montar && montar(s);
-    $('sok').onclick = async () => { $('sok').disabled = true; try { const m = await salvar(s); if (m) { $('serr').textContent = m; $('sok').disabled = false; return; } fecharSheet(); aviso('Salvo'); } catch (e) { $('serr').textContent = msgErro(e); $('sok').disabled = false; } };
+    $('sok').onclick = async () => { $('sok').disabled = true; try { const m = await salvar(s); if (m) { $('serr').textContent = m; $('sok').disabled = false; return; } fecharSheet(); aviso('Salvo'); if (depois) setTimeout(depois, 80); } catch (e) { $('serr').textContent = msgErro(e); $('sok').disabled = false; } };
     if ($('sdel')) $('sdel').onclick = () => bloqueio ? ($('serr').textContent = bloqueio) : confirmar('Excluir?', 'Isto não pode ser desfeito.', 'Excluir', excluir);
   });
 }
@@ -1718,8 +1724,8 @@ function sheetConta(pid) {
     $('cok').onclick = async () => { $('cok').disabled = true; try { await B.set(`escolas/${S.eid}/professoras/${pid}`, { mpContaInfo: $('cmpc').value.trim(), pixChave: $('cpix').value.trim() }, { merge: true }); fecharSheet(); aviso('Conta salva'); } catch (e) { $('cerr').textContent = msgErro(e); $('cok').disabled = false; } };
   });
 }
-function sheetTurma(tid) {
-  const t = tid ? S.turmas[tid] : null, n = tid ? Object.values(S.alunas).filter(a => (a.turmas || []).includes(tid)).length : 0, todas = t ? C.todasIdades(t) : false;
+function sheetTurma(tid, depois) {
+  const novoTid = tid || novoId(), t = tid ? S.turmas[tid] : null, n = tid ? Object.values(S.alunas).filter(a => (a.turmas || []).includes(tid)).length : 0, todas = t ? C.todasIdades(t) : false;
   sheetSimples({ titulo: t ? 'Editar turma' : 'Nova turma',
     campos: `<div class="field"><label for="tnome">Nome da turma</label><input id="tnome" maxlength="60" value="${esc(t ? t.nome : '')}" placeholder="Ex.: Iniciação"></div>
       <div class="field"><span class="lb">Faixa etária</span>
@@ -1743,8 +1749,9 @@ function sheetTurma(tid) {
       if (!todasN && mn == null && mx == null) return 'Informe a faixa etária ou marque "Todas as faixas etárias".';
       if (!todasN && mn != null && mx != null && mn > mx) return 'A idade inicial não pode ser maior que a final.';
       if (!(preco >= 0)) return 'Informe o valor mensal da turma, como 150,00.';
-      await B.set(`escolas/${S.eid}/turmas/${tid || novoId()}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
+      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
     },
+    depois: depois ? () => depois(novoTid) : null,
     excluir: tid && (() => B.del(`escolas/${S.eid}/turmas/${tid}`)), bloqueio: n ? 'Esta turma tem alunos. Tire os alunos da turma antes de excluir.' : null });
 }
 function sheetGrupo(gid) {
