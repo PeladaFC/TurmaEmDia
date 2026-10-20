@@ -44,6 +44,17 @@ const paginaSimples = (titulo, texto) => `<!doctype html><html lang="pt-BR"><hea
 <style>body{margin:0;font:17px/1.5 system-ui,sans-serif;background:#F6F3EE;color:#221D17;display:grid;place-items:center;min-height:100vh;padding:24px;box-sizing:border-box}main{max-width:420px;background:#fff;border-radius:18px;padding:28px;border:1px solid #E4DDD2}h1{font-size:1.4rem;margin:0 0 8px;color:#8B6B47}</style></head>
 <body><main><h1>${esc(titulo)}</h1><p>${texto}</p></main></body></html>`;
 
+// erros mais comuns do Mercado Pago ao criar o Pix, em português
+function motivoMP(status, j, nomeRec) {
+  const t = JSON.stringify(j || {}).toLowerCase();
+  if (status === 401 || t.includes('invalid access token') || t.includes('unauthorized')) return `A conta do Mercado Pago de ${nomeRec} precisa ser ligada de novo. Avise a escola.`;
+  if (t.includes('without key enabled for qr') || t.includes('key enabled')) return `A conta do Mercado Pago de ${nomeRec} ainda não tem chave Pix cadastrada. No app do Mercado Pago dessa conta: Pix → Minhas chaves → cadastrar uma chave.`;
+  if (t.includes('payer email forbidden') || t.includes('invalid users involved') || t.includes('collector') && t.includes('payer')) return 'Quem paga não pode ser a mesma conta que recebe. Use outra conta para pagar.';
+  if (t.includes('application_fee') || t.includes('marketplace')) return 'A comissão do app não foi aceita para esta conta. Avise a escola (a conta conectada não pode ser a mesma da plataforma).';
+  if (t.includes('transaction_amount')) return 'O valor deste Pix não foi aceito pelo Mercado Pago.';
+  return 'O Mercado Pago não aceitou o pedido agora. Tente de novo.';
+}
+
 module.exports = db => {
   const erro = (m, http) => Object.assign(new Error(m), { http });
   const ler = async p => { const s = await db.doc(p).get(); return s.exists ? s.data() : null; };
@@ -174,7 +185,7 @@ module.exports = db => {
       body: JSON.stringify(corpo)
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { logger.error('mp criar', L.rec, r.status, j); throw erro(r.status === 401 ? `A conta do Mercado Pago de ${nomeRec} precisa ser ligada de novo. Avise a escola.` : 'O Mercado Pago não aceitou o pedido agora. Tente de novo.', 502); }
+    if (!r.ok) { logger.error('mp criar', L.rec, r.status, JSON.stringify(j)); throw erro(motivoMP(r.status, j, nomeRec), 502); }
     const td = (j.point_of_interaction || {}).transaction_data || {};
     const dado = {
       mpId: String(j.id), rec: L.rec, valor, base: L.base, fee, status: j.status || 'pending', qr: td.qr_code || '', qr64: td.qr_code_base64 || '', link: td.ticket_url || '',
