@@ -3244,7 +3244,8 @@ async function semearMock() {
     pararOuvintes(); fecharSheet(); EU = u; $('toast').hidden = true;
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
     if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
-    if (!u) { S = null; sairAbertura(); return telaLogin(); }
+    // sem conta (abriu sem login ou saiu da conta): a apresentação do app aparece de novo antes do login
+    if (!u) { S = null; INTRO_VISTA = false; sairAbertura(); return telaLogin(); }
     const perfil = await B.get('users/' + u.uid).catch(() => null);
     if (minha !== vez) return;
     MINHAS = (perfil && perfil.escolas) || {};
