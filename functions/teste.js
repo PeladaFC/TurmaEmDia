@@ -112,9 +112,16 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.strictEqual(C.telNorm('+55 (81) 99999-0000'), C.telNorm('81999990000'));
   });
   await t('valor do Pix: com repasse a escola recebe cheio; sem repasse, valor da dívida', () => {
-    const a = C.valorPix(433, {}, 0.0099, 0.01); assert.strictEqual(a.valor, 441.8); assert.strictEqual(a.fee, 4.42);
+    const a = C.valorPix(433, { pixRepassa: true }, 0.0099, 0.01); assert.strictEqual(a.valor, 441.8); assert.strictEqual(a.fee, 4.42);
     const b = C.valorPix(80, { pixRepassa: false }, 0.0099, 0.01); assert.strictEqual(b.valor, 80); assert.strictEqual(b.fee, 0.8);
-    assert.strictEqual(C.valorPix(80, {}, 0.0099, 0.01).valor, 81.63);
+    assert.strictEqual(C.valorPix(80, { pixRepassa: true }, 0.0099, 0.01).valor, 81.63);
+    assert.strictEqual(C.valorPix(80, {}, 0.0099, 0.01).valor, 80); // padrão: desligado
+    // evento com a própria escolha: mensalidade 100 (escola não repassa) + inscrição 50 (evento repassa)
+    const ex = { ev: { tipo: 'evento', pixRepassa: true }, tx: { tipo: 'taxa', evento: 'ev' }, av: { tipo: 'taxa' } };
+    const its = [{ tipo: 'm', v: 100 }, { tipo: 'x', xid: 'ev', v: 50 }, { tipo: 'x', xid: 'tx', v: 20 }, { tipo: 'x', xid: 'av', v: 10 }];
+    assert.strictEqual(C.baseRepasse(its, {}, ex), 70);
+    assert.strictEqual(C.valorPix(180, {}, 0.0099, 0.01, 70).valor, C.r2(110 + Math.ceil(70 / (1 - 0.0199) * 100 - 1e-6) / 100));
+    assert.strictEqual(C.baseRepasse(its, { pixRepassa: true }, { ev: { tipo: 'evento' }, tx: { tipo: 'taxa', evento: 'ev' }, av: { tipo: 'taxa' } }), 110);
     assert.strictEqual(C.chaveItens(['b', 'a']), C.chaveItens(['a', 'b']));
   });
 

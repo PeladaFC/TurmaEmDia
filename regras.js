@@ -165,9 +165,20 @@
   }
 
   // Valor do Pix: com "quem paga cobre a taxa", a escola recebe o valor cheio.
-  function valorPix(base, cfg, taxaMP, comissao) {
-    const repassa = (cfg || {}).pixRepassa !== false;
-    const valor = repassa ? Math.ceil(r2(base) / (1 - taxaMP - comissao) * 100 - 1e-6) / 100 : r2(base);
+  /* Quem paga cobre a taxa do Pix? Desligado, a não ser que a escola ligue.
+     Mensalidade, acordo e taxa avulsa: a escolha da escola (Ajustes). Evento e taxa de um evento: a escolha do evento. */
+  function repassaItem(it, cfg, extras) {
+    if (it && it.tipo === 'x' && it.xid && extras) {
+      const x = extras[it.xid] || {}, ev = x.evento ? extras[x.evento] : (x.tipo === 'evento' || x.tipo === 'competicao') ? x : null;
+      if (ev) return ev.pixRepassa === true;
+    }
+    return (cfg || {}).pixRepassa === true;
+  }
+  // parte do lote em que quem paga cobre a taxa
+  function baseRepasse(itens, cfg, extras) { return r2((itens || []).reduce((s, it) => s + (repassaItem(it, cfg, extras) ? Number(it.v) || 0 : 0), 0)); }
+  function valorPix(base, cfg, taxaMP, comissao, baseRep) {
+    const b = r2(base), rep = Math.min(b, r2(baseRep == null ? ((cfg || {}).pixRepassa === true ? b : 0) : baseRep));
+    const valor = rep > 0 ? r2(b - rep) + Math.ceil(rep / (1 - taxaMP - comissao) * 100 - 1e-6) / 100 : b;
     const fee = comissao > 0 ? r2(valor * comissao) : 0;
     return { valor: r2(valor), fee };
   }
@@ -182,5 +193,5 @@
   const todasIdades = t => !t || t.todasIdades || (t.idadeMin == null && t.idadeMax == null);
   const cabe = (t, idade) => todasIdades(t) || idade == null || ((t.idadeMin == null || idade >= t.idadeMin) && (t.idadeMax == null || idade <= t.idadeMax));
   const faixaTxt = t => todasIdades(t) ? 'Todas as idades' : t.idadeMin != null && t.idadeMax != null ? `${t.idadeMin} a ${t.idadeMax} anos` : t.idadeMin != null ? `a partir de ${t.idadeMin} anos` : `até ${t.idadeMax} anos`;
-  return { recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens };
+  return { repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens };
 });

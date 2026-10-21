@@ -118,7 +118,7 @@ module.exports = db => {
       const pag = (await ler(`escolas/${eid}/pagamentos/${alid}`)) || {};
       for (const i of C.itensComEncargos({ alunas, turmas, extras, grupos, acordos, pag, cfg: cfg || {} }, alid, hoje)) if (quer.has(i.k) && !i.pago && i.v > 0) itens.push(i);
     }
-    return { cfg: cfg || {}, itens, rids: [...rids] };
+    return { cfg: cfg || {}, itens, rids: [...rids], extras };
   }
 
   const criarPix = onRequest({ cors: true, maxInstances: 5 }, async (req, res) => {
@@ -131,7 +131,7 @@ module.exports = db => {
       if (!escola) return res.status(404).json({ erro: 'Escola não encontrada.' });
       const adm = (escola.admins || []).includes(u.uid);
       const meus = adm ? null : await meusVinculos(eid, u.uid);
-      const { cfg, itens, rids } = await itensPedidos(eid, chaves, rid => adm || (rid && meus.has(rid)));
+      const { cfg, itens, rids, extras } = await itensPedidos(eid, chaves, rid => adm || (rid && meus.has(rid)));
       if (!itens.length) return res.status(409).json({ erro: 'Esses itens já foram pagos ou não estão mais em aberto.' });
       // um Pix para cada recebedor (escola ou professor), com a parte de cada item que é dele
       const por = {};
@@ -139,6 +139,8 @@ module.exports = db => {
         const L = por[rec] = por[rec] || { rec, base: 0, itens: [] };
         L.base = C.r2(L.base + v); L.itens.push({ k: i.k, tipo: i.tipo, alid: i.alid, mes: i.mes || null, xid: i.xid || null, aid: i.aid || null, n: i.n || null, v: C.r2(v), total: i.v, recs: Object.keys(i.partes || { escola: 1 }), desc: i.desc, nome: i.nome });
       }
+      // quem paga cobre a taxa: escolha da escola, ou do evento para inscrição e taxas de evento
+      for (const L of Object.values(por)) L.baseRep = C.baseRepasse(L.itens, cfg, extras);
       const lotes = Object.values(por).sort((x, y) => (y.rec === 'escola') - (x.rec === 'escola') || x.rec.localeCompare(y.rec));
       const profs = await mapa(`escolas/${eid}/professoras`), nomeRec = r => r === 'escola' ? (escola.nome || 'a escola') : ((profs[r] || {}).nome || 'o(a) professor(a)');
       const contas = {};
@@ -154,7 +156,7 @@ module.exports = db => {
   // cria (ou reaproveita) o Pix de um recebedor
   async function pixDoLote(eid, escola, u, L, conta, cfg, rids, P, nomeRec) {
     const com = conta.via === 'oauth' ? P.comissao : 0;
-    const { valor, fee } = C.valorPix(L.base, cfg, TAXA, com);
+    const { valor, fee } = C.valorPix(L.base, cfg, TAXA, com, L.baseRep);
     const chave = `${u.uid.slice(0, 20)}_${L.rec}_${C.chaveItens(L.itens.map(i => i.k))}`, cobRef = db.doc(`escolas/${eid}/cobrancas/${chave}`);
     const ant = (await cobRef.get()).data();
     if (ant && ant.status === 'pending' && ant.valor === valor && ant.expira > Date.now() + 10 * 60e3) return { ...ant, chave };

@@ -480,7 +480,7 @@ function sheetCriarEscola() {
       try {
         const ops = [
           { op: 'set', p: 'escolas/' + eid, d: { nome, dono: EU.uid, admins: [EU.uid], adminsInfo: { [EU.uid]: { nome: EU.nome || '', email: EU.email || '', em: Date.now() } }, criadaEm: Date.now(), termosAceitos: { em: Date.now(), versao: VERSAO_TERMOS, uid: EU.uid } } },
-          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: venc, pixRepassa: true, descIrmas: 0, descMulti: 0 } }
+          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: venc, pixRepassa: false, descIrmas: 0, descMulti: 0 } }
         ];
         if (loc) ops.push({ op: 'set', p: `escolas/${eid}/locais/${novoId()}`, d: { nome: loc, ordem: 1 } });
         await B.lote(ops);
@@ -626,15 +626,18 @@ const TAXA_TRANSACAO = () => ((0.0099 + COMISSAO) * 100).toFixed(2).replace('.',
 // boleto e cartão ficam guardados para depois; por enquanto só Pix
 const OUTRAS_FORMAS = false;
 // quanto a família paga em cada forma, para uma base (o que a escola tem que receber)
-function valorForma(base, forma, n) {
-  const t = taxasCfg(), rep = S.cfg.pixRepassa !== false, up = (b, pct) => rep ? Math.ceil(b / (1 - pct - COMISSAO) * 100 - 1e-6) / 100 : C.r2(b);
+// valor de cada forma de pagamento; baseRep = parte em que quem paga cobre a taxa (padrão: a escolha da escola)
+function valorForma(base, forma, n, baseRep) {
+  const t = taxasCfg(), r = Math.min(C.r2(base), C.r2(baseRep == null ? (S.cfg.pixRepassa === true ? base : 0) : baseRep));
+  const up = (b, pct) => C.r2(C.r2(b - r) + (r > 0 ? Math.ceil(r / (1 - pct - COMISSAO) * 100 - 1e-6) / 100 : 0));
   if (forma === 'pix') return { total: up(base, t.pix / 100) };
-  if (forma === 'boleto') return { total: rep ? Math.ceil((base + t.boleto) / (1 - COMISSAO) * 100 - 1e-6) / 100 : C.r2(base) };
+  if (forma === 'boleto') return { total: r > 0 ? C.r2(C.r2(base - r) + Math.ceil((r + t.boleto) / (1 - COMISSAO) * 100 - 1e-6) / 100) : C.r2(base) };
   const vista = up(base, t.cartao / 100);
   if (forma === 'cartao' && (!n || n < 2)) return { total: vista, parcelas: 1, parcela: vista };
   const juros = (Number(t.parc[n]) || 0) / 100, total = C.r2(vista * (1 + juros));
   return { total, parcelas: n, parcela: C.r2(total / n), juros };
 }
+const repLote = l => l.itens ? C.baseRepasse(l.itens, S.cfg, S.extras) : undefined;
 const linhaEnc = i => i.perdao ? `<span class="s perdao">Sem multa e juros${i.perdao.ate ? ` se pagar até ${dataBR(i.perdao.ate)}` : ''}</span>` : i.enc ? `<span class="s enc num">Inclui multa e juros: ${brl(C.r2(i.enc.multa + i.enc.juros))} (${i.enc.dias} dia${i.enc.dias === 1 ? '' : 's'} de atraso)</span>` : '';
 const st = i => C.status(i, hoje());
 // cobranças de uma aluna que pertencem a um mês (mensalidade do mês + extras que vencem nele), inclusive meses futuros
@@ -1219,7 +1222,7 @@ async function pixCriar(chaves) {
     if (sem.length) throw new Error(`${sem.map(l => nomeRec(l.rec)).join(' e ')} ainda não ligou o Pix no app. Fale com a escola.`);
     const out = [];
     for (const l of lotes) {
-      const { valor, fee } = C.valorPix(l.base, S.cfg, 0.0099, 0.01), chave = `${EU.uid}_${l.rec}_${C.chaveItens(l.itens.map(i => i.k))}`;
+      const { valor, fee } = C.valorPix(l.base, S.cfg, 0.0099, 0.01, repLote(l)), chave = `${EU.uid}_${l.rec}_${C.chaveItens(l.itens.map(i => i.k))}`;
       const d = { mpId: 'mock' + Date.now() + l.rec, rec: l.rec, valor, base: l.base, fee, status: 'pending', qr: `00020126580014br.gov.bcb.pix0136teste-${l.rec}-escolinha5204000053039865802BR5913${nomeRec(l.rec).normalize('NFD').replace(/[^A-Za-z ]/g, '').slice(0, 13).toUpperCase()}6006RECIFE62070503***6304ABCD`, qr64: '', criadoEm: Date.now(), expira: Date.now() + 864e5, uid: EU.uid, itens: l.itens };
       await B.set(`escolas/${S.eid}/cobrancas/${chave}`, d); out.push({ ...d, chave });
     }
@@ -1252,7 +1255,7 @@ const opcoesRec = atual => [['escola', (S.escola.nome || 'Escola') + ' (escola)'
 function sheetFormas(chaves) {
   const quer = new Set(chaves), itens = [...new Set(chaves.map(k => k.split(':')[2]))].flatMap(alid => itensDe(alid)).filter(i => quer.has(i.k) && !i.pago);
   const lotes = dividirPorRecebedor(itens), base = C.r2(itens.reduce((x, i) => x + i.v, 0)), f = formasCfg(), N = lotes.length;
-  const tot = (forma, n) => C.r2(lotes.reduce((x, l) => x + valorForma(l.base, forma, n).total, 0));
+  const tot = (forma, n) => C.r2(lotes.reduce((x, l) => x + valorForma(l.base, forma, n, repLote(l)).total, 0));
   const ops = [['pix', null, 'Pix', 'Cai na hora · mais barato', ICO.cobr]];
   if (f.boleto) ops.push(['boleto', null, 'Boleto', 'Compensa em até 3 dias úteis', ICO.caixa]);
   if (f.cartao) ops.push(['cartao', 1, 'Cartão de crédito à vista', 'Na fatura do cartão', ICO.caixa]);
@@ -1272,7 +1275,7 @@ function sheetFormas(chaves) {
 function sheetOutraForma(chaves, forma, n) {
   sheet(`<h3>${forma === 'boleto' ? 'Pagar com boleto' : n > 1 ? `Cartão em ${n}x` : 'Cartão de crédito'}</h3><div id="ofc" class="empty">Preparando…</div><button class="btn ghost" data-fechar>Fechar</button>`, async () => {
     let lotes; try { lotes = await pixCriar(chaves); } catch (e) { $('ofc').innerHTML = `<b>Não deu para preparar.</b><span>${esc(msgErro(e))}</span>`; return; }
-    const vals = lotes.map(l => ({ ...l, ...valorForma(l.base, forma, n) })), total = C.r2(vals.reduce((x, l) => x + l.total, 0));
+    const vals = lotes.map(l => ({ ...l, ...valorForma(l.base, forma, n, repLote(l)) })), total = C.r2(vals.reduce((x, l) => x + l.total, 0));
     const passo = k => {
       const l = vals[k], N = vals.length;
       $('ofc').outerHTML = `<div id="ofc" style="display:flex;flex-direction:column;gap:12px">
@@ -1479,6 +1482,7 @@ function sheetEvento(xid) {
     <div id="eappw"><div class="two"><div class="field"><label for="even">Vencimento da inscrição</label><input id="even" type="date" value="${esc((x && x.venc) || '')}" ${temPagEv ? 'disabled' : ''}></div>
     ${S.admin ? `<div class="field"><label for="erec">Recebe</label><select id="erec" ${temPagEv ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : '<div></div>'}</div></div>
     <div class="note" id="ecobnota"></div>
+    <label class="check"><input type="checkbox" id="erep" ${x && x.pixRepassa === true ? 'checked' : ''}> <span class="grow">Quem paga cobre a taxa do Pix (${TAXA_TRANSACAO()}%)<span class="s" style="display:block;color:var(--muted);font-size:.82rem">Vale para a inscrição pelo app e para as taxas deste evento.</span></span></label>
     <div class="field"><span class="lb">Quem pode ir? Os responsáveis recebem o convite no app</span><div id="equadros"></div></div>
     <div class="err" id="eerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="eok">Salvar</button></div>
@@ -1505,7 +1509,7 @@ function sheetEvento(xid) {
       $('eok').disabled = true;
       const part = { ...((x && x.part) || {}) }; sai.forEach(id => delete part[id]);
       const app = cob === 'app', cobrados = app ? ids.filter(id => ['interesse', 'inscrito'].includes((part[id] || {}).st) || (x && pagouEvento(x, id))) : [];
-      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { tipo: 'evento', cobranca: app ? 'app' : cob === 'familia' ? 'familia' : 'organizador', semCobranca: !app, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
+      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { tipo: 'evento', cobranca: app ? 'app' : cob === 'familia' ? 'familia' : 'organizador', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
           valorInscricao: !app && insc > 0 ? C.r2(insc) : null, prazo: $('eprazo').value || null, convidados: ids, origem: sel.origem(), part,
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         fecharSheet(); aviso(ed ? 'Evento atualizado' : 'Evento lançado. Os responsáveis já podem responder.'); }
@@ -2828,7 +2832,7 @@ function sheetFormasEscola() {
         <div class="two">${[2, 3, 4, 5, 6].map(n => `<div class="field"><label for="tp${n}">${n}x</label><input id="tp${n}" inputmode="decimal" value="${num(t.parc[n])}"></div>`).join('')}</div>
       </div></details>
     <div class="field"><span class="lb">Exemplo: uma cobrança de ${brl(ex)}</span><div class="conta" id="fex"></div></div>
-    <div class="note">Mais ${Math.round(COMISSAO * 100)}% de comissão do app em todas as formas. ${S.cfg.pixRepassa !== false ? 'Como "quem paga cobre a taxa" está ligado, a família paga a taxa da forma que escolher e a escola recebe o valor cheio.' : 'Como "quem paga cobre a taxa" está desligado, as taxas saem do valor que a escola recebe.'}</div>
+    <div class="note">Mais ${Math.round(COMISSAO * 100)}% de comissão do app em todas as formas. ${S.cfg.pixRepassa === true ? 'Como "quem paga cobre a taxa" está ligado, a família paga a taxa da forma que escolher e a escola recebe o valor cheio.' : 'Como "quem paga cobre a taxa" está desligado, as taxas saem do valor que a escola recebe.'}</div>
     <div class="err" id="ferr2" role="alert"></div>
     <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="fok2">Salvar</button></div>`, () => {
     const ler = () => { const pn = id => parseValor($(id).value); return { formas: { boleto: $('fbol').checked, cartao: $('fcar').checked, parcelado: $('fcar').checked && $('fpar').checked, maxParcelas: Number($('fmax').value) },
@@ -3046,7 +3050,7 @@ function sheetAjustes() {
         <div class="note">Se o Mercado Pago já estiver aberto neste celular, ele conecta direto com essa conta. Depois você confere o nome e o CPF.</div>
         <button class="btn" id="mpcon">Conectar Mercado Pago</button>`}
       <div class="field"><label for="jpix">Chave Pix da escola (para conferência)</label><input id="jpix" maxlength="80" value="${esc(c.pixChave || '')}" placeholder="CNPJ, e-mail, celular ou chave aleatória"></div>
-      <label class="check"><input type="checkbox" id="jrep" ${c.pixRepassa !== false ? 'checked' : ''}> Quem paga cobre a taxa do Pix (${taxaTot.toFixed(2).replace('.', ',')}%)</label>
+      <label class="check"><input type="checkbox" id="jrep" ${c.pixRepassa === true ? 'checked' : ''}> Quem paga cobre a taxa do Pix (${taxaTot.toFixed(2).replace('.', ',')}%)</label>
       <div class="note">Ligado: o responsável paga um pouco a mais e a escola recebe o valor cheio. Desligado: a taxa sai do valor recebido.</div>
     </section>
     <section><h2>Mensalidade</h2>
@@ -3182,7 +3186,7 @@ async function semearMock() {
   await B.cadastrar('Patrícia Lins', 'familia@teste.com', '123456'); const uF = window.__mock.cur().uid; await B.sair();
   await B.cadastrar('Paula Diretora', 'admin@teste.com', '123456'); const uA = window.__mock.cur().uid;
   const eid = 'esc1', p = `escolas/${eid}`, m = mesHoje(), m1 = mesMais(m, -1), m2 = mesMais(m, -2), set = (q, d) => B.set(q, d);
-  const cfg = { atraso: { ativo: true, multa: 2, juros: 1 }, vencDia: 10, pixRepassa: true, descIrmas: 0.1, descMulti: 0.15, mpConectadoEm: Date.now(), mpTaxaApp: 0.01, pixChave: '12.345.678/0001-90' };
+  const cfg = { atraso: { ativo: true, multa: 2, juros: 1 }, vencDia: 10, pixRepassa: false, descIrmas: 0.1, descMulti: 0.15, mpConectadoEm: Date.now(), mpTaxaApp: 0.01, pixChave: '12.345.678/0001-90' };
   // ?mock=1&marca=1: a escola de exemplo com cor e escudo próprios (para ver a abertura com a cara da escola)
   if (/[?&]marca=1/.test(location.search)) { cfg.cor = '#1E5A8A'; cfg.logo = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path d='M40 4 70 14v24c0 19-13 32-30 38C23 70 10 57 10 38V14z' fill='#1E5A8A'/><path d='M40 12 62 19v19c0 14-9 24-22 29-13-5-22-15-22-29V19z' fill='#fff'/><text x='40' y='47' text-anchor='middle' font-family='Arial Black,Arial' font-weight='900' font-size='19' fill='#1E5A8A'>EM</text></svg>"); }
   await set(p, { nome: 'Escolinha Movimento', dono: uA, admins: [uA], adminsInfo: { [uA]: { nome: 'Paula Diretora', email: 'admin@teste.com', em: Date.now() - 200 * 864e5 } } });
