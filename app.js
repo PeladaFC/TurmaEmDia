@@ -101,6 +101,7 @@ async function copiar(txt, ok) { try { await navigator.clipboard.writeText(txt);
 function qrSVG(txt) { if (typeof qrcode !== 'function') return ''; const q = qrcode(0, 'M'); q.addData(txt); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
 const LINK_APP = location.origin + location.pathname;
 const ICO = {
+  evento: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M12 13.2l1 2 2.2.3-1.6 1.5.4 2.2-2-1.1-2 1.1.4-2.2-1.6-1.5 2.2-.3z"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   painel: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
   cobr: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>',
@@ -559,7 +560,7 @@ async function abrirEscola(eid, tab) {
   if (!escola) { aviso('Você não tem mais acesso a essa escola.'); delete MINHAS[eid]; return telaInicio(); }
   const admin = (escola.admins || []).includes(EU.uid);
   let prof = null;
-  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'fin'], p: ['turmas', 'lancar'], f: ['pagar', 'filhas'] }[papel];
+  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['turmas', 'lancar'], f: ['pagar', 'filhas'] }[papel];
   ls.set('escolinha.ultima', eid);
   S = { eid, admin, prof, papel, escola, mes: mesHoje(), tab: tab || ls.get('escolinha.tab.' + papel) || ABAS_OK[0],
     cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
@@ -872,7 +873,7 @@ function render() {
   aplicarMarca(S.cfg);
   if (!S) return;
   const adm = S.admin, abas = {
-    a: [['cobr', 'Cobranças', 'cobr'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['fin', 'Financeiro', 'caixa']],
+    a: [['cobr', 'Cobranças', 'cobr'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
     p: [['turmas', 'Minhas turmas', 'escola'], ['lancar', 'Eventos e taxas', 'cobr']],
     f: [['pagar', 'Pagar', 'cobr'], ['filhas', 'Meus filhos', 'filhas']] }[S.papel];
   const comMes = adm && ['cobr', 'fin'].includes(S.tab);
@@ -896,7 +897,7 @@ function render() {
   faixa();
   const v = $('tela');
   if (S.papel === 'f' && S.eu && !S.eu.consentimento) return telaConsentimento(v);
-  ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar })[S.tab](v);
+  ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar })[S.tab](v);
   if (foco && $(foco) && $(foco).tagName === 'INPUT' && $(foco).type !== 'checkbox') { $(foco).focus(); try { $(foco).setSelectionRange(selS, selS); } catch (e) { } }
 }
 function irPara(tab, extra) { if (S.tab !== tab) { S.hist = (S.hist || []).concat(S.tab).slice(-20); } S.tab = tab; Object.assign(S, extra || {}); ls.set('escolinha.tab.' + S.papel, tab); render(); scrollTo(0, 0); }
@@ -1939,6 +1940,33 @@ function cartaoTurma(tid, t) {
       return `<div class="turma" data-al="${esc(id)}"><div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), respDe(id).nome ? 'Responsável: ' + esc(respDe(id).nome) : '')}</div>${fora(x) ? '<span class="chip vencido">Faixa etária</span>' : ''}</div>`; }).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}
       <button class="mini" data-nt="${esc(tid)}">+ Aluno(a) nesta turma</button></div>` : ''}</div>`;
 }
+/* ================= Aba Eventos (administração): calendário do mês, próximos eventos e o que já passou ================= */
+function tEventos(v) {
+  const h = hoje(); if (!S.evMes) S.evMes = h.slice(0, 7);
+  const ano = Number(S.evMes.slice(0, 4)), mes = Number(S.evMes.slice(5, 7)), nomeM = C.MESES[mes - 1];
+  const L = eventosAtivos(), prox = L.filter(([, x]) => fimDe(x) >= h), pass = L.filter(([, x]) => fimDe(x) < h).reverse();
+  const card = ([xid, x]) => { const cv = convidadosDe(x), n = st => cv.filter(id => (partDe(x, id) || 'sem') === st).length, app = pelaEscola(x), d = new Date(x.data + 'T12:00');
+    const ins = n('inscrito'), vao = n('interesse') + ins;
+    return `<li class="tap ev-card" data-ev="${esc(xid)}"><div class="cal-dia"><b class="num">${d.getDate()}</b><span>${C.MESES[d.getMonth()].slice(0, 3)}</span></div>
+      <div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(x))}</span>${x.local ? ' · ' + esc(x.local) : ''}`,
+        `${vao} vão · ${ins} ${app ? 'pago' : 'confirmado'}${ins === 1 ? '' : 's'} · ${n('sem')} sem resposta`)}
+        <span class="chip ${app ? 'pix' : ''}" style="align-self:flex-start;margin-top:4px">${app ? 'Inscrição na escola' : 'Inscrição na organização'}</span></div></li>`; };
+  v.innerHTML = `<button class="btn" id="evnovo" style="width:100%;padding:15px">+ Novo evento</button>
+    <section><div class="cal-topo"><button type="button" class="icon-btn" id="emant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="emprox" aria-label="Próximo mês">›</button></div>
+      ${gradeMes(ano, mes, eventosDoMes(ano, mes))}
+      <button type="button" class="btn ghost" id="evano">Ver o ano inteiro</button></section>
+    <section><h2>Próximos eventos <span class="sub num">${prox.length}</span></h2>
+      ${prox.length ? `<ul class="list">${prox.map(card).join('')}</ul>` : '<div class="empty"><span>Lance copas, festivais e campeonatos. Os responsáveis dizem pelo app se o filho vai.</span></div>'}</section>
+    ${pass.length ? `<details class="historico"><summary><span class="grow"><b>Eventos que já passaram</b><span class="s">${pass.length}</span></span><span class="seta" aria-hidden="true">▾</span></summary><ul class="list">${pass.map(card).join('')}</ul></details>` : ''}`;
+  const vai = n => { let a = ano, m = mes + n; if (m < 1) { m = 12; a--; } if (m > 12) { m = 1; a++; } S.evMes = `${a}-${String(m).padStart(2, '0')}`; render(); };
+  $('emant').onclick = () => vai(-1); $('emprox').onclick = () => vai(1);
+  $('evano').onclick = () => sheetCalendario(ano);
+  $('evnovo').onclick = () => sheetEvento(null);
+  v.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => abrirEvento(b.dataset.ev));
+  let x0 = null; const g = v.querySelector('.mg');
+  g.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+  g.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 60) vai(dx < 0 ? 1 : -1); });
+}
 function tTurmas(v) {
   const prof = S.prof, turmas = ordenar(S.turmas).filter(([, t]) => !prof || t.professoraId === prof);
   const mud = mudancasFaixa().filter(m => !prof || (S.turmas[m.tid] || {}).professoraId === prof);
@@ -1953,7 +1981,7 @@ function tTurmas(v) {
     ${S.admin ? `<section><div class="headrow"><h2>Professores</h2><button class="add" id="pnov">+ Professor(a)</button></div>
       ${Object.keys(S.profs).length ? `<ul class="list">${porNome(S.profs).map(([pid, P]) => { const ts = Object.values(S.turmas).filter(t => t.professoraId === pid).map(t => t.nome); return `<li class="tap" data-pr="${esc(pid)}"><div class="grow"><div class="t">${esc(P.nome)}</div><div class="s">${esc(ts.join(', ') || 'Sem turma')}</div></div><span class="chip ${P.mpConectadoEm ? 'pago' : 'aberto'}">${P.mpConectadoEm ? 'Pix ligado' : 'Pix não ligado'}</span></li>`; }).join('')}</ul>` : '<div class="note">Cadastre os professores para escolher quem dá cada turma.</div>'}
     </section>
-    ${blocoEventos()}
+    ${S.admin ? '' : blocoEventos()}
     <section><div class="headrow"><h2>Grupos</h2><button class="add" id="gnov">+ Grupo</button></div>${listaGrupos()}</section>
     <section><div class="headrow"><h2>Locais</h2><button class="add" id="lnov" style="background:var(--surface2);color:var(--ink)">+ Local</button></div>
       <div class="chips">${ordenar(S.locais).map(([lid, l]) => `<button class="pick" data-lo="${esc(lid)}">📍 ${esc(l.nome)}</button>`).join('') || '<span class="note">Opcional. O local aparece como etiqueta na turma.</span>'}</div></section>` : ''}`;
@@ -2458,12 +2486,9 @@ function periodoTxt(x) {
   if (a === b) return `${dia(a)} de ${mes(a)}`;
   return a.slice(0, 7) === b.slice(0, 7) ? `${dia(a)} a ${dia(b)} de ${mes(b)}` : `${dia(a)} de ${cur(a)} a ${dia(b)} de ${cur(b)}`;
 }
-function sheetMes(ano, mes) {
-  const nomeM = C.MESES[mes - 1], h = hoje(), fam = S.papel === 'f';
-  const pm = `${ano}-${String(mes).padStart(2, '0')}`, ini = pm + '-01', fim = isoDe(new Date(ano, mes, 0));
-  const L = eventosDoAno().filter(c => c.x.data <= fim && fimDe(c.x) >= ini);
-  // semanas do mês, de domingo a sábado
-  const dia1 = new Date(ano, mes - 1, 1), dias = new Date(ano, mes, 0).getDate(), semanas = [];
+// grade do mês (domingo a sábado); eventos de vários dias viram uma barra do começo ao fim
+function gradeMes(ano, mes, L) {
+  const h = hoje(), dia1 = new Date(ano, mes - 1, 1), dias = new Date(ano, mes, 0).getDate(), semanas = [];
   let d = new Date(ano, mes - 1, 1 - dia1.getDay());
   while (d <= new Date(ano, mes - 1, dias)) { const sem = []; for (let i = 0; i < 7; i++) { sem.push(new Date(d)); d.setDate(d.getDate() + 1); } semanas.push(sem); }
   const MAX = 3;
@@ -2483,10 +2508,15 @@ function sheetMes(ano, mes) {
     const mais = extra.map((n, i) => n ? `<div class="mg-mais" style="grid-column:${i + 1};grid-row:${MAX + 2}">+${n}</div>` : '').join('');
     return `<div class="mg-sem" style="grid-template-rows:auto repeat(${Math.min(MAX, Math.max(1, pistas.length))}, 18px)${extra.some(Boolean) ? ' 14px' : ''}">${nums}${barras.join('')}${mais}</div>`;
   };
+  return `<div class="mg"><div class="mg-cab">${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((x, i) => `<span class="${i === 0 || i === 6 ? 'fds' : ''}">${x}</span>`).join('')}</div>${semanas.map(semanaHtml).join('')}</div>`;
+}
+const eventosDoMes = (ano, mes) => { const pm = `${ano}-${String(mes).padStart(2, '0')}`, ini = pm + '-01', fim = isoDe(new Date(ano, mes, 0)); return eventosDoAno().filter(c => c.x.data <= fim && fimDe(c.x) >= ini); };
+function sheetMes(ano, mes) {
+  const nomeM = C.MESES[mes - 1], fam = S.papel === 'f', L = eventosDoMes(ano, mes);
   const linha = c => { const quem = quemEvento(c, fam);
     return `<li class="cal-ev ${c.meu ? 'meu' : 'outro'}" data-ev="${esc(c.xid)}"><div class="grow"><div class="t">${esc(c.x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(c.x))}</span>`, c.x.local ? esc(c.x.local) : '', quem ? esc(quem) : '')}</div></li>`; };
   sheet(`<div class="cal-topo"><button type="button" class="icon-btn" id="mgant" aria-label="Mês anterior">‹</button><h3>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h3><button type="button" class="icon-btn" id="mgprox" aria-label="Próximo mês">›</button></div>
-    <div class="mg"><div class="mg-cab">${['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((x, i) => `<span class="${i === 0 || i === 6 ? 'fds' : ''}">${x}</span>`).join('')}</div>${semanas.map(semanaHtml).join('')}</div>
+    ${gradeMes(ano, mes, L)}
     ${fam && L.length ? '<div class="mg-legenda"><span><i class="meu"></i>Seus filhos vão</span><span><i class="outro"></i>Outros eventos da escola</span></div>' : ''}
     ${L.length ? `<section><h2>Eventos do mês</h2><ul class="list">${L.map(linha).join('')}</ul></section>` : '<div class="empty"><span>Nenhum evento neste mês.</span></div>'}
     <div class="actions"><button type="button" class="btn ghost" id="mgano">Ver o ano</button>${!fam ? '<button type="button" class="btn" id="mgnovo">+ Lançar evento</button>' : '<button type="button" class="btn" data-fechar>Fechar</button>'}</div>

@@ -385,7 +385,9 @@ details.antes summary{cursor:pointer;color:var(--accent);font-weight:700;font-si
 .conta-linha.dif span:last-child{color:var(--accent);font-weight:700}
 .acts-mini{display:flex;gap:8px;align-items:center}
 .faixa-resumo.neutra{border-color:var(--line);background:var(--surface);margin-bottom:12px}
-.cal-topo{display:flex;align-items:center;justify-content:space-between;gap:8px} .cal-topo h3{margin:0;text-align:center;flex:1}
+.cal-topo{display:flex;align-items:center;justify-content:space-between;gap:8px} .cal-topo h3,.cal-topo h2{margin:0;text-align:center;flex:1}
+.ev-card{align-items:flex-start!important}
+.ev-card .cal-dia b{font-family:var(--f-display);font-style:italic;font-size:1.5rem}
 .cal-grade{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .cal-mes{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font:inherit;font-size:.82rem;text-transform:capitalize;touch-action:manipulation}
 .cal-mes b{font-size:1.05rem;color:var(--muted)} .cal-mes.tem{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)} .cal-mes.tem b{color:var(--accent)}
@@ -568,7 +570,7 @@ h2{font-size:1.3rem} h3{font-size:1.7rem;line-height:1.05} .big{font-size:2.6rem
 .dot{border-radius:0;clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%);width:42px;font-family:var(--f-display);font-style:italic;font-size:1rem}
 .icon-btn,.monthbar button{border-radius:5px}
 .monthbar .m{font-family:var(--f-display);font-style:italic;font-weight:800;text-transform:uppercase;font-size:1.15rem}
-nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:uppercase;font-size:.85rem;letter-spacing:.04em}
+nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:uppercase;font-size:clamp(.7rem,3.3vw,.85rem);letter-spacing:.02em;min-width:0}
 .progress,.progress i,.stack{border-radius:0}
 .faixa-resumo b{font-family:var(--f-display);font-style:italic;font-size:1.15rem;text-transform:uppercase;letter-spacing:.01em}
 </style>
