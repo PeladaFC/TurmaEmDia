@@ -109,6 +109,7 @@ const ICO = {
   caixa: '<svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20M16 15h2"/></svg>',
   filhas: '<svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M14.5 20c0-2.5 1.2-4.6 3.5-4.6S21 17.5 21 20"/></svg>',
   voltar: '<svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>',
+  troca: '<svg viewBox="0 0 24 24"><path d="M7 4L3 8l4 4M3 8h14M17 12l4 4-4 4M21 16H7"/></svg>',
   relat: '<svg viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>'
 };
 
@@ -281,7 +282,15 @@ async function abrirComCartas(eid, tab) {
   el.remove();
 }
 // mais de uma escola: o nome sobe e some, e as escolas aparecem como botões
-async function escolherNaAbertura() {
+// "Trocar escola" de dentro do app: a mesma tela de escolha da abertura surge por cima; Cancelar volta para onde estava
+function trocarEscola() {
+  if (abEl()) return;
+  const el = document.createElement('div'); el.id = 'abertura'; el.style.opacity = '0'; el.style.transition = 'opacity .25s ease';
+  document.body.appendChild(el); void el.offsetWidth; el.style.opacity = '1';
+  setTimeout(() => { el.style.transition = ''; }, 260);
+  escolherNaAbertura({ atual: S && S.eid });
+}
+async function escolherNaAbertura(op = {}) {
   const el = abEl(); if (!el) return telaInicio();
   // cor e logo de cada escola: as que ainda não estão guardadas no aparelho vêm do servidor (no máximo 1,5 s)
   await Promise.all(Object.keys(MINHAS).filter(eid => !marcaGuardada(eid)).map(async eid => { const m = await marcaDa(eid); if (m && (m.cor || m.logo)) ls.set('escolinha.marca.' + eid, JSON.stringify(m)); }));
@@ -291,11 +300,13 @@ async function escolherNaAbertura() {
   const box = document.createElement('div'); box.className = 'ab-esc';
   box.innerHTML = `<h2>Qual escola?</h2>${lista.map(([eid, e], i) => { const m = marcaGuardada(eid) || {}, c = hexOk(m.cor) ? m.cor : COR_PADRAO;
     const claro = contraste(c, '#FFFFFF') < 3, ci = claro ? '#1A2030' : '#FFFFFF', cd = claro ? mistura(c, '#000000', 0.45) : c; // cor clara: texto escuro
-    return `<button type="button" class="ab-bt${String(e.nome || '').length > 20 ? ' longo' : ''}" data-abe="${esc(eid)}" style="--d:${380 + i * 110}ms;--c:${c};--ci:${ci};--cd:${cd}">${m.logo ? `<img src="${esc(m.logo)}" alt="">` : `<span class="ini">${esc(iniciais(e.nome))}</span>`}<span class="grow"><b>${esc(e.nome || 'Escola')}</b><span class="s">${esc(papel(e))}</span></span></button>`; }).join('')}
-    <button type="button" class="ab-mais" style="--d:${380 + lista.length * 110}ms">Outras opções</button>`;
+    return `<button type="button" class="ab-bt${String(e.nome || '').length > 20 ? ' longo' : ''}" data-abe="${esc(eid)}" style="--d:${380 + i * 110}ms;--c:${c};--ci:${ci};--cd:${cd}">${m.logo ? `<img src="${esc(m.logo)}" alt="">` : `<span class="ini">${esc(iniciais(e.nome))}</span>`}<span class="grow"><b>${esc(e.nome || 'Escola')}</b><span class="s">${eid === op.atual ? 'Você está aqui · ' : ''}${esc(papel(e))}</span></span></button>`; }).join('')}
+    <div class="ab-rodape" style="--d:${380 + lista.length * 110}ms"><button type="button" class="ab-mais">Outras opções</button>${op.atual ? '<button type="button" class="ab-mais" id="abcancela">Cancelar</button>' : ''}</div>`;
   el.removeAttribute('aria-hidden'); el.classList.add('escolhe'); el.appendChild(box);
   box.querySelectorAll('[data-abe]').forEach(b => b.onclick = () => { box.querySelectorAll('button').forEach(x => x.disabled = true); abrirComCartas(b.dataset.abe); });
   box.querySelector('.ab-mais').onclick = () => { telaInicio(); sairAbertura(); };
+  const fechar = () => { el.style.transition = 'opacity .25s ease'; el.style.opacity = '0'; setTimeout(() => el.remove(), 260); };
+  if (op.atual) { $('abcancela').onclick = fechar; box.querySelector(`[data-abe="${op.atual}"]`).onclick = fechar; }
 }
 // muito tempo com o app em segundo plano: na volta, abre de novo do começo (com a abertura)
 let OCULTO_DESDE = 0;
@@ -850,7 +861,8 @@ function render() {
   RAIZ().innerHTML = `<div class="wrap">
     <header class="top">
       <div class="brand">${S.cfg.logo ? `<img class="marca" src="${esc(S.cfg.logo)}" alt="">` : ''}<h1><small>${esc(titulo)}</small>${esc(S.escola.nome || 'Escola')}</h1>
-        <div class="acts">${Object.keys(MINHAS).length > 1 ? `<button class="icon-btn" id="htroca" aria-label="Trocar de escola">${ICO.voltar}</button>` : ''}<button class="icon-btn" id="hcfg" aria-label="Ajustes">${ICO.gear}</button></div></div>
+        <div class="acts"><button class="icon-btn" id="hcfg" aria-label="Ajustes">${ICO.gear}</button></div></div>
+      ${Object.keys(MINHAS).length > 1 ? `<button class="troca-btn" id="htroca">${ICO.troca}<span>Trocar escola</span></button>` : ''}
       ${comMes ? `<div class="monthbar"><button id="mprev" aria-label="Mês anterior">‹</button><div class="m num">${esc(nomeMesAno(S.mes))}</div><button id="mnext" aria-label="Próximo mês">›</button></div>` : ''}
     </header>
     <div id="faixa"></div>
@@ -859,7 +871,7 @@ function render() {
   <nav class="tabs" aria-label="Seções"><div class="in">${abas.map(([k, n, ic]) => `<button data-tab="${k}" aria-current="${S.tab === k ? 'page' : 'false'}">${ICO[ic]}${n}</button>`).join('')}</div></nav>`;
   RAIZ().querySelectorAll('[data-tab]').forEach(b => b.onclick = () => irPara(b.dataset.tab));
   $('hcfg').onclick = () => sheetAjustes();
-  if ($('htroca')) $('htroca').onclick = () => telaInicio();
+  if ($('htroca')) $('htroca').onclick = () => trocarEscola();
   if (comMes) { $('mprev').onclick = () => { S.mes = mesMais(S.mes, -1); render(); }; $('mnext').onclick = () => { S.mes = mesMais(S.mes, 1); render(); }; }
   faixa();
   const v = $('tela');
