@@ -622,6 +622,7 @@ const FORMAS_PADRAO = { boleto: true, cartao: true, parcelado: true, maxParcelas
 const taxasCfg = () => ({ ...TAXAS_PADRAO, ...(S.cfg.taxas || {}), parc: { ...TAXAS_PADRAO.parc, ...((S.cfg.taxas || {}).parc || {}) } });
 const formasCfg = () => ({ ...FORMAS_PADRAO, ...(S.cfg.formas || {}) });
 const COMISSAO = 0.01;
+const TAXA_TRANSACAO = () => ((0.0099 + COMISSAO) * 100).toFixed(2).replace('.', ','); // Pix do Mercado Pago + app = 1,99%
 // boleto e cartão ficam guardados para depois; por enquanto só Pix
 const OUTRAS_FORMAS = false;
 // quanto a família paga em cada forma, para uma base (o que a escola tem que receber)
@@ -1258,7 +1259,7 @@ function sheetFormas(chaves) {
   if (f.cartao && f.parcelado) for (let n = 2; n <= Math.min(6, Number(f.maxParcelas) || 1); n++) ops.push(['cartao', n, `Cartão em ${n}x`, '', ICO.caixa]);
   const pix = tot('pix');
   sheet(`<h3>Como você quer pagar?</h3>
-    <div class="conta">${contaL('Cobranças escolhidas', brl(base))}${contaL(`<span class="sub">${S.cfg.pixRepassa !== false ? 'O valor de cada forma já inclui as taxas dela.' : 'As taxas ficam com a escola.'}</span>`, '')}</div>
+    <div class="conta">${contaL('Cobranças escolhidas', brl(base))}</div>
     ${N > 1 ? `<div class="banner"><span>Vai para ${N} recebedores (${lotes.map(l => esc(nomeRec(l.rec))).join(', ')}), então o pagamento é feito em ${N} partes, uma para cada um.</span></div>` : ''}
     <div class="formas">${ops.map(([fo, n, t, d, ic], i) => { const v = tot(fo, n), par = n > 1 ? C.r2(v / n) : 0;
       return `<button type="button" class="forma" data-fo="${fo}" data-n="${n || 1}"><span class="vant-ic">${ic}</span><span class="grow"><b>${esc(t)}</b><span class="s">${n > 1 ? `${n}x de ${brl(par)}` : esc(d)}</span></span><span class="valor-col"><b class="num">${brl(v)}</b>${fo !== 'pix' && v > pix ? `<span class="s num">+ ${brl(C.r2(v - pix))} que o Pix</span>` : fo === 'pix' && ops.length > 1 ? '<span class="chip pago">Melhor preço</span>' : ''}</span></button>`; }).join('')}</div>
@@ -1302,7 +1303,7 @@ function sheetPix(chaves, voltar) {
         ${N > 1 ? `<div class="banner"><span>Seu pagamento vai em <b>${N} Pix</b>, um para cada recebedor: ${lotes.map((l, i) => `${i < n ? '✓ ' : ''}${esc(nomeRec(l.rec))} ${brl(l.valor)}`).join(' · ')}. Total ${brl(total)}.</span></div>` : ''}
         <div class="headrow"><h2>${N > 1 ? `Pix ${n + 1} de ${N}` : 'Pix'} · para ${esc(nomeRec(d.rec))}</h2></div>
         ${Object.entries(porAluna).map(([nm, l]) => `<div class="items"><div class="label">${esc(nm)}</div>${l.map(i => `<div class="item"><span>${esc(i.desc)}${i.v < i.total ? ' <span class="sub">(parte da ' + esc(nomeRec(d.rec).split(' ')[0]) + ')</span>' : ''}</span><b class="num">${brl(i.v)}</b></div>`).join('')}</div>`).join('')}
-        ${repasse > 0 ? `<div class="item sub"><span>Taxa do Pix</span><span class="num">${brl(repasse)}</span></div>` : ''}
+        ${repasse > 0 ? `<div class="item sub"><span>Taxa de transação (${TAXA_TRANSACAO()}%)</span><span class="num">${brl(repasse)}</span></div>` : ''}
         <div class="tot"><span>Valor deste Pix</span><b class="num">${brl(d.valor)}</b></div>
         <div class="qrbox">${d.qr64 ? `<img src="data:image/png;base64,${d.qr64}" alt="QR Code do Pix">` : qrSVG(d.qr)}</div>
         <div class="code">${esc(d.qr)}</div>
