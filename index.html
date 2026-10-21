@@ -525,6 +525,24 @@ details>summary::-webkit-details-marker{display:none}
 #abertura .ab-mais{background:none;border:0;color:#fff;font:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px;padding:10px 0}
 @keyframes abEntra{to{opacity:1;transform:none}}
 @keyframes abSai{to{opacity:0;transform:translateY(-36px)}}
+/* evento: onde é a inscrição (duas opções com explicação junto) e fotos */
+.insc-ops{display:flex;flex-direction:column;gap:8px}
+.insc-op{display:flex;align-items:flex-start;gap:12px;width:100%;text-align:left;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:5px;padding:12px 14px;font:inherit}
+.insc-op b{display:block;font-family:var(--f-display);font-style:italic;font-weight:800;text-transform:uppercase;font-size:1.1rem;line-height:1.1}
+.insc-op .s{display:block;font-size:.85rem;color:var(--muted);margin-top:2px}
+.insc-bola{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);flex:none;margin-top:2px;display:grid;place-items:center}
+.insc-op[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.insc-op[aria-pressed="true"] .insc-bola{border-color:var(--accent)}
+.insc-op[aria-pressed="true"] .insc-bola::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--accent)}
+.insc-op:disabled{opacity:.5}
+#eappw{display:flex;flex-direction:column;gap:12px}
+.ev-fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.ev-foto{position:relative;width:96px;height:96px;border-radius:5px;overflow:hidden;border:1px solid var(--line);background:var(--surface2);padding:0;flex:none}
+.ev-foto img{width:100%;height:100%;object-fit:cover;display:block}
+.ev-foto-x{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:1.1rem;line-height:1;display:grid;place-items:center}
+.ev-foto-add{width:96px;height:96px;border-radius:5px;border:1.5px dashed var(--line);background:transparent;color:var(--muted);font:inherit;font-size:.8rem;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.ev-foto-add span{font-size:1.6rem;line-height:1}
+.ev-fotos.ver{margin:2px 0}
 /* janelinha da taxa: simula quanto a família paga e quanto a escola recebe */
 .simtaxa{border:1px solid var(--line);border-radius:5px;background:var(--surface2);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
 .simtaxa-in{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}

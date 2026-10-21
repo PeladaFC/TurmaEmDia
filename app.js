@@ -1358,6 +1358,26 @@ const pagouEvento = (x, id) => { const k = xidDe(x); return !!(k && C.stPag(((S.
 const ST_PART = { interesse: 'Quer ir', nao: 'Não vai', inscrito: 'Inscrito(a)' };
 // quem faz a inscrição: a escola (paga ao organizador), a própria família (e confirma no app) ou pelo app (Pix da escola)
 // duas formas de inscrição: direto com a organização (a família confirma no app) ou na escola (Pix no app, confirma sozinho)
+// fotos de evento: reduzidas no celular (até 1400 px, ~250 KB cada), no máximo 3 por evento
+const FOTOS_EV_MAX = 3, FOTO_EV_BYTES = 260000, MIDIA_EV = {};
+async function fotoReduzida(arquivo) {
+  const c = await abrirImagem(arquivo, 1400); let url = '';
+  for (const q of [0.8, 0.7, 0.6, 0.5, 0.4]) { url = c.toDataURL('image/jpeg', q); if (url.length * 0.75 <= FOTO_EV_BYTES) return url; }
+  const m = await abrirImagem(arquivo, 1000); return m.toDataURL('image/jpeg', 0.6);
+}
+// fotos de um evento (busca uma vez e guarda); "pronto" redesenha quando chegam
+function fotosDoEvento(xid, x, pronto) {
+  if (!x || !x.fotos) return [];
+  if (MIDIA_EV[xid]) return MIDIA_EV[xid] === 'carregando' ? [] : MIDIA_EV[xid];
+  MIDIA_EV[xid] = 'carregando';
+  B.get(`escolas/${S.eid}/midiaEventos/${xid}`).then(d => { MIDIA_EV[xid] = (d && d.fotos) || []; pronto && pronto(); }).catch(() => { MIDIA_EV[xid] = []; });
+  return [];
+}
+const fotosHTML = (xid, fotos) => fotos.length ? `<div class="ev-fotos ver">${fotos.map((f, i) => `<button type="button" class="ev-foto" data-verfoto="${esc(xid)}:${i}"><img src="${esc(f.src)}" alt="Foto ${i + 1} do evento"></button>`).join('')}</div>` : '';
+function ligarFotos(raiz) {
+  raiz.querySelectorAll('[data-verfoto]').forEach(b => b.onclick = () => { const [xid, i] = b.dataset.verfoto.split(':'), f = (MIDIA_EV[xid] || [])[Number(i)]; if (!f) return;
+    sheet(`<h3>${esc((S.extras[xid] || {}).nome || 'Evento')}</h3><img src="${esc(f.src)}" alt="" style="width:100%;border-radius:5px;display:block"><button class="btn ghost" data-fechar>Fechar</button>`); });
+}
 const modoInsc = x => x && x.cobranca === 'app' ? 'app' : 'familia';
 const MODOS_INSC = [['familia', 'Na organização'], ['app', 'Na escola']];
 const partDe = (x, id) => { const st = (((x || {}).part || {})[id] || {}).st || null; return pelaEscola(x) && pagouEvento(x, id) ? 'inscrito' : st; };
@@ -1493,14 +1513,16 @@ function sheetEvento(xid) {
     <div class="field"><label for="edfim">Termina em</label><input id="edfim" type="date" value="${esc((x && (x.dataFim || x.data)) || '')}"></div></div>
     <div class="two"><div class="field"><label for="elocal">Local</label><input id="elocal" maxlength="60" value="${esc((x && x.local) || '')}" placeholder="Ex.: Recife"></div>
     <div class="field"><label for="eorg">Quem organiza</label><input id="eorg" maxlength="60" value="${esc((x && x.organizador) || '')}" placeholder="Ex.: Clube Náutico"></div></div>
-    <div class="field"><span class="lb">Onde é a inscrição?</span><div class="seg" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}>${n}</button>`).join('')}</div></div>
+    <div class="field"><span class="lb">Onde é a inscrição?</span><div class="insc-ops" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" class="insc-op" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${k === 'app' ? 'A família paga a inscrição por Pix no app. Pagou, fica inscrita sozinha.' : 'A família se inscreve e paga direto com quem organiza. Depois confirma no app.'}</span></span></button>`).join('')}</div>
+      ${temPagEv ? '<div class="note">Já há inscrições pagas pelo app, então o valor e a forma de pagar não mudam mais.</div>' : ''}</div>
     <div class="two"><div class="field"><label for="einsc">Inscrição (R$)</label><input id="einsc" inputmode="decimal" value="${esc(x && (x.cobranca === 'app' ? x.v : x.valorInscricao) ? fmtValor(x.cobranca === 'app' ? x.v : x.valorInscricao) : '')}" placeholder="0,00" ${temPagEv ? 'disabled' : ''}></div>
     <div class="field"><label for="eprazo">Responder até</label><input id="eprazo" type="date" value="${esc((x && x.prazo) || '')}"></div></div>
     <div id="eappw"><div class="two"><div class="field"><label for="even">Vencimento da inscrição</label><input id="even" type="date" value="${esc((x && x.venc) || '')}" ${temPagEv ? 'disabled' : ''}></div>
-    ${S.admin ? `<div class="field"><label for="erec">Recebe</label><select id="erec" ${temPagEv ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : '<div></div>'}</div></div>
-    <div class="note" id="ecobnota"></div>
-    <label class="check"><input type="checkbox" id="erep" ${x && x.pixRepassa === true ? 'checked' : ''}> <span class="grow">Quem paga cobre a taxa do Pix (${TAXA_TRANSACAO()}%)<span class="s" style="display:block;color:var(--muted);font-size:.82rem">Vale para a inscrição pelo app e para as taxas deste evento.</span></span></label>
-    ${simTaxaHTML('esim', 0, true)}
+    ${S.admin ? `<div class="field"><label for="erec">Recebe</label><select id="erec" ${temPagEv ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : '<div></div>'}</div>
+    <label class="check"><input type="checkbox" id="erep" ${x && x.pixRepassa === true ? 'checked' : ''}> <span class="grow">Quem paga cobre a taxa do Pix (${TAXA_TRANSACAO()}%)<span class="s" style="display:block;color:var(--muted);font-size:.82rem">Vale para a inscrição e para as taxas deste evento.</span></span></label>
+    ${simTaxaHTML('esim', 0, true)}</div>
+    <div class="field"><span class="lb">Fotos do evento</span><span class="sub">Cartaz, regulamento, horários. Os responsáveis veem junto com o evento. Até ${FOTOS_EV_MAX} fotos.</span>
+      <div class="ev-fotos" id="efotos"></div><input type="file" id="efoto" accept="image/*" hidden><div class="err" id="eferr" role="alert"></div></div>
     <div class="field"><span class="lb">Quem pode ir? Os responsáveis recebem o convite no app</span><div id="equadros"></div></div>
     <div class="err" id="eerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="eok">Salvar</button></div>
@@ -1509,10 +1531,18 @@ function sheetEvento(xid) {
     sel.desenhar();
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'taxa') sheetExtra(null, { tipo: 'taxa' }); });
     $('edata').addEventListener('change', () => { const a = $('edata').value, b = $('edfim').value; if (a && (!b || b < a)) $('edfim').value = a; $('edfim').min = a; });
-    const verCob = () => { s.querySelectorAll('[data-cob]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cob === cob)); $('eappw').hidden = cob !== 'app'; if ($('esim')) $('esim').hidden = cob !== 'app';
-      $('ecobnota').textContent = cob === 'app' ? 'Quem disser que vai recebe a cobrança da inscrição no app e paga por Pix. Pagou, já fica como inscrito sozinho.' + (temPagEv ? ' Já há inscrições pagas, então o valor e a forma de pagar não mudam mais.' : '')
-        : 'Cada família se inscreve direto com a organização do evento e depois toca em "Já fiz a inscrição" no app. Você vê quem confirmou e pode lembrar quem falta.'; };
+    const verCob = () => { s.querySelectorAll('[data-cob]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cob === cob)); $('eappw').hidden = cob !== 'app'; };
     s.querySelectorAll('[data-cob]').forEach(b => b.onclick = () => { if (b.disabled) return; cob = b.dataset.cob; verCob(); }); verCob();
+    // fotos do evento: ficam num documento à parte (midiaEventos), para a lista de eventos continuar leve
+    let fotos = [], fotosMudou = false;
+    const verFotos = () => { $('efotos').innerHTML = fotos.map((f, i) => `<span class="ev-foto"><img src="${esc(f.src)}" alt="Foto ${i + 1} do evento"><button type="button" class="ev-foto-x" data-fx="${i}" aria-label="Tirar esta foto">×</button></span>`).join('')
+        + (fotos.length < FOTOS_EV_MAX ? '<button type="button" class="ev-foto-add" id="efadd"><span aria-hidden="true">+</span>Adicionar foto</button>' : '');
+      $('efotos').querySelectorAll('[data-fx]').forEach(b => b.onclick = () => { fotos.splice(Number(b.dataset.fx), 1); fotosMudou = true; verFotos(); });
+      if ($('efadd')) $('efadd').onclick = () => $('efoto').click(); };
+    verFotos();
+    if (xid && x.fotos) B.get(`escolas/${S.eid}/midiaEventos/${xid}`).then(d => { if (d && d.fotos && !fotosMudou) { fotos = d.fotos.slice(0, FOTOS_EV_MAX); verFotos(); } }).catch(() => { });
+    $('efoto').onchange = async () => { const f = $('efoto').files[0]; $('efoto').value = ''; $('eferr').textContent = ''; if (!f) return;
+      try { fotos.push({ src: await fotoReduzida(f), em: Date.now() }); fotosMudou = true; verFotos(); } catch (e) { $('eferr').textContent = msgErro(e); } };
     // quanto a família paga e a escola recebe pela inscrição, conforme a caixa da taxa (só quando a inscrição é paga pelo app)
     const verSim = ligarSimTaxa('esim', () => $('erep').checked, () => parseValor($('einsc').value));
     $('erep').addEventListener('change', verSim); $('einsc').addEventListener('input', verSim);
@@ -1529,9 +1559,11 @@ function sheetEvento(xid) {
       $('eok').disabled = true;
       const part = { ...((x && x.part) || {}) }; sai.forEach(id => delete part[id]);
       const app = cob === 'app', cobrados = app ? ids.filter(id => ['interesse', 'inscrito'].includes((part[id] || {}).st) || (x && pagouEvento(x, id))) : [];
-      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { tipo: 'evento', cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
+      const id = xid || novoId();
+      try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', fotos: fotos.length, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
           valorInscricao: !app && insc > 0 ? C.r2(insc) : null, prazo: $('eprazo').value || null, convidados: ids, origem: sel.origem(), part,
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
+        if (fotosMudou) { await B.set(`escolas/${S.eid}/midiaEventos/${id}`, { fotos }); delete MIDIA_EV[id]; }
         fecharSheet(); aviso(ed ? 'Evento atualizado' : 'Evento lançado. Os responsáveis já podem responder.'); }
       catch (e) { err(msgErro(e)); $('eok').disabled = false; }
     };
@@ -1561,6 +1593,7 @@ function sheetVerEvento(xid) {
   const sec = (tit, ids, acoes, vazio) => `<section><h2>${tit} <span class="sub num">${ids.length}</span></h2>${ids.length ? `<ul class="list">${ids.map(id => lin(id, acoes(id))).join('')}</ul>` : `<div class="note">${vazio}</div>`}</section>`;
   sheet(`<h3>${esc(x.nome)}</h3>
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', app ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo caixa da escola · vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
+    ${fotosHTML(xid, fotosDoEvento(xid, x, () => { if ($('evmsg')) sheetVerEvento(xid); }))}
     <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : fam ? 'Falta confirmar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
     <button type="button" class="btn ghost btn-ico" id="evmsg">${ICO_WA}<span>Mensagem para o grupo</span></button>
     ${app ? sec('Vão · aguardando pagamento', g.interesse, id => `${valorCol(brl(C.valorExtra(x, id)), '<span class="chip aberto">A pagar</span>')}${bt(id, 'nao', 'Não vai')}`, 'Ninguém com inscrição a pagar.')
@@ -1576,6 +1609,7 @@ function sheetVerEvento(xid) {
     <div class="note">${g.inscrito.length + g.interesse.length ? `Já vem marcado quem ${g.inscrito.length ? 'confirmou a inscrição' : 'disse que vai'}; dá para ajustar. Serve para ajuda de custo, uniforme, transporte.` : 'Disponível quando alguém disser que vai.'}</div>
     <div class="actions"><button type="button" class="btn ghost" id="evedit">Editar evento</button><button type="button" class="btn ghost" data-fechar>Fechar</button></div>`, sh => {
     $('evmsg').onclick = () => abrirDe(volta, () => sheetMsgEvento(xid));
+    ligarFotos(sh);
     sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = async () => { b.disabled = true; await marcarPart(xid, b.dataset.pid, b.dataset.pst); if (b.dataset.pst === 'inscrito') aviso(`${primeiro(S.alunas[b.dataset.pid].nome)} inscrito(a)`); setTimeout(volta, 60); });
     sh.querySelectorAll('[data-tx]').forEach(li => li.onclick = () => abrirDe(volta, () => sheetExtra(li.dataset.tx)));
     $('evedit').onclick = () => abrirDe(volta, () => sheetEvento(xid));
@@ -1653,6 +1687,7 @@ function blocoEventosFamilia() {
   if (!L.length) return '';
   return `<section><h2>Eventos</h2>${L.map(({ xid, x, ids }) => `<div class="filha ev-fam"><div class="t" style="font-size:1.05rem">${esc(x.nome)}</div>
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', pelaEscola(x) ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo app, vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
+    ${fotosHTML(xid, fotosDoEvento(xid, x, agendar))}
     ${ids.map(id => respFamilia(xid, x, id)).join('')}</div>`).join('')}</section>`;
 }
 // resposta da família a um evento, conforme quem faz a inscrição
@@ -2388,6 +2423,7 @@ function tFilhas(v) {
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-vtermo]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vtermo));
   if ($('fcal')) $('fcal').onclick = () => sheetCalendario();
+  ligarFotos(v);
   v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;
     aviso(f === 'inscrito' ? 'Inscrição confirmada. A escola já está sabendo.' : f === 'nao' ? 'Resposta enviada' : m === 'app' ? 'Combinado! A inscrição já está na tela Pagar.' : m === 'familia' ? 'Combinado! Faça a inscrição com quem organiza e depois toque em "Já fiz a inscrição".' : 'Combinado! A escola vai cuidar da inscrição.'); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
 }

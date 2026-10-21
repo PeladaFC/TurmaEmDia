@@ -108,6 +108,8 @@ service cloud.firestore {
       match /locais/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
       match /grupos/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
       match /extras/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
+      // Fotos de cada evento (cartaz, regulamento): quem é da escola vê; a administração põe e tira (até 3, já reduzidas)
+      match /midiaEventos/{xid} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid) && request.resource.data.fotos.size() <= 3; }
 
       // Professores: telefone, chave Pix e conta ficam só com a administração.
       // As famílias leem só o nome, na cópia profsPublico que o servidor mantém.
