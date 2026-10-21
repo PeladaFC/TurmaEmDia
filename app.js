@@ -1951,17 +1951,17 @@ function tEventos(v) {
       <div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(x))}</span>${x.local ? ' · ' + esc(x.local) : ''}`,
         `${vao} vão · ${ins} ${app ? 'pago' : 'confirmado'}${ins === 1 ? '' : 's'} · ${n('sem')} sem resposta`)}
         <span class="chip ${app ? 'pix' : ''}" style="align-self:flex-start;margin-top:4px">${app ? 'Inscrição na escola' : 'Inscrição na organização'}</span></div></li>`; };
-  v.innerHTML = `<button class="btn" id="evnovo" style="width:100%;padding:15px">+ Novo evento</button>
-    <section><div class="cal-topo"><button type="button" class="icon-btn" id="emant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="emprox" aria-label="Próximo mês">›</button></div>
+  v.innerHTML = `<section><div class="cal-topo"><button type="button" class="icon-btn" id="emant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="emprox" aria-label="Próximo mês">›</button></div>
       ${gradeMes(ano, mes, eventosDoMes(ano, mes))}
       <button type="button" class="btn ghost" id="evano">Ver o ano inteiro</button></section>
-    <section><h2>Próximos eventos <span class="sub num">${prox.length}</span></h2>
+    <section><div class="headrow" style="flex-wrap:nowrap"><h2>Próximos eventos <span class="sub num">${prox.length}</span></h2><button class="add-disc" id="evnovo2">+ Evento</button></div>
       ${prox.length ? `<ul class="list">${prox.map(card).join('')}</ul>` : '<div class="empty"><span>Lance copas, festivais e campeonatos. Os responsáveis dizem pelo app se o filho vai.</span></div>'}</section>
-    ${pass.length ? `<details class="historico"><summary><span class="grow"><b>Eventos que já passaram</b><span class="s">${pass.length}</span></span><span class="seta" aria-hidden="true">▾</span></summary><ul class="list">${pass.map(card).join('')}</ul></details>` : ''}`;
+    ${pass.length ? `<details class="historico"><summary><span class="grow"><b>Eventos que já passaram</b><span class="s">${pass.length}</span></span><span class="seta" aria-hidden="true">▾</span></summary><ul class="list">${pass.map(card).join('')}</ul></details>` : ''}
+    <button class="btn" id="evnovo" style="width:100%;padding:15px">+ Novo evento</button>`;
   const vai = n => { let a = ano, m = mes + n; if (m < 1) { m = 12; a--; } if (m > 12) { m = 1; a++; } S.evMes = `${a}-${String(m).padStart(2, '0')}`; render(); };
   $('emant').onclick = () => vai(-1); $('emprox').onclick = () => vai(1);
   $('evano').onclick = () => sheetCalendario(ano);
-  $('evnovo').onclick = () => sheetEvento(null);
+  $('evnovo').onclick = $('evnovo2').onclick = () => sheetEvento(null);
   v.querySelectorAll('[data-ev]').forEach(b => b.onclick = () => abrirEvento(b.dataset.ev));
   let x0 = null; const g = v.querySelector('.mg');
   g.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
