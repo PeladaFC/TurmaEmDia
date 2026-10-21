@@ -139,7 +139,7 @@ function vantagensApp() {
   return `<section><h2>O que o app faz</h2><ul class="vantagens">${vant.map(([ic, t, d]) => `<li><span class="vant-ic">${ICO[ic] || ''}</span><span class="grow"><b>${esc(t)}</b><span class="s">${esc(d)}</span></span></li>`).join('')}</ul></section>`;
 }
 /* Abertura como app: 1) marca e nome aparecem e somem; 2) os tópicos do que o app faz sobem um a um; 3) entrada. */
-let ABERTURA = null, INTRO_VISTA = ls.get('escolinha.introVista') === '1';
+let ABERTURA = null, ABERTURA_PRONTA = Promise.resolve(), INTRO_VISTA = ls.get('escolinha.introVista') === '1';
 const MOVIMENTO = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 /* T.E.D. → Turma em Dia: começa com "T.E.D."; os pontos somem, o T, o E e o D se afastam e as letras entram no meio.
    As três palavras se completam juntas. Larguras medidas com a própria fonte, para o movimento ser liso. */
@@ -162,7 +162,8 @@ function mostrarAbertura() {
   const el = document.createElement('div'); el.id = 'abertura'; el.setAttribute('aria-hidden', 'true');
   el.innerHTML = `<div class="ab-marca">${MARCA_SVG}</div><div class="ab-nome">${esc(NOME_APP())}</div>`;
   document.body.appendChild(el);
-  ABERTURA = (async () => {
+  // ABERTURA_PRONTA: o nome terminou de se formar; a abertura fica na tela até alguém decidir para onde ir
+  ABERTURA_PRONTA = (async () => {
     let dura = 500;
     if (MOVIMENTO) {
       // espera a fonte (no máximo meio segundo) para medir as letras certinho
@@ -170,12 +171,129 @@ function mostrarAbertura() {
       dura = nomeAbertura(el.querySelector('.ab-nome'), 2200) + 700;
     }
     await new Promise(r => setTimeout(r, dura));
+  })();
+  ABERTURA = ABERTURA_PRONTA;
+  return ABERTURA;
+}
+const abEl = () => document.getElementById('abertura');
+// sai da abertura do jeito simples (esmaece): login, sem escola, Minhas escolas
+function sairAbertura() {
+  const el = abEl(); if (!el) return Promise.resolve();
+  if (el._saindo) return el._saindo;
+  el._saindo = (async () => {
+    await ABERTURA_PRONTA;
     el.classList.add('saindo');
     await new Promise(r => setTimeout(r, MOVIMENTO ? 700 : 50));
     el.remove();
   })();
-  return ABERTURA;
+  ABERTURA = el._saindo;
+  return el._saindo;
 }
+// cor e logo de cada escola ficam guardadas no aparelho, para a abertura já sair com a cara da escola
+const marcaGuardada = eid => { try { return JSON.parse(ls.get('escolinha.marca.' + eid) || 'null'); } catch (e) { return null; } };
+async function marcaDa(eid) {
+  const g = marcaGuardada(eid); if (g) return g;
+  try { const c = await Promise.race([B.get(`escolas/${eid}/config/geral`), new Promise(r => setTimeout(() => r(null), 1500))]); return c ? { cor: c.cor || '', logo: c.logo || '' } : {}; } catch (e) { return {}; }
+}
+// abre a escola a partir da abertura: a tela se parte em cartas que viram em ordem aleatória; cada carta passa por
+// preto → cor escura da escola → um clarão e mostra no verso um pedaço da tela da escola (cor, logo e nome).
+// Tudo desenhado num canvas: são ~180 cartas, e com elementos da página o celular engasgaria.
+const esperaImg = src => new Promise(ok => { if (!src) return ok(null); const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; setTimeout(() => ok(i.complete && i.naturalWidth ? i : null), 1500); });
+function fundoRadial(ctx, W, H, c1, c2) {
+  const rx = 1.2 * W, ry = 0.9 * H; ctx.save(); ctx.translate(W / 2, H * 0.38); ctx.scale(rx / ry, 1);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ry); g.addColorStop(0, c1); g.addColorStop(1, c2);
+  ctx.fillStyle = g; ctx.fillRect(-W, -H, 3 * W, 3 * H); ctx.restore();
+}
+function linhasTexto(ctx, txt, max) {
+  const out = []; let l = '';
+  for (const w of txt.split(/\s+/)) { const t = l ? l + ' ' + w : w; if (l && ctx.measureText(t).width > max) { out.push(l); l = w; } else l = t; }
+  if (l) out.push(l); return out;
+}
+async function abrirComCartas(eid) {
+  const el = abEl();
+  if (!el || !MOVIMENTO) { if (el) sairAbertura(); return abrirEscola(eid); }
+  await ABERTURA_PRONTA;
+  const box = el.querySelector('.ab-esc');
+  if (box) { box.style.transition = 'opacity .2s ease'; box.style.opacity = '0'; }
+  const m = await marcaDa(eid), nome = (MINHAS[eid] || {}).nome || 'Escola';
+  const cor = hexOk(m.cor) ? m.cor : COR_PADRAO, logo = await esperaImg(m.logo);
+  try { await Promise.race([document.fonts.load('italic 800 32px "Barlow Condensed"'), new Promise(r => setTimeout(r, 600))]); } catch (e) { }
+  const W = innerWidth, H = innerHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+  const tela = () => { const c = document.createElement('canvas'); c.width = W * dpr; c.height = H * dpr; const x = c.getContext('2d'); x.scale(dpr, dpr); return [c, x]; };
+  // frente: a abertura como está (marca e nome do app, ou só o fundo se estava escolhendo a escola)
+  const [F, fx] = tela(), app = COR_PADRAO;
+  fundoRadial(fx, W, H, mistura(app, '#FFFFFF', 0.10), mistura(app, '#000000', 0.38));
+  if (!box) {
+    const mr = el.querySelector('.ab-marca').getBoundingClientRect(), nr = el.querySelector('.ab-nome').getBoundingClientRect();
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="9" width="56" height="51" rx="15" fill="rgba(255,255,255,.14)" stroke="#fff" stroke-width="3"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const mi = await esperaImg('data:image/svg+xml,' + encodeURIComponent(svg));
+    if (mi) fx.drawImage(mi, mr.left, mr.top, mr.width, mr.height);
+    fx.fillStyle = '#fff'; fx.font = '800 40px "Bricolage Grotesque", "Trebuchet MS", sans-serif'; fx.textAlign = 'center'; fx.textBaseline = 'middle';
+    fx.fillText(NOME_APP(), nr.left + nr.width / 2, nr.top + nr.height / 2);
+  }
+  // verso: a tela da escola
+  const [V, vx] = tela();
+  fundoRadial(vx, W, H, mistura(cor, '#FFFFFF', 0.12), mistura(cor, '#000000', 0.30));
+  vx.font = 'italic 800 32px "Barlow Condensed", "Arial Narrow", sans-serif'; vx.textAlign = 'center'; vx.textBaseline = 'top';
+  const ls2 = linhasTexto(vx, nome.toUpperCase(), W - 48), alto = 104 + 18 + ls2.length * 33; let y = (H - alto) / 2;
+  vx.save(); vx.shadowColor = 'rgba(0,0,0,.25)'; vx.shadowBlur = 24; vx.shadowOffsetY = 8; vx.fillStyle = '#fff';
+  vx.beginPath(); vx.roundRect ? vx.roundRect(W / 2 - 52, y, 104, 104, 22) : vx.rect(W / 2 - 52, y, 104, 104); vx.fill(); vx.restore();
+  if (logo) { const k = Math.min(84 / logo.naturalWidth, 84 / logo.naturalHeight), lw = logo.naturalWidth * k, lh = logo.naturalHeight * k; vx.drawImage(logo, W / 2 - lw / 2, y + 52 - lh / 2, lw, lh); }
+  else { vx.fillStyle = cor; vx.font = 'italic 800 38px "Barlow Condensed", "Arial Narrow", sans-serif'; vx.textBaseline = 'middle'; vx.fillText(iniciais(nome), W / 2, y + 54); vx.font = 'italic 800 32px "Barlow Condensed", "Arial Narrow", sans-serif'; vx.textBaseline = 'top'; }
+  vx.fillStyle = '#fff'; y += 104 + 18; ls2.forEach((l, i) => vx.fillText(l, W / 2, y + i * 33));
+  // as cartas
+  const n = W < 600 ? 9 : 16, s = W / n, lin = Math.ceil(H / s), cartas = [];
+  for (let r = 0; r < lin; r++) for (let c = 0; c < n; c++) cartas.push({ x: c * s, y: r * s, d: Math.random() * 760 });
+  const fim = Math.max(...cartas.map(k => k.d)) + 620, VIRA = 360, COR = 600;
+  const escura = mistura(cor, '#000000', 0.5), clara = '#F6F3EE';
+  const cv = document.createElement('canvas'); cv.className = 'ab-cartas'; cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+  const mix = (a, b, t) => mistura(a, b, Math.max(0, Math.min(1, t)));
+  const quadro = t => {
+    ctx.fillStyle = '#0d0b09'; ctx.fillRect(0, 0, W, H);
+    for (const k of cartas) {
+      const lt = t - k.d, sw = s * dpr, sx = k.x * dpr, sy = k.y * dpr;
+      if (lt <= 0) { ctx.drawImage(F, sx, sy, sw + dpr, sw + dpr, k.x, k.y, s + 1, s + 1); continue; }
+      const p = Math.min(1, lt / VIRA), e = p < .5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2, ang = e * Math.PI, w = Math.abs(Math.cos(ang)) * (s + 1);
+      const x0 = k.x + (s + 1 - w) / 2;
+      if (ang < Math.PI / 2) { ctx.drawImage(F, sx, sy, sw + dpr, sw + dpr, x0, k.y, w, s + 1); continue; }
+      ctx.drawImage(V, sx, sy, sw + dpr, sw + dpr, x0, k.y, w, s + 1);
+      // o clarão por cima do verso: preto → cor escura da escola → branco → some
+      const q = Math.min(1, lt / COR); let c, a = 1;
+      if (q < .3) c = '#0d0b09'; else if (q < .55) c = mix('#0d0b09', escura, (q - .3) / .25); else if (q < .78) c = mix(escura, clara, (q - .55) / .23); else { c = clara; a = 1 - (q - .78) / .22; }
+      if (a > 0) { ctx.globalAlpha = a; ctx.fillStyle = c; ctx.fillRect(x0, k.y, w, s + 1); ctx.globalAlpha = 1; }
+    }
+  };
+  quadro(0); el.appendChild(cv); el.classList.add('virando');
+  abrirEscola(eid); // o app vai carregando por baixo, escondido pelas cartas
+  await new Promise(ok => { const t0 = performance.now(); const passo = now => { const t = now - t0; quadro(Math.min(t, fim)); if (t < fim) requestAnimationFrame(passo); else ok(); }; requestAnimationFrame(passo); });
+  ctx.drawImage(V, 0, 0, W, H);
+  await new Promise(r => setTimeout(r, 900));
+  el.style.opacity = '0';
+  await new Promise(r => setTimeout(r, 500));
+  el.remove();
+}
+// mais de uma escola: o nome sobe e some, e as escolas aparecem como botões
+async function escolherNaAbertura() {
+  const el = abEl(); if (!el) return telaInicio();
+  await ABERTURA_PRONTA;
+  const lista = Object.entries(MINHAS).sort((a, b) => String(a[1].nome || '').localeCompare(String(b[1].nome || ''), 'pt-BR'));
+  const papel = e => e.papel === 'admin' ? 'Administração' : e.papel === 'professora' ? 'Professor(a)' : 'Responsável' + (e.familia ? ' · ' + e.familia : '');
+  const box = document.createElement('div'); box.className = 'ab-esc';
+  box.innerHTML = `<h2>Qual escola?</h2>${lista.map(([eid, e], i) => { const m = marcaGuardada(eid) || {}, c = hexOk(m.cor) ? m.cor : COR_PADRAO;
+    return `<button type="button" class="ab-bt" data-abe="${esc(eid)}" style="--d:${380 + i * 110}ms;--c:${c}">${m.logo ? `<img src="${esc(m.logo)}" alt="">` : `<span class="ini">${esc(iniciais(e.nome))}</span>`}<span class="grow"><b>${esc(e.nome || 'Escola')}</b><span class="s">${esc(papel(e))}</span></span></button>`; }).join('')}
+    <button type="button" class="ab-mais" style="--d:${380 + lista.length * 110}ms">Outras opções</button>`;
+  el.removeAttribute('aria-hidden'); el.classList.add('escolhe'); el.appendChild(box);
+  box.querySelectorAll('[data-abe]').forEach(b => b.onclick = () => { box.querySelectorAll('button').forEach(x => x.disabled = true); abrirComCartas(b.dataset.abe); });
+  box.querySelector('.ab-mais').onclick = () => { telaInicio(); sairAbertura(); };
+}
+// muito tempo com o app em segundo plano: na volta, abre de novo do começo (com a abertura)
+let OCULTO_DESDE = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { OCULTO_DESDE = Date.now(); return; }
+  if (OCULTO_DESDE && Date.now() - OCULTO_DESDE > 30 * 60 * 1000 && EU && !$('overlay').innerHTML) location.reload();
+  OCULTO_DESDE = 0;
+});
 function telaIntro(depois) {
   INTRO_VISTA = true; ls.set('escolinha.introVista', '1');
   const vant = [['cobr', 'Cobrança por aluno', 'Mensalidade, evento, competição e taxa, cada um com seu vencimento. Pix com baixa automática.'],
@@ -428,7 +546,7 @@ async function abrirEscola(eid, tab) {
   const p = `escolas/${eid}`;
   const col = (nome, chave, onde) => B.ouvirCol(`${p}/${nome}`, docs => { S[chave] = Object.fromEntries(docs.map(d => [d.id, d.data])); S.carregado.add(chave); agendar(); }, e => console.warn(nome, e), onde);
   OUV.push(B.ouvirDoc(p, d => { if (d) { S.escola = d; agendar(); } }));
-  OUV.push(B.ouvirDoc(`${p}/config/geral`, d => { S.cfg = d || {}; agendar(); }));
+  OUV.push(B.ouvirDoc(`${p}/config/geral`, d => { S.cfg = d || {}; S.cfgOk = true; agendar(); }));
   ['locais', 'turmas', 'grupos', 'extras'].forEach(n => OUV.push(col(n, n)));
   if (admin || prof) {
     OUV.push(col('acordos', 'acordos'));
@@ -635,6 +753,7 @@ if (MQ_ESCURO) { try { MQ_ESCURO.addEventListener('change', pintarTema); } catch
 function aplicarMarca(cfg) {
   if (PREVIA_MARCA) return; // enquanto a Adm escolhe, a prévia manda
   cfg = cfg || {}; const k = (cfg.cor || '') + '|' + (cfg.logo || '').length; if (k === MARCA_ATUAL) return; MARCA_ATUAL = k;
+  if (S && S.eid && S.cfgOk) ls.set('escolinha.marca.' + S.eid, JSON.stringify({ cor: cfg.cor || '', logo: cfg.logo || '' }));
   aplicarTema(cfg.cor); aplicarLogo(cfg.logo);
 }
 // ---- logo: abrir a imagem, tirar o fundo (no próprio celular) e gerar os arquivos pequenos ----
@@ -3040,6 +3159,8 @@ async function semearMock() {
   await B.cadastrar('Paula Diretora', 'admin@teste.com', '123456'); const uA = window.__mock.cur().uid;
   const eid = 'esc1', p = `escolas/${eid}`, m = mesHoje(), m1 = mesMais(m, -1), m2 = mesMais(m, -2), set = (q, d) => B.set(q, d);
   const cfg = { atraso: { ativo: true, multa: 2, juros: 1 }, vencDia: 10, pixRepassa: true, descIrmas: 0.1, descMulti: 0.15, mpConectadoEm: Date.now(), mpTaxaApp: 0.01, pixChave: '12.345.678/0001-90' };
+  // ?mock=1&marca=1: a escola de exemplo com cor e escudo próprios (para ver a abertura com a cara da escola)
+  if (/[?&]marca=1/.test(location.search)) { cfg.cor = '#1E5A8A'; cfg.logo = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path d='M40 4 70 14v24c0 19-13 32-30 38C23 70 10 57 10 38V14z' fill='#1E5A8A'/><path d='M40 12 62 19v19c0 14-9 24-22 29-13-5-22-15-22-29V19z' fill='#fff'/><text x='40' y='47' text-anchor='middle' font-family='Arial Black,Arial' font-weight='900' font-size='19' fill='#1E5A8A'>EM</text></svg>"); }
   await set(p, { nome: 'Escolinha Movimento', dono: uA, admins: [uA], adminsInfo: { [uA]: { nome: 'Paula Diretora', email: 'admin@teste.com', em: Date.now() - 200 * 864e5 } } });
   await set(`${p}/config/geral`, cfg);
   await set(`${p}/config/mp`, { conta: { nome: 'Paula Diretora Souza', doc: '***.456.789-**' }, confirmada: true });
@@ -3088,6 +3209,11 @@ async function semearMock() {
   await set(`${p}/saude/al3`, { responsavelId: 'r2', respostas: nao, detalhes: '', alergias: 'Dipirona', remedios: '', plano: 'Hapvida', emergencia: { nome: 'Roberto Melo', telefone: '(81) 98888-2002', parentesco: 'pai' }, primeirosSocorros: true, imagem: false, assinatura: { nome: 'Roberto Melo' }, em: Date.now() - 60 * 864e5, versao: 1, atestado: null });
   await set(`${p}/membros/${uF}/vinculos/r1`, { codigo: 'K7Q2MX' });
   await set('users/' + uA, { escolas: { [eid]: { nome: 'Escolinha Movimento', papel: 'admin' } } });
+  // ?mock=1&duas=1: a administração também está numa segunda escola (para ver a escolha na abertura)
+  if (/[?&]duas=1/.test(location.search)) {
+    await set('escolas/e2', { nome: 'Ballet Arte', dono: uA, admins: [uA] }); await set('escolas/e2/config/geral', { vencDia: 10, cor: '#7A3E9D' });
+    await set('users/' + uA, { escolas: { [eid]: { nome: 'Escolinha Movimento', papel: 'admin' }, e2: { nome: 'Ballet Arte', papel: 'admin' } } });
+  }
   await set('users/' + uF, { escolas: { [eid]: { nome: 'Escolinha Movimento', papel: 'familia', familia: 'Patrícia Lins' } } });
   await B.sair();
 }
@@ -3107,17 +3233,18 @@ async function semearMock() {
     pararOuvintes(); fecharSheet(); EU = u; $('toast').hidden = true;
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
     if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
-    if (!u) { S = null; return telaLogin(); }
+    if (!u) { S = null; sairAbertura(); return telaLogin(); }
     const perfil = await B.get('users/' + u.uid).catch(() => null);
     if (minha !== vez) return;
     MINHAS = (perfil && perfil.escolas) || {};
     // convite para a administração: procura sem atrasar a abertura da escola
     convitesPara(u).then(c => { CONVITES = c || []; if (minha !== vez || !CONVITES.length) return; if (!S) telaInicio(); else aviso('Você tem um convite para a administração de outra escola. Veja em Ajustes → Minhas escolas.'); }).catch(() => { });
-    if (MP_VOLTA && ls.get('escolinha.mpVolta') && MINHAS[ls.get('escolinha.mpVolta')]) return abrirEscola(ls.get('escolinha.mpVolta'));
-    const ult = ls.get('escolinha.ultima');
-    if (ult && MINHAS[ult]) return abrirEscola(ult);
-    const ks = Object.keys(MINHAS); if (ks.length === 1) return abrirEscola(ks[0]);
-    telaInicio();
+    if (MP_VOLTA && ls.get('escolinha.mpVolta') && MINHAS[ls.get('escolinha.mpVolta')]) { sairAbertura(); return abrirEscola(ls.get('escolinha.mpVolta')); }
+    // uma escola: as cartas viram direto para ela; mais de uma: escolhe na própria abertura
+    const ks = Object.keys(MINHAS);
+    if (ks.length === 1) return abrirComCartas(ks[0]);
+    if (ks.length > 1 && abEl()) return escolherNaAbertura();
+    sairAbertura(); telaInicio();
   });
   if (MP_VOLTA) history.replaceState(null, '', location.pathname + (MOCK ? '?mock=1' : ''));
 })();

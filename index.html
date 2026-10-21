@@ -496,6 +496,25 @@ details>summary::-webkit-details-marker{display:none}
 @media (max-width:420px){.big{font-size:1.85rem}.trio .pill b{font-size:.92rem}}
 .btn-ico{display:flex;align-items:center;justify-content:center;gap:8px}.btn-ico svg{flex:none}
 
+
+/* Abertura → escola: as cartas são desenhadas num canvas (leve até em celular simples), ver abrirComCartas */
+#abertura{--accent:#8B6B47}
+#abertura canvas.ab-cartas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#abertura.virando>:not(canvas){visibility:hidden}
+#abertura.virando{transition:opacity .5s ease}
+/* mais de uma escola: o nome sobe e some, e as escolas sobem no lugar */
+#abertura.escolhe .ab-marca,#abertura.escolhe .ab-nome{animation:abSai .45s cubic-bezier(.65,0,.35,1) forwards!important}
+#abertura .ab-esc{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px;
+  padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));max-width:460px;margin:0 auto}
+#abertura .ab-esc h2{color:#fff;font-size:1.5rem;margin:0 0 6px;text-align:center;opacity:0;transform:translateY(26px);animation:abSobe .5s cubic-bezier(.22,1,.36,1) .3s forwards}
+#abertura .ab-bt{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:0;border-radius:6px;background:rgba(255,255,255,.96);color:#221D17;padding:12px 14px;
+  font:inherit;box-shadow:0 6px 18px rgba(0,0,0,.18);opacity:0;transform:translateY(26px);animation:abSobe .5s cubic-bezier(.22,1,.36,1) var(--d) forwards}
+#abertura .ab-bt img,#abertura .ab-bt .ini{width:46px;height:46px;border-radius:6px;object-fit:contain;flex:none;display:grid;place-items:center;background:var(--c);color:#fff;font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.2rem}
+#abertura .ab-bt img{background:#fff;border:1px solid #E4DDD2}
+#abertura .ab-bt b{display:block;font-family:var(--f-display);font-style:italic;font-weight:800;text-transform:uppercase;font-size:1.25rem;line-height:1.05}
+#abertura .ab-bt .s{font-size:.85rem;color:#6B6257}
+#abertura .ab-mais{align-self:center;background:none;border:0;color:#fff;font:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px;padding:10px;opacity:0;animation:abSobe .5s ease var(--d) forwards}
+@keyframes abSai{to{opacity:0;transform:translateY(-36px)}}
 /* Estilo Quadra: letra estreita e itálica como camisa de time, etiquetas e botões com as pontas cortadas em diagonal */
 body{font-size:16px}
 .brand h1,h2,h3,.big,.tot b,.local>.hd .t{font-style:italic;font-weight:800;text-transform:uppercase;letter-spacing:.01em}
