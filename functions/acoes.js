@@ -2,7 +2,8 @@
    - adminConvite: quem criou a escola convida alguém para a administração pelo e-mail; só quem entra
      com aquele e-mail (confirmado) vê o convite e pode aceitar. Ninguém se coloca na administração sozinho.
    - eventoResposta: o responsável diz se o filho vai a um evento. Em evento pago pelo caixa da escola,
-     a lista de quem é cobrado acompanha a resposta. */
+     a lista de quem é cobrado acompanha a resposta. Em evento em que a própria família faz a inscrição
+     (cobranca 'familia'), ela também confirma "Já fiz a inscrição" (e pode desfazer o que ela mesma confirmou). */
 'use strict';
 const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
@@ -66,7 +67,7 @@ module.exports = db => {
   });
 
   const eventoResposta = responder(async (u, { eid, xid, alid, st }) => {
-    if (!idOk(eid) || !idOk(xid) || !idOk(alid) || !['interesse', 'nao'].includes(st)) throw erro('Pedido inválido.', 400);
+    if (!idOk(eid) || !idOk(xid) || !idOk(alid) || !['interesse', 'nao', 'inscrito'].includes(st)) throw erro('Pedido inválido.', 400);
     const a = await ler(`escolas/${eid}/alunas/${alid}`);
     if (!a || !a.responsavelId || !(await db.doc(`escolas/${eid}/membros/${u.uid}/vinculos/${a.responsavelId}`).get()).exists) throw erro('Você só pode responder pelos seus filhos.', 403);
     const ref = db.doc(`escolas/${eid}/extras/${xid}`);
@@ -75,7 +76,9 @@ module.exports = db => {
       if (!x || !(x.tipo === 'evento' || x.tipo === 'competicao') || !(x.semCobranca || x.cobranca === 'app')) throw erro('Evento não encontrado.', 404);
       if (!(x.convidados || []).includes(alid)) throw erro('Este evento não é para este aluno.', 403);
       const pag = (await t.get(db.doc(`escolas/${eid}/pagamentos/${alid}`))).data() || {}, pago = (((pag.extras || {})[xid]) || {}).s === 'pago';
-      if (pago || ((x.part || {})[alid] || {}).st === 'inscrito') throw erro('A inscrição já está confirmada. Para mudar, fale com a escola.', 409);
+      const atual = (x.part || {})[alid] || {}, fam = x.cobranca === 'familia';
+      if (st === 'inscrito' && !fam) throw erro('Pedido inválido.', 400);
+      if (pago || (atual.st === 'inscrito' && !(fam && atual.quem === 'familia'))) throw erro('A inscrição já está confirmada. Para mudar, fale com a escola.', 409);
       const up = { [`part.${alid}`]: { st, em: Date.now(), por: u.uid, quem: 'familia' } };
       if (x.cobranca === 'app') up.alunas = st === 'interesse' ? FieldValue.arrayUnion(alid) : FieldValue.arrayRemove(alid);
       t.update(ref, up);

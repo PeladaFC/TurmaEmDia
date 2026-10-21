@@ -237,6 +237,16 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.deepStrictEqual(S.get('escolas/e1/extras/ev1').alunas, ['a1']); assert.ok(C.itensAluna({ ...d(), extras: { ev1: S.get('escolas/e1/extras/ev1') } }, 'a1', H).some(i => i.k === 'x:ev1:a1' && i.v === 70));
     r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev1', alid: 'a1', st: 'nao' }, 'ok:mae'), r); assert.deepStrictEqual(S.get('escolas/e1/extras/ev1').alunas, []);
   });
+  await t('evento em que a família se inscreve: ela confirma "Já fiz a inscrição" e pode desfazer só o que ela confirmou', async () => {
+    S.set('escolas/e1/extras/ev2', { tipo: 'evento', cobranca: 'familia', semCobranca: true, nome: 'Festival', data: '2026-11-20', convidados: ['a1'], alunas: [], part: {} });
+    const A = require('./acoes')(db);
+    let r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev1', alid: 'a1', st: 'inscrito' }, 'ok:mae'), r); assert.strictEqual(r.code, 400); // no caixa da escola, não
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev2', alid: 'a1', st: 'inscrito' }, 'ok:mae'), r); assert.strictEqual(r.code, 200);
+    assert.strictEqual(S.get('escolas/e1/extras/ev2').part.a1.st, 'inscrito');
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev2', alid: 'a1', st: 'interesse' }, 'ok:mae'), r); assert.strictEqual(r.code, 200);
+    S.set('escolas/e1/extras/ev2', { ...S.get('escolas/e1/extras/ev2'), part: { a1: { st: 'inscrito', quem: 'escola' } } });
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev2', alid: 'a1', st: 'nao' }, 'ok:mae'), r); assert.strictEqual(r.code, 409); // a escola confirmou: só a escola muda
+  });
   await t('convite para a administração: só o dono convida; só o e-mail convidado, confirmado, aceita', async () => {
     S.set('escolas/e1', { ...S.get('escolas/e1'), dono: 'adm', admins: ['adm', 'adm2'], adminsInfo: {} });
     const A = require('./acoes')(db);

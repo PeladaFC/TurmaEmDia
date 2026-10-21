@@ -843,7 +843,7 @@ function tCobrancas(v) {
     </section>
     <section><div class="headrow"><h2>Taxas e cobranças extras</h2><button class="add" id="xnovo">+ Lançar</button></div>
       ${ext.length ? `<ul class="list">${ext.map(([xid, x]) => { const alvo = [...C.alvoExtra(x, S.alunas, S.grupos)], pg = alvo.filter(a => C.stPag(((S.pags[a] || {}).extras || {})[xid])).length;
-        const o = x.origem || x, para = [...(o.todos ? ['Todos os alunos'] : []), ...(o.eventos || []).map(k => { const e = S.extras[k.slice(3)]; return e ? (k[1] === 'i' ? 'Inscritos · ' : 'Querem ir · ') + e.nome : ''; }), ...(o.grupos || []).map(g => (S.grupos[g] || {}).nome), ...(o.turmas || []).map(t => (S.turmas[t] || {}).nome)].filter(Boolean), tot = C.r2(alvo.reduce((t, id) => t + C.valorExtra(x, id), 0));
+        const o = x.origem || x, para = [...(o.todos ? ['Todos os alunos'] : []), ...(o.eventos || []).map(k => { const e = S.extras[k.slice(3)]; return e ? (k[1] === 'i' ? 'Inscrição confirmada · ' : 'Disseram que vão · ') + e.nome : ''; }), ...(o.grupos || []).map(g => (S.grupos[g] || {}).nome), ...(o.turmas || []).map(t => (S.turmas[t] || {}).nome)].filter(Boolean), tot = C.r2(alvo.reduce((t, id) => t + C.valorExtra(x, id), 0));
         return `<li class="tap" data-x="${esc(xid)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(`<span class="num">${ehEvento(x) && x.data ? `Evento ${x.dataFim && x.dataFim !== x.data ? 'de ' : 'em '}${periodoTxt(x)}` : esc(C.TIPOS_EXTRA[x.tipo] || 'Extra')} · vence ${dataBR(x.venc)}</span>`, para.length ? 'Para: ' + esc(para.join(', ')) : '', `<span class="num">${alvo.length} aluno${alvo.length === 1 ? '' : 's'} · ${Object.keys(x.valores || {}).length ? 'valores diferentes' : brl(x.v) + ' cada'}</span>`, 'Recebe: ' + esc(nomeRec(C.recDe(x))))}</div>${valorCol(cur(tot), `<span class="s num">${pg} de ${alvo.length} pagas</span>`)}</li>`; }).join('')}</ul>`
         : `<div class="empty"><span>Lance aqui taxas, como a da federação, ajuda de custo ou uniforme. Dá para lançar só para os inscritos de um evento. Escolha para quais grupos, turmas ou alunos cada um vale e o vencimento de cada um.</span></div>`}
     </section>`;
@@ -1194,6 +1194,9 @@ const pelaEscola = x => eventoNovo(x) && x.cobranca === 'app';
 const xidDe = x => Object.keys(S.extras).find(k => S.extras[k] === x);
 const pagouEvento = (x, id) => { const k = xidDe(x); return !!(k && C.stPag(((S.pags[id] || {}).extras || {})[k])); };
 const ST_PART = { interesse: 'Quer ir', nao: 'Não vai', inscrito: 'Inscrito(a)' };
+// quem faz a inscrição: a escola (paga ao organizador), a própria família (e confirma no app) ou pelo app (Pix da escola)
+const modoInsc = x => x && x.cobranca === 'app' ? 'app' : x && x.cobranca === 'familia' ? 'familia' : 'escola';
+const MODOS_INSC = [['escola', 'A escola'], ['familia', 'A família'], ['app', 'Pix no app']];
 const partDe = (x, id) => { const st = (((x || {}).part || {})[id] || {}).st || null; return pelaEscola(x) && pagouEvento(x, id) ? 'inscrito' : st; };
 const convidadosDe = x => eventoNovo(x) ? (x.convidados || []).filter(id => S.alunas[id]) : [...C.alvoExtra(x, S.alunas, S.grupos)];
 const eventosAtivos = () => Object.entries(S.extras).filter(([, x]) => eventoNovo(x) && x.data).sort((a, b) => a[1].data.localeCompare(b[1].data));
@@ -1204,9 +1207,9 @@ function quadrosDe(selA, comEventos) {
   const q = [['todos', 'Todos os alunos', ativos]];
   if (comEventos) { const lim = isoDe(new Date(Date.now() - 90 * 864e5));
     for (const [xid, x] of eventosAtivos().filter(([, x]) => fimDe(x) >= lim)) { const cv = convidadosDe(x);
-      const ins = cv.filter(id => partDe(x, id) === 'inscrito'), quer = cv.filter(id => partDe(x, id) === 'interesse');
-      if (ins.length) q.push(['ei:' + xid, `Inscritos · ${x.nome}`, ins]);
-      if (quer.length) q.push(['eq:' + xid, `Querem ir · ${x.nome}`, quer]); } }
+      const ins = cv.filter(id => partDe(x, id) === 'inscrito'), vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)));
+      if (ins.length) q.push(['ei:' + xid, `Inscrição confirmada · ${x.nome}`, ins]);
+      if (vao.length > ins.length) q.push(['ev:' + xid, `Disseram que vão · ${x.nome}`, vao]); } }
   return [...q, ...porNome(S.grupos).map(([g, G]) => ['g:' + g, G.nome, (G.alunas || []).filter(id => S.alunas[id])]),
     ...ordenar(S.turmas).map(([t, T]) => ['t:' + t, T.nome, alunasDaTurma(t).map(([id]) => id)])];
 }
@@ -1249,8 +1252,9 @@ function sheetExtra(xid, op = {}) {
   const pre = op.pre || {};
   const selA = new Set(x ? [...C.alvoExtra(x, S.alunas, S.grupos)] : pre.ids || []), vals = { ...((x && x.valores) || {}) };
   const o0 = (x && x.origem) || x || {}, usados = new Set([...(o0.todos ? ['todos'] : []), ...(o0.grupos || []).map(g => 'g:' + g), ...(o0.turmas || []).map(t => 't:' + t), ...(o0.eventos || []), ...(pre.quadro ? [pre.quadro] : [])]);
-  const quadros = quadrosDe(selA, true);
+  let quadros = quadrosDe(selA, true), evento = x ? x.evento || null : pre.evento || null;
   const padrao = () => parseValor(($('xval') || {}).value || '') || 0;
+  const evsTaxa = eventosAtivos().filter(([id, e]) => id === evento || fimDe(e) >= isoDe(new Date(Date.now() - 90 * 864e5)));
   sheet(`<h3>${ed ? (legado ? 'Editar cobrança do evento' : 'Editar taxa') : 'Lançar'}</h3>
     ${ed ? '' : `<div class="seg">${TIPOS_LANCAR.map(([k, n]) => `<button type="button" data-t="${k}" aria-pressed="${k === 'taxa'}">${n}</button>`).join('')}</div>`}
     <div class="field"><label for="xnome">Descrição</label><input id="xnome" maxlength="60" value="${esc(x ? x.nome : pre.nome || '')}" placeholder="Ex.: Ajuda de custo, uniforme, taxa da federação"></div>
@@ -1259,6 +1263,8 @@ function sheetExtra(xid, op = {}) {
     <div class="field"><label for="xven">Vencimento</label><input id="xven" type="date" value="${esc(x ? x.venc : hoje())}" ${temPag ? 'disabled' : ''}></div></div>
     ${temPag ? '<div class="note">Já há pagamentos desta cobrança: o valor padrão e o vencimento não mudam mais. Quem já pagou fica como está; dá para incluir alunos e mudar o valor de quem ainda não pagou.</div>' : ''}
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
+    ${!legado && evsTaxa.length ? `<div class="field"><label for="xev">É de um evento?</label><select id="xev"><option value="">Não, taxa avulsa</option>${evsTaxa.map(([id, e]) => `<option value="${esc(id)}" ${id === evento ? 'selected' : ''}>${esc(e.nome)} · ${esc(periodoTxt(e))}</option>`).join('')}</select>
+      <span class="sub" id="xevnota"></span></div>` : ''}
     <div class="field"><span class="lb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
     <div class="xresumo" id="xcont"></div>
     <div class="err" id="xerr" role="alert"></div>
@@ -1270,7 +1276,20 @@ function sheetExtra(xid, op = {}) {
         <div class="conta" style="padding:0 14px 14px">${porNome(Object.fromEntries(ids.map(id => [id, S.alunas[id]]))).map(([id, a]) => contaL(esc(a.nome), brl(sel.valDe(id)), vals[id] != null && vals[id] !== padrao() ? 'dif' : '')).join('')}${contaL('<b>Total</b>', `<b>${brl(tot)}</b>`, 'total')}</div></details>`
         : '<div class="note">Nenhum aluno marcado ainda.</div>';
     };
-    const sel = seletorAtletas($('xquadros'), { quadros, selA, usados, vals, comValor: true, padrao, travado: pagou, subDe: id => pagou(id) ? 'Já pagou' : turmasTxt(S.alunas[id]) || 'Sem turma', aoMudar: () => resumo() });
+    const opSel = () => ({ quadros, selA, usados, vals, comValor: true, padrao, travado: pagou, subDe: id => { if (pagou(id)) return 'Já pagou'; const e = evento && S.extras[evento], st = e && partDe(e, id); return st === 'inscrito' ? 'Inscrição confirmada' : st === 'interesse' ? 'Disse que vai' : turmasTxt(S.alunas[id]) || 'Sem turma'; }, aoMudar: () => resumo() });
+    let sel = seletorAtletas($('xquadros'), opSel());
+    // taxa de um evento: os quadros desse evento vêm primeiro e quem já confirmou a inscrição (ou, se ninguém, quem disse que vai) já vem marcado
+    const escolherEvento = (marcar) => {
+      const e = evento && S.extras[evento]; quadros = quadrosDe(selA, true);
+      if (e) { const doEv = quadros.filter(([k]) => k.slice(3) === evento), resto = quadros.filter(([k]) => k.slice(3) !== evento); quadros = [...doEv, ...resto];
+        if (marcar && doEv.length) { doEv[0][2].forEach(id => selA.add(id)); usados.add(doEv[0][0]); }
+        const cv = convidadosDe(e), ins = cv.filter(id => partDe(e, id) === 'inscrito').length, vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(e, id))).length;
+        if ($('xevnota')) $('xevnota').textContent = `${ins} com inscrição confirmada · ${vao} disseram que vão. A taxa aparece dentro do evento.`;
+        if (marcar && !$('xnome').value.trim()) $('xnome').value = `Ajuda de custo · ${e.nome}`; }
+      else if ($('xevnota')) $('xevnota').textContent = '';
+      sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
+    if ($('xev')) $('xev').onchange = () => { evento = $('xev').value || null; escolherEvento(true); };
+    if (evento) setTimeout(() => escolherEvento(false), 0);
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'evento') sheetEvento(null); });
     $('xval').oninput = () => { s.querySelectorAll('[data-xv]').forEach(i => { if (vals[i.dataset.xv] == null && !i.classList.contains('pend')) i.value = fmtValor(padrao()); }); resumo(); };
     sel.desenhar();
@@ -1284,7 +1303,7 @@ function sheetExtra(xid, op = {}) {
       const valores = {}; for (const id of ids) if (vals[id] != null && C.r2(vals[id]) !== C.r2(v)) { if (!(vals[id] > 0)) return err(`Confira o valor de ${S.alunas[id].nome}.`); valores[id] = C.r2(vals[id]); }
       $('xok').disabled = true;
       const base = legado ? { tipo: x.tipo, data: x.data || null, dataFim: x.dataFim || null, local: x.local || null } : { tipo: 'taxa' };
-      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { ...base, nome, v, venc, alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: x ? x.evento || null : pre.evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
+      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { ...base, nome, v, venc, alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
       catch (e) { err(msgErro(e)); $('xok').disabled = false; }
     };
     if ($('xdel')) $('xdel').onclick = () => temPag ? ($('xerr').textContent = 'Esta cobrança já tem pagamentos e não pode ser excluída. Desmarque os alunos que não vão participar.') : confirmar('Excluir cobrança?', `"${esc(x.nome)}" sai da lista de todos os alunos.`, 'Excluir', () => B.del(`escolas/${S.eid}/extras/${xid}`));
@@ -1297,7 +1316,7 @@ function sheetEvento(xid) {
   const selA = new Set(x ? x.convidados || [] : []), o0 = (x && x.origem) || {}, usados = new Set([...(o0.todos ? ['todos'] : []), ...(o0.grupos || []).map(g => 'g:' + g), ...(o0.turmas || []).map(t => 't:' + t)]);
   const quadros = quadrosDe(selA, false), resp = id => !!partDe(x, id);
   const temPagEv = !!x && pelaEscola(x) && (x.convidados || []).some(id => pagouEvento(x, id));
-  let cob = x && x.cobranca === 'app' ? 'app' : 'organizador';
+  let cob = modoInsc(x);
   sheet(`<h3>${ed ? 'Editar evento' : 'Lançar'}</h3>
     ${ed ? '' : `<div class="seg">${TIPOS_LANCAR.map(([k, n]) => `<button type="button" data-t="${k}" aria-pressed="${k === 'evento'}">${n}</button>`).join('')}</div>`}
     <div class="field"><label for="enome">Nome do evento</label><input id="enome" maxlength="60" value="${esc(x ? x.nome : '')}" placeholder="Ex.: Copa Nordeste, Festival de fim de ano"></div>
@@ -1305,7 +1324,7 @@ function sheetEvento(xid) {
     <div class="field"><label for="edfim">Termina em</label><input id="edfim" type="date" value="${esc((x && (x.dataFim || x.data)) || '')}"></div></div>
     <div class="two"><div class="field"><label for="elocal">Local</label><input id="elocal" maxlength="60" value="${esc((x && x.local) || '')}" placeholder="Ex.: Recife"></div>
     <div class="field"><label for="eorg">Quem organiza</label><input id="eorg" maxlength="60" value="${esc((x && x.organizador) || '')}" placeholder="Ex.: Clube Náutico"></div></div>
-    <div class="field"><span class="lb">Como é paga a inscrição?</span><div class="seg" id="ecob"><button type="button" data-cob="organizador" aria-pressed="${!x || x.cobranca !== 'app'}">Direto ao organizador</button><button type="button" data-cob="app" aria-pressed="${!!x && x.cobranca === 'app'}" ${temPagEv ? 'disabled' : ''}>Pelo caixa da escola</button></div></div>
+    <div class="field"><span class="lb">Quem faz a inscrição?</span><div class="seg" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}>${n}</button>`).join('')}</div></div>
     <div class="two"><div class="field"><label for="einsc">Inscrição (R$)</label><input id="einsc" inputmode="decimal" value="${esc(x && (x.cobranca === 'app' ? x.v : x.valorInscricao) ? fmtValor(x.cobranca === 'app' ? x.v : x.valorInscricao) : '')}" placeholder="0,00" ${temPagEv ? 'disabled' : ''}></div>
     <div class="field"><label for="eprazo">Responder até</label><input id="eprazo" type="date" value="${esc((x && x.prazo) || '')}"></div></div>
     <div id="eappw"><div class="two"><div class="field"><label for="even">Vencimento da inscrição</label><input id="even" type="date" value="${esc((x && x.venc) || '')}" ${temPagEv ? 'disabled' : ''}></div>
@@ -1321,7 +1340,8 @@ function sheetEvento(xid) {
     $('edata').addEventListener('change', () => { const a = $('edata').value, b = $('edfim').value; if (a && (!b || b < a)) $('edfim').value = a; $('edfim').min = a; });
     const verCob = () => { s.querySelectorAll('[data-cob]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cob === cob)); $('eappw').hidden = cob !== 'app';
       $('ecobnota').textContent = cob === 'app' ? 'Quem disser que vai recebe a cobrança da inscrição no app, para pagar por Pix. Pagou, já fica como inscrito.' + (temPagEv ? ' Já há inscrições pagas, então o valor e a forma de pagar não mudam mais.' : '')
-        : 'A inscrição é paga direto a quem organiza, fora do app; o valor é só para informar. Os responsáveis dizem se o filho vai, e você marca quem já está inscrito.'; };
+        : cob === 'familia' ? 'Cada família faz a inscrição direto com quem organiza e depois toca em "Já fiz a inscrição" no app. Você vê quem confirmou e pode lembrar quem falta.'
+        : 'A escola faz a inscrição com quem organiza. Os responsáveis dizem se o filho vai, e você marca quem já está inscrito.'; };
     s.querySelectorAll('[data-cob]').forEach(b => b.onclick = () => { if (b.disabled) return; cob = b.dataset.cob; verCob(); }); verCob();
     $('eok').onclick = async () => {
       const err = m => $('eerr').textContent = m, nome = $('enome').value.trim(), data = $('edata').value, dataFim = $('edfim').value || data, insc = parseValor($('einsc').value);
@@ -1336,7 +1356,7 @@ function sheetEvento(xid) {
       $('eok').disabled = true;
       const part = { ...((x && x.part) || {}) }; sai.forEach(id => delete part[id]);
       const app = cob === 'app', cobrados = app ? ids.filter(id => ['interesse', 'inscrito'].includes((part[id] || {}).st) || (x && pagouEvento(x, id))) : [];
-      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { tipo: 'evento', cobranca: app ? 'app' : 'organizador', semCobranca: !app, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
+      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { tipo: 'evento', cobranca: app ? 'app' : cob === 'familia' ? 'familia' : 'organizador', semCobranca: !app, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
           valorInscricao: !app && insc > 0 ? C.r2(insc) : null, prazo: $('eprazo').value || null, convidados: ids, origem: sel.origem(), part,
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         fecharSheet(); aviso(ed ? 'Evento atualizado' : 'Evento lançado. Os responsáveis já podem responder.'); }
@@ -1361,35 +1381,37 @@ function sheetVerEvento(xid) {
   const x = S.extras[xid]; if (!x) return fecharSheet();
   const cv = porNome(Object.fromEntries(convidadosDe(x).map(id => [id, S.alunas[id]]))).map(([id]) => id);
   const g = { inscrito: [], interesse: [], sem: [], nao: [] }; cv.forEach(id => g[partDe(x, id) || 'sem'].push(id));
-  const taxas = Object.entries(S.extras).filter(([, t]) => t.evento === xid), app = pelaEscola(x);
+  const taxas = Object.entries(S.extras).filter(([, t]) => t.evento === xid), app = pelaEscola(x), fam = modoInsc(x) === 'familia';
   const volta = () => sheetVerEvento(xid);
   const lin = (id, acoes) => { const a = S.alunas[id], P = (x.part || {})[id] || {}; return `<li><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(respDe(id).nome || 'Sem responsável'), P.em ? `${P.quem === 'escola' ? 'Marcado pela escola' : 'Respondeu'} em ${dataCurta(P.em)}` : '')}</div><span class="ev-acoes">${acoes}</span></li>`; };
   const bt = (id, st, txt, cls = 'ghost') => `<button type="button" class="btn ${cls} btn-mini" data-pst="${esc(st)}" data-pid="${esc(id)}">${txt}</button>`;
   const sec = (tit, ids, acoes, vazio) => `<section><h2>${tit} <span class="sub num">${ids.length}</span></h2>${ids.length ? `<ul class="list">${ids.map(id => lin(id, acoes(id))).join('')}</ul>` : `<div class="note">${vazio}</div>`}</section>`;
   sheet(`<h3>${esc(x.nome)}</h3>
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', app ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo caixa da escola · vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
-    <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
+    <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : fam ? 'Falta confirmar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
     ${app ? sec('Vão · aguardando pagamento', g.interesse, id => `${valorCol(brl(C.valorExtra(x, id)), '<span class="chip aberto">A pagar</span>')}${bt(id, 'nao', 'Não vai')}`, 'Ninguém com inscrição a pagar.')
+      : fam ? sec('Vão · falta confirmar a inscrição', g.interesse, id => { const wa = waLink(respDe(id).telefone, `Olá, ${primeiro(respDe(id).nome) || 'tudo bem'}! Aqui é da ${S.escola.nome || 'escola'}. Lembrete: a inscrição de ${primeiro(S.alunas[id].nome)} em ${x.nome} é feita direto com ${x.organizador || 'quem organiza'}. Depois de fazer, toque em "Já fiz a inscrição" no app: ${LINK_APP}`);
+          return `${bt(id, 'inscrito', 'Marcar inscrito')}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Lembrar pelo WhatsApp">${ICO_WA}</a>` : ''}`; }, 'Todos que vão já confirmaram a inscrição.')
       : sec('Querem ir', g.interesse, id => bt(id, 'inscrito', 'Inscrever', ''), 'Ninguém aguardando inscrição.')}
     ${app ? sec('Inscritos · pagos', g.inscrito, () => '<span class="chip pago">Pago</span>', 'Quem pagar a inscrição pelo app aparece aqui.')
-      : sec('Inscritos', g.inscrito, id => `<span class="chip pago">Inscrito(a)</span>${bt(id, 'interesse', 'Desfazer')}`, 'Quando a inscrição for paga ao organizador, toque em "Inscrever".')}
+      : sec(fam ? 'Inscrição confirmada' : 'Inscritos', g.inscrito, id => `<span class="chip pago">${fam && ((x.part || {})[id] || {}).quem === 'familia' ? 'Família confirmou' : 'Inscrito(a)'}</span>${bt(id, 'interesse', 'Desfazer')}`, fam ? 'Quando a família fizer a inscrição e confirmar no app, aparece aqui.' : 'Quando a inscrição for paga ao organizador, toque em "Inscrever".')}
     ${sec('Sem resposta', g.sem, id => { const wa = waEvento(xid, id); return `${bt(id, 'interesse', 'Vai')}${bt(id, 'nao', 'Não vai')}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Perguntar pelo WhatsApp">${ICO_WA}</a>` : ''}`; }, 'Todos responderam.')}
     ${g.nao.length ? `<details class="historico"><summary><span class="grow"><b>Não vão</b><span class="s">${g.nao.length} aluno${g.nao.length === 1 ? '' : 's'}</span></span><span class="seta" aria-hidden="true">▾</span></summary><ul class="list">${g.nao.map(id => lin(id, bt(id, 'interesse', 'Vai'))).join('')}</ul></details>` : ''}
     ${taxas.length ? `<section><h2>Taxas deste evento</h2><ul class="list">${taxas.map(([tid, t]) => { const al = [...C.alvoExtra(t, S.alunas, S.grupos)]; return `<li class="tap" data-tx="${esc(tid)}"><div class="grow"><div class="t">${esc(t.nome)}</div>${linhas(`<span class="num">${al.length} aluno${al.length === 1 ? '' : 's'} · vence ${dataBR(t.venc)}</span>`)}</div>${valorCol(brl(C.r2(al.reduce((s, id) => s + C.valorExtra(t, id), 0))))}</li>`; }).join('')}</ul></section>` : ''}
-    <button type="button" class="btn" id="evtaxa" ${g.inscrito.length ? '' : 'disabled'}>Lançar taxa para os inscritos</button>
-    ${g.inscrito.length ? '' : '<div class="note">Disponível quando houver alguém inscrito. Serve para ajuda de custo, uniforme, transporte.</div>'}
+    <button type="button" class="btn" id="evtaxa" ${g.inscrito.length + g.interesse.length ? '' : 'disabled'}>Lançar taxa deste evento</button>
+    <div class="note">${g.inscrito.length + g.interesse.length ? `Já vem marcado quem ${g.inscrito.length ? 'confirmou a inscrição' : 'disse que vai'}; dá para ajustar. Serve para ajuda de custo, uniforme, transporte.` : 'Disponível quando alguém disser que vai.'}</div>
     <div class="actions"><button type="button" class="btn ghost" id="evedit">Editar evento</button><button type="button" class="btn ghost" data-fechar>Fechar</button></div>`, sh => {
     sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = async () => { b.disabled = true; await marcarPart(xid, b.dataset.pid, b.dataset.pst); if (b.dataset.pst === 'inscrito') aviso(`${primeiro(S.alunas[b.dataset.pid].nome)} inscrito(a)`); setTimeout(volta, 60); });
     sh.querySelectorAll('[data-tx]').forEach(li => li.onclick = () => abrirDe(volta, () => sheetExtra(li.dataset.tx)));
     $('evedit').onclick = () => abrirDe(volta, () => sheetEvento(xid));
-    $('evtaxa').onclick = () => abrirDe(volta, () => sheetExtra(null, { tipo: 'taxa', pre: { ids: g.inscrito, nome: `Ajuda de custo · ${x.nome}`, evento: xid, quadro: 'ei:' + xid } }));
+    $('evtaxa').onclick = () => abrirDe(volta, () => sheetExtra(null, { tipo: 'taxa', pre: { ids: g.inscrito.length ? g.inscrito : g.interesse, nome: `Ajuda de custo · ${x.nome}`, evento: xid, quadro: (g.inscrito.length ? 'ei:' : 'ev:') + xid } }));
   });
 }
 // lista de eventos (aba Turmas da administração e tela da professora)
 function blocoEventos() {
   const h = hoje(), L = eventosAtivos(), prox = L.filter(([, x]) => fimDe(x) >= h), pass = L.filter(([, x]) => fimDe(x) < h).reverse();
   const li = ([xid, x]) => { const cv = convidadosDe(x), ins = cv.filter(id => partDe(x, id) === 'inscrito').length, quer = cv.filter(id => partDe(x, id) === 'interesse').length;
-    return `<li class="tap" data-ev="${esc(xid)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(x))}</span>`, x.local ? esc(x.local) : '', pelaEscola(x) ? `Pelo caixa · ${ins} pago${ins === 1 ? '' : 's'} · ${quer} a pagar` : `Direto ao organizador · ${ins} inscrito${ins === 1 ? '' : 's'} · ${quer} quer${quer === 1 ? '' : 'em'} ir`)}</div>${quer && !pelaEscola(x) ? '<span class="chip aberto">Inscrever</span>' : ''}</li>`; };
+    return `<li class="tap" data-ev="${esc(xid)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(x))}</span>`, x.local ? esc(x.local) : '', pelaEscola(x) ? `Pago no app · ${ins} pago${ins === 1 ? '' : 's'} · ${quer} a pagar` : modoInsc(x) === 'familia' ? `Família inscreve · ${ins} confirmado${ins === 1 ? '' : 's'} · ${quer} falta${quer === 1 ? '' : 'm'}` : `Escola inscreve · ${ins} inscrito${ins === 1 ? '' : 's'} · ${quer} quer${quer === 1 ? '' : 'em'} ir`)}</div>${quer && modoInsc(x) === 'escola' ? '<span class="chip aberto">Inscrever</span>' : ''}</li>`; };
   return `<section><div class="headrow"><h2>Eventos</h2><span class="acts-mini"><button class="add" id="evcal">Calendário</button><button class="add" id="evnovo">+ Evento</button></span></div>
     ${prox.length ? `<ul class="list">${prox.map(li).join('')}</ul>` : '<div class="empty"><span>Lance copas, festivais e campeonatos. Os responsáveis dizem pelo app se o filho vai, e você marca quem já está inscrito.</span></div>'}
     ${pass.length ? `<details class="historico"><summary><span class="grow"><b>Eventos que já passaram</b><span class="s">${pass.length}</span></span><span class="seta" aria-hidden="true">▾</span></summary><ul class="list">${pass.map(li).join('')}</ul></details>` : ''}</section>`;
@@ -1406,8 +1428,24 @@ function blocoEventosFamilia() {
   if (!L.length) return '';
   return `<section><h2>Eventos</h2>${L.map(({ xid, x, ids }) => `<div class="filha ev-fam"><div class="t" style="font-size:1.05rem">${esc(x.nome)}</div>
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', pelaEscola(x) ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo app, vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
-    ${ids.map(id => { const st = partDe(x, id), app = pelaEscola(x); return `<div class="ev-resp"><span class="grow"><b>${esc(primeiro(S.alunas[id].nome))}</b>${st ? `<span class="s">${st === 'inscrito' ? (app ? 'Inscrição paga' : 'Inscrição confirmada pela escola') : st === 'interesse' ? (app ? 'A inscrição está na tela Pagar' : 'A escola vai cuidar da inscrição') : 'Não vai'}</span>` : '<span class="s">Vai?</span>'}</span>
-      ${st === 'inscrito' ? '<span class="chip pago">Inscrito(a)</span>' : `<div class="seg ev-seg"><button type="button" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="interesse" aria-pressed="${st === 'interesse'}">Vai</button><button type="button" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="nao" aria-pressed="${st === 'nao'}">Não vai</button></div>`}</div>`; }).join('')}</div>`).join('')}</section>`;
+    ${ids.map(id => respFamilia(xid, x, id)).join('')}</div>`).join('')}</section>`;
+}
+// resposta da família a um evento, conforme quem faz a inscrição
+function respFamilia(xid, x, id) {
+  const st = partDe(x, id), modo = modoInsc(x), P = (x.part || {})[id] || {}, nm = esc(primeiro(S.alunas[id].nome));
+  const b = (fst, txt, on, cls = '') => `<button type="button" class="${cls}" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="${fst}" aria-pressed="${on}">${txt}</button>`;
+  const vaiNao = `<div class="seg ev-seg">${b('interesse', 'Vai', st === 'interesse' || st === 'inscrito')}${b('nao', 'Não vai', st === 'nao')}</div>`;
+  let sub = 'Vai?', direita = vaiNao, extra = '';
+  if (st === 'nao') sub = 'Não vai';
+  if (st === 'inscrito') {
+    sub = modo === 'app' ? 'Inscrição paga' : modo === 'familia' ? `Inscrição confirmada${P.quem === 'familia' ? ' por você' : ' pela escola'}${P.em ? ' em ' + dataCurta(P.em) : ''}` : 'Inscrição feita pela escola';
+    direita = '<span class="chip pago">Inscrito(a)</span>';
+    if (modo === 'familia' && P.quem === 'familia') extra = `<button type="button" class="link ev-desfaz" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="interesse">Desfazer confirmação</button>`;
+  } else if (st === 'interesse') {
+    sub = modo === 'app' ? 'A inscrição está na tela Pagar' : modo === 'familia' ? `Faça a inscrição com ${esc(x.organizador || 'quem organiza')} e depois confirme aqui` : 'A escola vai cuidar da inscrição';
+    if (modo === 'familia') extra = `<button type="button" class="btn btn-mini ev-ja" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="inscrito">Já fiz a inscrição</button>`;
+  }
+  return `<div class="ev-resp"><span class="grow"><b>${nm}</b><span class="s">${sub}</span>${extra}</span>${direita}</div>`;
 }
 function avisoEventosFamilia() {
   const h = hoje(), meus = Object.keys(S.alunas);
@@ -2125,7 +2163,8 @@ function tFilhas(v) {
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-vtermo]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vtermo));
   if ($('fcal')) $('fcal').onclick = () => sheetCalendario();
-  v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); aviso(b.dataset.fst === 'interesse' ? (pelaEscola(S.extras[b.dataset.fx]) ? 'Combinado! A inscrição já está na tela Pagar.' : 'Combinado! A escola vai cuidar da inscrição.') : 'Resposta enviada'); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
+  v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;
+    aviso(f === 'inscrito' ? 'Inscrição confirmada. A escola já está sabendo.' : f === 'nao' ? 'Resposta enviada' : m === 'app' ? 'Combinado! A inscrição já está na tela Pagar.' : m === 'familia' ? 'Combinado! Faça a inscrição com quem organiza e depois toque em "Já fiz a inscrição".' : 'Combinado! A escola vai cuidar da inscrição.'); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
 }
 /* ================= Calendário anual de eventos ================= */
 const DIAS_SEM = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
