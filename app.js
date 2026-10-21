@@ -1357,8 +1357,9 @@ const xidDe = x => Object.keys(S.extras).find(k => S.extras[k] === x);
 const pagouEvento = (x, id) => { const k = xidDe(x); return !!(k && C.stPag(((S.pags[id] || {}).extras || {})[k])); };
 const ST_PART = { interesse: 'Quer ir', nao: 'Não vai', inscrito: 'Inscrito(a)' };
 // quem faz a inscrição: a escola (paga ao organizador), a própria família (e confirma no app) ou pelo app (Pix da escola)
-const modoInsc = x => x && x.cobranca === 'app' ? 'app' : x && x.cobranca === 'familia' ? 'familia' : 'escola';
-const MODOS_INSC = [['escola', 'A escola'], ['familia', 'A família'], ['app', 'Pix no app']];
+// duas formas de inscrição: direto com a organização (a família confirma no app) ou na escola (Pix no app, confirma sozinho)
+const modoInsc = x => x && x.cobranca === 'app' ? 'app' : 'familia';
+const MODOS_INSC = [['familia', 'Na organização'], ['app', 'Na escola']];
 const partDe = (x, id) => { const st = (((x || {}).part || {})[id] || {}).st || null; return pelaEscola(x) && pagouEvento(x, id) ? 'inscrito' : st; };
 const convidadosDe = x => eventoNovo(x) ? (x.convidados || []).filter(id => S.alunas[id]) : [...C.alvoExtra(x, S.alunas, S.grupos)];
 const eventosAtivos = () => Object.entries(S.extras).filter(([, x]) => eventoNovo(x) && x.data).sort((a, b) => a[1].data.localeCompare(b[1].data));
@@ -1492,7 +1493,7 @@ function sheetEvento(xid) {
     <div class="field"><label for="edfim">Termina em</label><input id="edfim" type="date" value="${esc((x && (x.dataFim || x.data)) || '')}"></div></div>
     <div class="two"><div class="field"><label for="elocal">Local</label><input id="elocal" maxlength="60" value="${esc((x && x.local) || '')}" placeholder="Ex.: Recife"></div>
     <div class="field"><label for="eorg">Quem organiza</label><input id="eorg" maxlength="60" value="${esc((x && x.organizador) || '')}" placeholder="Ex.: Clube Náutico"></div></div>
-    <div class="field"><span class="lb">Quem faz a inscrição?</span><div class="seg" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}>${n}</button>`).join('')}</div></div>
+    <div class="field"><span class="lb">Onde é a inscrição?</span><div class="seg" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}>${n}</button>`).join('')}</div></div>
     <div class="two"><div class="field"><label for="einsc">Inscrição (R$)</label><input id="einsc" inputmode="decimal" value="${esc(x && (x.cobranca === 'app' ? x.v : x.valorInscricao) ? fmtValor(x.cobranca === 'app' ? x.v : x.valorInscricao) : '')}" placeholder="0,00" ${temPagEv ? 'disabled' : ''}></div>
     <div class="field"><label for="eprazo">Responder até</label><input id="eprazo" type="date" value="${esc((x && x.prazo) || '')}"></div></div>
     <div id="eappw"><div class="two"><div class="field"><label for="even">Vencimento da inscrição</label><input id="even" type="date" value="${esc((x && x.venc) || '')}" ${temPagEv ? 'disabled' : ''}></div>
@@ -1509,9 +1510,8 @@ function sheetEvento(xid) {
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'taxa') sheetExtra(null, { tipo: 'taxa' }); });
     $('edata').addEventListener('change', () => { const a = $('edata').value, b = $('edfim').value; if (a && (!b || b < a)) $('edfim').value = a; $('edfim').min = a; });
     const verCob = () => { s.querySelectorAll('[data-cob]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cob === cob)); $('eappw').hidden = cob !== 'app'; if ($('esim')) $('esim').hidden = cob !== 'app';
-      $('ecobnota').textContent = cob === 'app' ? 'Quem disser que vai recebe a cobrança da inscrição no app, para pagar por Pix. Pagou, já fica como inscrito.' + (temPagEv ? ' Já há inscrições pagas, então o valor e a forma de pagar não mudam mais.' : '')
-        : cob === 'familia' ? 'Cada família faz a inscrição direto com quem organiza e depois toca em "Já fiz a inscrição" no app. Você vê quem confirmou e pode lembrar quem falta.'
-        : 'A escola faz a inscrição com quem organiza. Os responsáveis dizem se o filho vai, e você marca quem já está inscrito.'; };
+      $('ecobnota').textContent = cob === 'app' ? 'Quem disser que vai recebe a cobrança da inscrição no app e paga por Pix. Pagou, já fica como inscrito sozinho.' + (temPagEv ? ' Já há inscrições pagas, então o valor e a forma de pagar não mudam mais.' : '')
+        : 'Cada família se inscreve direto com a organização do evento e depois toca em "Já fiz a inscrição" no app. Você vê quem confirmou e pode lembrar quem falta.'; };
     s.querySelectorAll('[data-cob]').forEach(b => b.onclick = () => { if (b.disabled) return; cob = b.dataset.cob; verCob(); }); verCob();
     // quanto a família paga e a escola recebe pela inscrição, conforme a caixa da taxa (só quando a inscrição é paga pelo app)
     const verSim = ligarSimTaxa('esim', () => $('erep').checked, () => parseValor($('einsc').value));
@@ -1529,7 +1529,7 @@ function sheetEvento(xid) {
       $('eok').disabled = true;
       const part = { ...((x && x.part) || {}) }; sai.forEach(id => delete part[id]);
       const app = cob === 'app', cobrados = app ? ids.filter(id => ['interesse', 'inscrito'].includes((part[id] || {}).st) || (x && pagouEvento(x, id))) : [];
-      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { tipo: 'evento', cobranca: app ? 'app' : cob === 'familia' ? 'familia' : 'organizador', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
+      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { tipo: 'evento', cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
           valorInscricao: !app && insc > 0 ? C.r2(insc) : null, prazo: $('eprazo').value || null, convidados: ids, origem: sel.origem(), part,
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         fecharSheet(); aviso(ed ? 'Evento atualizado' : 'Evento lançado. Os responsáveis já podem responder.'); }

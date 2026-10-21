@@ -76,7 +76,7 @@ module.exports = db => {
       if (!x || !(x.tipo === 'evento' || x.tipo === 'competicao') || !(x.semCobranca || x.cobranca === 'app')) throw erro('Evento não encontrado.', 404);
       if (!(x.convidados || []).includes(alid)) throw erro('Este evento não é para este aluno.', 403);
       const pag = (await t.get(db.doc(`escolas/${eid}/pagamentos/${alid}`))).data() || {}, pago = (((pag.extras || {})[xid]) || {}).s === 'pago';
-      const atual = (x.part || {})[alid] || {}, fam = x.cobranca === 'familia';
+      const atual = (x.part || {})[alid] || {}, fam = x.cobranca !== 'app'; // fora do Pix no app, a família se inscreve com a organização e confirma aqui
       if (st === 'inscrito' && !fam) throw erro('Pedido inválido.', 400);
       if (pago || (atual.st === 'inscrito' && !(fam && atual.quem === 'familia'))) throw erro('A inscrição já está confirmada. Para mudar, fale com a escola.', 409);
       const up = { [`part.${alid}`]: { st, em: Date.now(), por: u.uid, quem: 'familia' } };
