@@ -843,7 +843,7 @@ function tCobrancas(v) {
     </section>
     <section><div class="headrow"><h2>Taxas e cobranças extras</h2><button class="add" id="xnovo">+ Lançar</button></div>
       ${ext.length ? `<ul class="list">${ext.map(([xid, x]) => { const alvo = [...C.alvoExtra(x, S.alunas, S.grupos)], pg = alvo.filter(a => C.stPag(((S.pags[a] || {}).extras || {})[xid])).length;
-        const o = x.origem || x, para = [...(o.todos ? ['Todos os alunos'] : []), ...(o.eventos || []).map(k => { const e = S.extras[k.slice(3)]; return e ? (k[1] === 'i' ? 'Inscrição confirmada · ' : 'Disseram que vão · ') + e.nome : ''; }), ...(o.grupos || []).map(g => (S.grupos[g] || {}).nome), ...(o.turmas || []).map(t => (S.turmas[t] || {}).nome)].filter(Boolean), tot = C.r2(alvo.reduce((t, id) => t + C.valorExtra(x, id), 0));
+        const o = x.origem || x, para = [...(o.todos ? ['Todos os alunos'] : []), ...(o.eventos || []).map(k => { const e = S.extras[k.slice(3)]; return e ? ({ i: 'Inscrição confirmada · ', v: 'Disseram que vão · ', n: 'Não vão · ', s: 'Não responderam · ' }[k[1]] || 'Disseram que vão · ') + e.nome : ''; }), ...(o.grupos || []).map(g => (S.grupos[g] || {}).nome), ...(o.turmas || []).map(t => (S.turmas[t] || {}).nome)].filter(Boolean), tot = C.r2(alvo.reduce((t, id) => t + C.valorExtra(x, id), 0));
         return `<li class="tap" data-x="${esc(xid)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(`<span class="num">${ehEvento(x) && x.data ? `Evento ${x.dataFim && x.dataFim !== x.data ? 'de ' : 'em '}${periodoTxt(x)}` : esc(C.TIPOS_EXTRA[x.tipo] || 'Extra')} · vence ${dataBR(x.venc)}</span>`, para.length ? 'Para: ' + esc(para.join(', ')) : '', `<span class="num">${alvo.length} aluno${alvo.length === 1 ? '' : 's'} · ${Object.keys(x.valores || {}).length ? 'valores diferentes' : brl(x.v) + ' cada'}</span>`, 'Recebe: ' + esc(nomeRec(C.recDe(x))))}</div>${valorCol(cur(tot), `<span class="s num">${pg} de ${alvo.length} pagas</span>`)}</li>`; }).join('')}</ul>`
         : `<div class="empty"><span>Lance aqui taxas, como a da federação, ajuda de custo ou uniforme. Dá para lançar só para os inscritos de um evento. Escolha para quais grupos, turmas ou alunos cada um vale e o vencimento de cada um.</span></div>`}
     </section>`;
@@ -1202,11 +1202,15 @@ const convidadosDe = x => eventoNovo(x) ? (x.convidados || []).filter(id => S.al
 const eventosAtivos = () => Object.entries(S.extras).filter(([, x]) => eventoNovo(x) && x.data).sort((a, b) => a[1].data.localeCompare(b[1].data));
 
 // quadros para escolher atletas: todos, inscritos/interessados de cada evento (só nas taxas), grupos e turmas
-function quadrosDe(selA, comEventos) {
+function quadrosDe(selA, comEventos, foco) {
   const ativos = porNome(S.alunas).filter(([id, a]) => (C.ativaNoMes(a, mesHoje()) && !a.anonimizadoEm) || selA.has(id)).map(([id]) => id);
   const q = [['todos', 'Todos os alunos', ativos]];
   if (comEventos) { const lim = isoDe(new Date(Date.now() - 90 * 864e5));
     for (const [xid, x] of eventosAtivos().filter(([, x]) => fimDe(x) >= lim)) { const cv = convidadosDe(x);
+      // evento escolhido na taxa: todas as respostas, cada uma no seu quadro
+      if (xid === foco) { const por = st => cv.filter(id => (partDe(x, id) || 'sem') === st), fam = modoInsc(x) === 'familia';
+        q.push(['ei:' + xid, `Vão · inscrição confirmada · ${x.nome}`, por('inscrito')], ['ev:' + xid, `Vão · ${fam ? 'falta confirmar a inscrição' : 'falta inscrever'} · ${x.nome}`, por('interesse')],
+          ['en:' + xid, `Não vão · ${x.nome}`, por('nao')], ['es:' + xid, `Não responderam · ${x.nome}`, por('sem')]); continue; }
       const ins = cv.filter(id => partDe(x, id) === 'inscrito'), vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)));
       if (ins.length) q.push(['ei:' + xid, `Inscrição confirmada · ${x.nome}`, ins]);
       if (vao.length > ins.length) q.push(['ev:' + xid, `Disseram que vão · ${x.nome}`, vao]); } }
@@ -1252,7 +1256,7 @@ function sheetExtra(xid, op = {}) {
   const pre = op.pre || {};
   const selA = new Set(x ? [...C.alvoExtra(x, S.alunas, S.grupos)] : pre.ids || []), vals = { ...((x && x.valores) || {}) };
   const o0 = (x && x.origem) || x || {}, usados = new Set([...(o0.todos ? ['todos'] : []), ...(o0.grupos || []).map(g => 'g:' + g), ...(o0.turmas || []).map(t => 't:' + t), ...(o0.eventos || []), ...(pre.quadro ? [pre.quadro] : [])]);
-  let quadros = quadrosDe(selA, true), evento = x ? x.evento || null : pre.evento || null;
+  let evento = x ? x.evento || null : pre.evento || null, quadros = quadrosDe(selA, true, evento);
   const padrao = () => parseValor(($('xval') || {}).value || '') || 0;
   const evsTaxa = eventosAtivos().filter(([id, e]) => id === evento || fimDe(e) >= isoDe(new Date(Date.now() - 90 * 864e5)));
   sheet(`<h3>${ed ? (legado ? 'Editar cobrança do evento' : 'Editar taxa') : 'Lançar'}</h3>
@@ -1280,12 +1284,14 @@ function sheetExtra(xid, op = {}) {
     let sel = seletorAtletas($('xquadros'), opSel());
     // taxa de um evento: os quadros desse evento vêm primeiro e quem já confirmou a inscrição (ou, se ninguém, quem disse que vai) já vem marcado
     const escolherEvento = (marcar) => {
-      const e = evento && S.extras[evento]; quadros = quadrosDe(selA, true);
+      const e = evento && S.extras[evento]; quadros = quadrosDe(selA, true, evento);
       if (e) { const doEv = quadros.filter(([k]) => k.slice(3) === evento), resto = quadros.filter(([k]) => k.slice(3) !== evento); quadros = [...doEv, ...resto];
-        if (marcar && doEv.length) { doEv[0][2].forEach(id => selA.add(id)); usados.add(doEv[0][0]); }
+        // já vem marcado quem confirmou a inscrição; se ninguém confirmou, quem disse que vai
+        const pre_ = doEv[0] && doEv[0][2].length ? doEv[0] : doEv[1];
+        if (marcar && pre_ && pre_[2].length) { pre_[2].forEach(id => selA.add(id)); usados.add(pre_[0]); }
         const cv = convidadosDe(e), ins = cv.filter(id => partDe(e, id) === 'inscrito').length, vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(e, id))).length;
         if ($('xevnota')) $('xevnota').textContent = `${ins} com inscrição confirmada · ${vao} disseram que vão. A taxa aparece dentro do evento.`;
-        if (marcar && !$('xnome').value.trim()) $('xnome').value = `Ajuda de custo · ${e.nome}`; }
+        $('xnome').placeholder = `Ex.: Ajuda de custo · ${e.nome}`; }
       else if ($('xevnota')) $('xevnota').textContent = '';
       sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
     if ($('xev')) $('xev').onchange = () => { evento = $('xev').value || null; escolherEvento(true); };
@@ -1295,7 +1301,7 @@ function sheetExtra(xid, op = {}) {
     sel.desenhar();
     $('xok').onclick = async () => {
       const nome = $('xnome').value.trim(), v = padrao(), venc = $('xven').value, err = m => $('xerr').textContent = m;
-      if (!nome) return err('Descreva a cobrança, como "Ajuda de custo" ou "Taxa da federação".');
+      if (!nome) { $('xnome').focus(); $('xnome').scrollIntoView({ block: 'center', behavior: 'smooth' }); return err('Preencha a descrição da taxa, como "Ajuda de custo · Copa" ou "Taxa da federação".'); }
       if (!(v > 0)) return err('Informe o valor padrão por aluno(a), como 85,00.');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(venc)) return err('Escolha a data de vencimento.');
       const p = sel.pendente(); if (p) return err(`Toque em OK para confirmar o valor de ${p.nome}, ou volte ao valor anterior.`);
@@ -1396,7 +1402,7 @@ function sheetVerEvento(xid) {
     ${app ? sec('Inscritos · pagos', g.inscrito, () => '<span class="chip pago">Pago</span>', 'Quem pagar a inscrição pelo app aparece aqui.')
       : sec(fam ? 'Inscrição confirmada' : 'Inscritos', g.inscrito, id => `<span class="chip pago">${fam && ((x.part || {})[id] || {}).quem === 'familia' ? 'Família confirmou' : 'Inscrito(a)'}</span>${bt(id, 'interesse', 'Desfazer')}`, fam ? 'Quando a família fizer a inscrição e confirmar no app, aparece aqui.' : 'Quando a inscrição for paga ao organizador, toque em "Inscrever".')}
     ${sec('Sem resposta', g.sem, id => { const wa = waEvento(xid, id); return `${bt(id, 'interesse', 'Vai')}${bt(id, 'nao', 'Não vai')}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Perguntar pelo WhatsApp">${ICO_WA}</a>` : ''}`; }, 'Todos responderam.')}
-    ${g.nao.length ? `<details class="historico"><summary><span class="grow"><b>Não vão</b><span class="s">${g.nao.length} aluno${g.nao.length === 1 ? '' : 's'}</span></span><span class="seta" aria-hidden="true">▾</span></summary><ul class="list">${g.nao.map(id => lin(id, bt(id, 'interesse', 'Vai'))).join('')}</ul></details>` : ''}
+    ${sec('Não vão', g.nao, id => bt(id, 'interesse', 'Vai'), 'Ninguém respondeu que não vai.')}
     ${taxas.length ? `<section><h2>Taxas deste evento</h2><ul class="list">${taxas.map(([tid, t]) => { const al = [...C.alvoExtra(t, S.alunas, S.grupos)]; return `<li class="tap" data-tx="${esc(tid)}"><div class="grow"><div class="t">${esc(t.nome)}</div>${linhas(`<span class="num">${al.length} aluno${al.length === 1 ? '' : 's'} · vence ${dataBR(t.venc)}</span>`)}</div>${valorCol(brl(C.r2(al.reduce((s, id) => s + C.valorExtra(t, id), 0))))}</li>`; }).join('')}</ul></section>` : ''}
     <button type="button" class="btn" id="evtaxa" ${g.inscrito.length + g.interesse.length ? '' : 'disabled'}>Lançar taxa deste evento</button>
     <div class="note">${g.inscrito.length + g.interesse.length ? `Já vem marcado quem ${g.inscrito.length ? 'confirmou a inscrição' : 'disse que vai'}; dá para ajustar. Serve para ajuda de custo, uniforme, transporte.` : 'Disponível quando alguém disser que vai.'}</div>
@@ -1404,7 +1410,7 @@ function sheetVerEvento(xid) {
     sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = async () => { b.disabled = true; await marcarPart(xid, b.dataset.pid, b.dataset.pst); if (b.dataset.pst === 'inscrito') aviso(`${primeiro(S.alunas[b.dataset.pid].nome)} inscrito(a)`); setTimeout(volta, 60); });
     sh.querySelectorAll('[data-tx]').forEach(li => li.onclick = () => abrirDe(volta, () => sheetExtra(li.dataset.tx)));
     $('evedit').onclick = () => abrirDe(volta, () => sheetEvento(xid));
-    $('evtaxa').onclick = () => abrirDe(volta, () => sheetExtra(null, { tipo: 'taxa', pre: { ids: g.inscrito.length ? g.inscrito : g.interesse, nome: `Ajuda de custo · ${x.nome}`, evento: xid, quadro: (g.inscrito.length ? 'ei:' : 'ev:') + xid } }));
+    $('evtaxa').onclick = () => abrirDe(volta, () => sheetExtra(null, { tipo: 'taxa', pre: { ids: g.inscrito.length ? g.inscrito : g.interesse, evento: xid, quadro: (g.inscrito.length ? 'ei:' : 'ev:') + xid } }));
   });
 }
 // lista de eventos (aba Turmas da administração e tela da professora)
