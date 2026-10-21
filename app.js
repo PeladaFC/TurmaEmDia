@@ -241,13 +241,13 @@ async function abrirComCartas(eid, tab) {
   // verso: a tela da escola
   const [V, vx] = tela();
   fundoRadial(vx, W, H, mistura(cor, '#FFFFFF', 0.12), mistura(cor, '#000000', 0.30));
-  vx.font = 'italic 800 32px "Barlow Condensed", "Arial Narrow", sans-serif'; vx.textAlign = 'center'; vx.textBaseline = 'top';
-  const ls2 = linhasTexto(vx, nome.toUpperCase(), W - 48), alto = 104 + 18 + ls2.length * 33; let y = (H - alto) / 2;
-  vx.save(); vx.shadowColor = 'rgba(0,0,0,.25)'; vx.shadowBlur = 24; vx.shadowOffsetY = 8; vx.fillStyle = '#fff';
-  vx.beginPath(); vx.roundRect ? vx.roundRect(W / 2 - 52, y, 104, 104, 22) : vx.rect(W / 2 - 52, y, 104, 104); vx.fill(); vx.restore();
-  if (logo) { const k = Math.min(84 / logo.naturalWidth, 84 / logo.naturalHeight), lw = logo.naturalWidth * k, lh = logo.naturalHeight * k; vx.drawImage(logo, W / 2 - lw / 2, y + 52 - lh / 2, lw, lh); }
-  else { vx.fillStyle = corForte; vx.font = 'italic 800 38px "Barlow Condensed", "Arial Narrow", sans-serif'; vx.textBaseline = 'middle'; vx.fillText(iniciais(nome), W / 2, y + 54); vx.font = 'italic 800 32px "Barlow Condensed", "Arial Narrow", sans-serif'; vx.textBaseline = 'top'; }
-  vx.fillStyle = tinta; y += 104 + 18; ls2.forEach((l, i) => vx.fillText(l, W / 2, y + i * 33));
+  vx.font = 'italic 800 36px "Barlow Condensed", "Arial Narrow", sans-serif'; vx.textAlign = 'center'; vx.textBaseline = 'top';
+  const Q = Math.min(176, Math.round(W * 0.45)), ls2 = linhasTexto(vx, nome.toUpperCase(), W - 48), alto = Q + 22 + ls2.length * 37; let y = (H - alto) / 2;
+  vx.save(); vx.shadowColor = 'rgba(0,0,0,.25)'; vx.shadowBlur = 30; vx.shadowOffsetY = 10; vx.fillStyle = '#fff';
+  vx.beginPath(); vx.roundRect ? vx.roundRect(W / 2 - Q / 2, y, Q, Q, Q * 0.2) : vx.rect(W / 2 - Q / 2, y, Q, Q); vx.fill(); vx.restore();
+  if (logo) { const L = Q * 0.84, k = Math.min(L / logo.naturalWidth, L / logo.naturalHeight), lw = logo.naturalWidth * k, lh = logo.naturalHeight * k; vx.drawImage(logo, W / 2 - lw / 2, y + Q / 2 - lh / 2, lw, lh); }
+  else { vx.fillStyle = corForte; vx.font = `italic 800 ${Math.round(Q * 0.38)}px "Barlow Condensed", "Arial Narrow", sans-serif`; vx.textBaseline = 'middle'; vx.fillText(iniciais(nome), W / 2, y + Q / 2 + 2); vx.font = 'italic 800 36px "Barlow Condensed", "Arial Narrow", sans-serif'; vx.textBaseline = 'top'; }
+  vx.fillStyle = tinta; y += Q + 22; ls2.forEach((l, i) => vx.fillText(l, W / 2, y + i * 37));
   // as cartas
   const n = W < 600 ? 9 : 16, s = W / n, lin = Math.ceil(H / s), cartas = [];
   for (let r = 0; r < lin; r++) for (let c = 0; c < n; c++) cartas.push({ x: c * s, y: r * s, d: Math.random() * 760 });
