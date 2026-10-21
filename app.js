@@ -933,7 +933,7 @@ function sheetCobrancaAluna(alid) {
           <div class="seg"><button data-mt="lembrete">Lembrete</button><button data-mt="atraso">Atraso</button>${acordosAl.length ? '<button data-mt="acordo">Acordo</button>' : ''}</div>
           <textarea id="fmtxt" class="msg-edit" rows="8" aria-label="Mensagem"></textarea>
           <div class="note">Pode mexer no texto antes de enviar. Para mudar o texto de todas as próximas vezes, <button type="button" class="link" id="fmod">edite o modelo</button>.</div>
-          <div class="actions">${numeroWa(r.telefone) ? `<a class="btn wa-btn" id="fwa" target="_blank" rel="noopener">${ICO_WA} Abrir no WhatsApp</a>` : ''}<button class="btn ghost" id="fmsg">Copiar</button></div>
+          <div class="actions">${numeroWa(r.telefone) ? `<a class="btn wa-btn" id="fwa" target="_blank" rel="noopener">${ICO_WA} Abrir no WhatsApp</span></a>` : ''}<button class="btn ghost" id="fmsg">Copiar</button></div>
           ${numeroWa(r.telefone) ? `<div class="note">Abre a conversa com ${esc(r.telefone)} e a mensagem já escrita. Você confere e toca em enviar.</div>` : '<div class="note">Cadastre o WhatsApp do responsável para enviar direto.</div>'}</div>`
         : `<div class="empty"><b>${it.length ? 'Nada em aberto. Tudo pago!' : 'Nenhuma cobrança.'}</b></div>`}
       ${acordosAl.map(([aid, A]) => { const pg = A.parcelas.filter(q => C.stPag((((S.pags[alid] || {}).acordos || {})[aid] || {})[q.n])).length; return `<div class="banner ok"><span><b>Acordo de ${dataBR(A.criadoEm)}</b>: ${A.parcelas.length}x, total ${brl(A.total)}${A.desconto > 0 ? ` (desconto de ${brl(A.desconto)})` : ''} · ${pg} de ${A.parcelas.length} paga${pg === 1 ? '' : 's'}.</span>${pg ? '' : `<button data-cancac="${esc(aid)}">Cancelar acordo</button>`}</span></div>`; }).join('')}
@@ -1395,6 +1395,7 @@ function sheetVerEvento(xid) {
   sheet(`<h3>${esc(x.nome)}</h3>
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', app ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo caixa da escola · vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
     <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : fam ? 'Falta confirmar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
+    <button type="button" class="btn ghost btn-ico" id="evmsg">${ICO_WA}<span>Mensagem para o grupo</span></button>
     ${app ? sec('Vão · aguardando pagamento', g.interesse, id => `${valorCol(brl(C.valorExtra(x, id)), '<span class="chip aberto">A pagar</span>')}${bt(id, 'nao', 'Não vai')}`, 'Ninguém com inscrição a pagar.')
       : fam ? sec('Vão · falta confirmar a inscrição', g.interesse, id => { const wa = waLink(respDe(id).telefone, `Olá, ${primeiro(respDe(id).nome) || 'tudo bem'}! Aqui é da ${S.escola.nome || 'escola'}. Lembrete: a inscrição de ${primeiro(S.alunas[id].nome)} em ${x.nome} é feita direto com ${x.organizador || 'quem organiza'}. Depois de fazer, toque em "Já fiz a inscrição" no app: ${LINK_APP}`);
           return `${bt(id, 'inscrito', 'Marcar inscrito')}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Lembrar pelo WhatsApp">${ICO_WA}</a>` : ''}`; }, 'Todos que vão já confirmaram a inscrição.')
@@ -1407,10 +1408,61 @@ function sheetVerEvento(xid) {
     <button type="button" class="btn" id="evtaxa" ${g.inscrito.length + g.interesse.length ? '' : 'disabled'}>Lançar taxa deste evento</button>
     <div class="note">${g.inscrito.length + g.interesse.length ? `Já vem marcado quem ${g.inscrito.length ? 'confirmou a inscrição' : 'disse que vai'}; dá para ajustar. Serve para ajuda de custo, uniforme, transporte.` : 'Disponível quando alguém disser que vai.'}</div>
     <div class="actions"><button type="button" class="btn ghost" id="evedit">Editar evento</button><button type="button" class="btn ghost" data-fechar>Fechar</button></div>`, sh => {
+    $('evmsg').onclick = () => abrirDe(volta, () => sheetMsgEvento(xid));
     sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = async () => { b.disabled = true; await marcarPart(xid, b.dataset.pid, b.dataset.pst); if (b.dataset.pst === 'inscrito') aviso(`${primeiro(S.alunas[b.dataset.pid].nome)} inscrito(a)`); setTimeout(volta, 60); });
     sh.querySelectorAll('[data-tx]').forEach(li => li.onclick = () => abrirDe(volta, () => sheetExtra(li.dataset.tx)));
     $('evedit').onclick = () => abrirDe(volta, () => sheetEvento(xid));
     $('evtaxa').onclick = () => abrirDe(volta, () => sheetExtra(null, { tipo: 'taxa', pre: { ids: g.inscrito.length ? g.inscrito : g.interesse, evento: xid, quadro: (g.inscrito.length ? 'ei:' : 'ev:') + xid } }));
+  });
+}
+// relatório do evento em uma mensagem só, para mandar no grupo de WhatsApp
+function textoGrupoEvento(xid, ate) {
+  const x = S.extras[xid] || {}, modo = modoInsc(x), app = modo === 'app';
+  const cv = porNome(Object.fromEntries(convidadosDe(x).map(id => [id, S.alunas[id]]))).map(([id]) => id);
+  const g = { inscrito: [], interesse: [], sem: [], nao: [] }; cv.forEach(id => g[partDe(x, id) || 'sem'].push(id));
+  const nm = id => { const p = String(S.alunas[id].nome || '').trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[p.length - 1]}` : p[0]; };
+  const lista = (tit, ids) => ids.length ? `${tit.replace(/^(\S+) (.*)$/, '$1 *$2')} (${ids.length})*\n${ids.map(id => `• ${nm(id)}`).join('\n')}` : '';
+  const vao = g.inscrito.length + g.interesse.length;
+  const L = [`🏆 *${x.nome}*`, [`📅 ${periodoTxt(x)}`, x.local ? `📍 ${x.local}` : ''].filter(Boolean).join('\n')];
+  L.push(`Até agora: *${vao}* vão, *${g.nao.length}* não vão e *${g.sem.length}* ainda não responderam.`);
+  if (app) {
+    L.push(lista('✅ Vão · inscrição paga', g.inscrito), lista('⏳ Vão · falta pagar a inscrição', g.interesse));
+  } else if (modo === 'familia') {
+    L.push(lista('✅ Vão · inscrição confirmada', g.inscrito), lista(`⏳ Vão · falta fazer a inscrição com ${x.organizador || 'quem organiza'} e confirmar no app`, g.interesse));
+  } else {
+    L.push(lista('✅ Vão · já inscritos', g.inscrito), lista('⏳ Vão · a escola ainda vai inscrever', g.interesse));
+  }
+  // taxas ligadas ao evento: quem já pagou e quem falta
+  Object.entries(S.extras).filter(([, t]) => t.evento === xid).forEach(([tid, t]) => {
+    const al = porNome(Object.fromEntries([...C.alvoExtra(t, S.alunas, S.grupos)].filter(id => S.alunas[id]).map(id => [id, S.alunas[id]]))).map(([id]) => id);
+    if (!al.length) return;
+    const pg = al.filter(id => C.stPag(((S.pags[id] || {}).extras || {})[tid])), falta = al.filter(id => !pg.includes(id));
+    L.push(`💰 *${t.nome}*${t.venc ? ` (vence ${dataBR(t.venc)})` : ''}\n${pg.length ? `Já pagaram: ${pg.map(nm).join(', ')}` : 'Ninguém pagou ainda.'}${falta.length ? `\nFalta pagar: ${falta.map(nm).join(', ')}` : '\nTodos pagaram 🎉'}`);
+  });
+  L.push(lista('❓ Ainda não responderam', g.sem), lista('❌ Não vão', g.nao));
+  const fim = [];
+  if (ate) fim.push(`⚠️ *As inscrições vão até ${dataBR(ate)}${dataBR(ate) && ate.slice(0, 4) !== String(new Date().getFullYear()) ? '/' + ate.slice(0, 4) : ''}.* ${app ? 'Depois dessa data não dá mais para pagar pelo app.' : 'Depois dessa data não conseguimos garantir a vaga.'}`);
+  fim.push(app ? `Para responder ou pagar a inscrição, é só abrir o app: ${LINK_APP}` : modo === 'familia' ? `Quem já fez a inscrição, toque em "Já fiz a inscrição" no app: ${LINK_APP}` : `Para responder se vai, é só abrir o app: ${LINK_APP}`);
+  L.push(fim.join('\n'));
+  if (S.escola && S.escola.nome) L.push(`_${S.escola.nome}_`);
+  return L.filter(Boolean).join('\n\n');
+}
+function sheetMsgEvento(xid) {
+  const x = S.extras[xid]; if (!x) return fecharSheet();
+  const ate0 = x.prazo || (pelaEscola(x) ? x.venc : '') || '';
+  sheet(`<h3>Mensagem para o grupo</h3>
+    <div class="sub">Um resumo de ${esc(x.nome)} para mandar no grupo de WhatsApp das famílias: quem vai, quem já confirmou, quem já pagou e quem falta. Dá para mexer no texto antes de enviar.</div>
+    <div class="field"><label for="emate">Inscrições até</label><input type="date" id="emate" value="${esc(ate0)}"><span class="sub">Esta data aparece no fim da mensagem como lembrete. Deixe em branco para não lembrar.</span></div>
+    <div class="field"><label for="emtxt">Mensagem</label><textarea id="emtxt" class="msg-edit" rows="14"></textarea></div>
+    <a class="btn btn-ico" id="emwa" target="_blank" rel="noopener">${ICO_WA}<span>Abrir no WhatsApp</span></a>
+    <div class="note">O WhatsApp abre e você escolhe o grupo. Se preferir, copie e cole lá.</div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn ghost" id="emcop">Copiar texto</button></div>`, () => {
+    const ta = $('emtxt'), wa = $('emwa');
+    const link = () => { wa.href = 'https://wa.me/?text=' + encodeURIComponent(ta.value); };
+    const gerar = () => { ta.value = textoGrupoEvento(xid, $('emate').value); link(); };
+    gerar();
+    $('emate').onchange = gerar; ta.oninput = link;
+    $('emcop').onclick = () => copiar(ta.value, 'Mensagem copiada. Cole no grupo.');
   });
 }
 // lista de eventos (aba Turmas da administração e tela da professora)
