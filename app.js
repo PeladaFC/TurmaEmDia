@@ -638,18 +638,20 @@ function valorForma(base, forma, n, baseRep) {
   return { total, parcelas: n, parcela: C.r2(total / n), juros };
 }
 // janelinha que simula a taxa: com um valor, mostra quanto a família paga e quanto a escola recebe, ligado ou desligado
-function simTaxaHTML(id, v0) {
-  return `<div class="simtaxa" id="${id}"><div class="simtaxa-in"><label for="${id}v">Simular uma cobrança de</label><span class="simtaxa-r">R$ <input id="${id}v" inputmode="decimal" value="${esc(fmtValor(v0 > 0 ? v0 : 100))}"></span></div><div class="simtaxa-res" id="${id}r"></div></div>`;
+function simTaxaHTML(id, v0, semCampo) {
+  return `<div class="simtaxa" id="${id}">${semCampo ? '' : `<div class="simtaxa-in"><label for="${id}v">Simular uma cobrança de</label><span class="simtaxa-r">R$ <input id="${id}v" inputmode="decimal" value="${esc(fmtValor(v0 > 0 ? v0 : 100))}"></span></div>`}<div class="simtaxa-res" id="${id}r"></div></div>`;
 }
-function ligarSimTaxa(id, marcado) {
-  const caixa = $(id + 'v'), res = $(id + 'r'); if (!caixa) return () => { };
+// valorDe: de onde vem o valor (padrão: o campo da própria janelinha)
+function ligarSimTaxa(id, marcado, valorDe) {
+  const caixa = $(id + 'v'), res = $(id + 'r'); if (!res) return () => { };
+  const ler = valorDe || (() => parseValor(caixa.value));
   const ver = () => {
-    const v = parseValor(caixa.value), rep = marcado();
-    if (!(v > 0)) { res.innerHTML = '<span class="sub">Digite um valor para ver a conta.</span>'; return; }
+    const v = ler(), rep = marcado();
+    if (!(v > 0)) { res.innerHTML = '<span class="sub">Coloque o valor para ver quanto a família paga e quanto a escola recebe.</span>'; return; }
     const paga = C.valorPix(v, {}, 0.0099, COMISSAO, rep ? v : 0).valor, recebe = C.r2(paga - C.r2(paga * 0.0099) - C.r2(paga * COMISSAO));
     res.innerHTML = `<div><span>A família paga</span><b class="num">${brl(paga)}</b></div><div><span>A escola recebe</span><b class="num">${brl(recebe)}</b></div>`;
   };
-  caixa.addEventListener('input', ver); ver(); return ver;
+  if (caixa) caixa.addEventListener('input', ver); ver(); return ver;
 }
 const repLote = l => l.itens ? C.baseRepasse(l.itens, S.cfg, S.extras) : undefined;
 const linhaEnc = i => i.perdao ? `<span class="s perdao">Sem multa e juros${i.perdao.ate ? ` se pagar até ${dataBR(i.perdao.ate)}` : ''}</span>` : i.enc ? `<span class="s enc num">Inclui multa e juros: ${brl(C.r2(i.enc.multa + i.enc.juros))} (${i.enc.dias} dia${i.enc.dias === 1 ? '' : 's'} de atraso)</span>` : '';
@@ -1497,7 +1499,7 @@ function sheetEvento(xid) {
     ${S.admin ? `<div class="field"><label for="erec">Recebe</label><select id="erec" ${temPagEv ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : '<div></div>'}</div></div>
     <div class="note" id="ecobnota"></div>
     <label class="check"><input type="checkbox" id="erep" ${x && x.pixRepassa === true ? 'checked' : ''}> <span class="grow">Quem paga cobre a taxa do Pix (${TAXA_TRANSACAO()}%)<span class="s" style="display:block;color:var(--muted);font-size:.82rem">Vale para a inscrição pelo app e para as taxas deste evento.</span></span></label>
-    ${simTaxaHTML('esim', x ? (x.cobranca === 'app' ? x.v : x.valorInscricao) : 0)}
+    ${simTaxaHTML('esim', 0, true)}
     <div class="field"><span class="lb">Quem pode ir? Os responsáveis recebem o convite no app</span><div id="equadros"></div></div>
     <div class="err" id="eerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="eok">Salvar</button></div>
@@ -1506,14 +1508,14 @@ function sheetEvento(xid) {
     sel.desenhar();
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'taxa') sheetExtra(null, { tipo: 'taxa' }); });
     $('edata').addEventListener('change', () => { const a = $('edata').value, b = $('edfim').value; if (a && (!b || b < a)) $('edfim').value = a; $('edfim').min = a; });
-    const verCob = () => { s.querySelectorAll('[data-cob]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cob === cob)); $('eappw').hidden = cob !== 'app';
+    const verCob = () => { s.querySelectorAll('[data-cob]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cob === cob)); $('eappw').hidden = cob !== 'app'; if ($('esim')) $('esim').hidden = cob !== 'app';
       $('ecobnota').textContent = cob === 'app' ? 'Quem disser que vai recebe a cobrança da inscrição no app, para pagar por Pix. Pagou, já fica como inscrito.' + (temPagEv ? ' Já há inscrições pagas, então o valor e a forma de pagar não mudam mais.' : '')
         : cob === 'familia' ? 'Cada família faz a inscrição direto com quem organiza e depois toca em "Já fiz a inscrição" no app. Você vê quem confirmou e pode lembrar quem falta.'
         : 'A escola faz a inscrição com quem organiza. Os responsáveis dizem se o filho vai, e você marca quem já está inscrito.'; };
     s.querySelectorAll('[data-cob]').forEach(b => b.onclick = () => { if (b.disabled) return; cob = b.dataset.cob; verCob(); }); verCob();
-    const verSim = ligarSimTaxa('esim', () => $('erep').checked); $('erep').addEventListener('change', verSim);
-    // o valor da inscrição já entra na simulação
-    $('einsc').addEventListener('input', () => { const v = parseValor($('einsc').value); if (v > 0) { $('esimv').value = fmtValor(v); verSim(); } });
+    // quanto a família paga e a escola recebe pela inscrição, conforme a caixa da taxa (só quando a inscrição é paga pelo app)
+    const verSim = ligarSimTaxa('esim', () => $('erep').checked, () => parseValor($('einsc').value));
+    $('erep').addEventListener('change', verSim); $('einsc').addEventListener('input', verSim);
     $('eok').onclick = async () => {
       const err = m => $('eerr').textContent = m, nome = $('enome').value.trim(), data = $('edata').value, dataFim = $('edfim').value || data, insc = parseValor($('einsc').value);
       if (!nome) return err('Dê um nome ao evento.');
