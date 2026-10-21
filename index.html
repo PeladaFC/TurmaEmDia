@@ -504,17 +504,22 @@ details>summary::-webkit-details-marker{display:none}
 #abertura.virando{transition:opacity .5s ease}
 /* mais de uma escola: o nome sobe e some, e as escolas sobem no lugar */
 #abertura.escolhe .ab-marca,#abertura.escolhe .ab-nome{animation:abSai .45s cubic-bezier(.65,0,.35,1) forwards!important}
-#abertura .ab-esc{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px;
-  padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));max-width:460px;margin:0 auto}
-#abertura .ab-esc h2{color:#fff;font-size:1.5rem;margin:0 0 6px;text-align:center;opacity:0;transform:translateY(26px);animation:abSobe .5s cubic-bezier(.22,1,.36,1) .3s forwards}
-#abertura .ab-bt{display:flex;align-items:center;gap:14px;width:100%;min-height:72px;text-align:left;border:0;border-radius:6px;background:var(--c);color:var(--ci);padding:12px 14px;
-  font:inherit;box-shadow:0 6px 18px rgba(0,0,0,.22),inset 0 0 0 1.5px rgba(255,255,255,.35);opacity:0;transform:translateY(26px);animation:abSobe .5s cubic-bezier(.22,1,.36,1) var(--d) forwards}
+#abertura .ab-esc{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px;max-height:100%;overflow-y:auto;overflow-x:hidden;
+  padding-block:24px;padding-left:max(24px,env(safe-area-inset-left,0px),calc(50vw - 230px));padding-right:0}
+#abertura .ab-esc h2{color:#fff;font-size:1.6rem;margin:0 0 4px;text-align:left;opacity:0;transform:translateX(40px);animation:abEntra .5s cubic-bezier(.22,1,.36,1) .3s forwards}
+/* botões no formato da quadra: lado esquerdo inclinado, lado direito some na borda da tela (segue para a próxima tela) */
+#abertura .ab-bt{display:flex;align-items:center;gap:14px;width:100%;height:80px;flex:none;text-align:left;border:0;border-radius:0;background:var(--c);color:var(--ci);
+  clip-path:polygon(24px 0,100% 0,100% 100%,0 100%);padding:0 16px 0 32px;font:inherit;
+  opacity:0;transform:translateX(70px);animation:abEntra .55s cubic-bezier(.22,1,.36,1) var(--d) forwards}
+#abertura .ab-bt:active{filter:brightness(.92)}
 #abertura .ab-bt .grow{min-width:0;flex:1}
-#abertura .ab-bt img,#abertura .ab-bt .ini{width:48px;height:48px;border-radius:6px;object-fit:contain;flex:none;display:grid;place-items:center;background:#fff;padding:4px;color:var(--cd);font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.25rem}
-#abertura .ab-bt b{display:block;font-family:var(--f-display);font-style:italic;font-weight:800;text-transform:uppercase;font-size:clamp(1.05rem,5vw,1.25rem);line-height:1.05;overflow-wrap:anywhere;text-wrap:balance}
-#abertura .ab-bt .s{display:block;font-size:.85rem;color:inherit;opacity:.85;margin-top:2px;overflow-wrap:anywhere}
-#abertura .ab-esc{max-height:100%;overflow-y:auto;padding-block:24px}
-#abertura .ab-mais{align-self:center;background:none;border:0;color:#fff;font:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px;padding:10px;opacity:0;animation:abSobe .5s ease var(--d) forwards}
+#abertura .ab-bt img,#abertura .ab-bt .ini{width:50px;height:50px;border-radius:4px;object-fit:contain;flex:none;display:grid;place-items:center;background:#fff;padding:4px;color:var(--cd);font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.3rem}
+#abertura .ab-bt b{font-family:var(--f-display);font-style:italic;font-weight:800;text-transform:uppercase;font-size:1.35rem;line-height:1.02;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+#abertura .ab-bt.longo b{font-size:1rem;line-height:1.06;-webkit-line-clamp:3}
+#abertura .ab-bt .s{display:block;font-size:.85rem;color:inherit;opacity:.85;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#abertura .ab-mais{align-self:flex-start;background:none;border:0;color:#fff;font:inherit;font-weight:600;text-decoration:underline;text-underline-offset:3px;padding:10px 0;opacity:0;animation:abSobe .5s ease var(--d) forwards}
+@keyframes abEntra{to{opacity:1;transform:none}}
 @keyframes abSai{to{opacity:0;transform:translateY(-36px)}}
 /* Estilo Quadra: letra estreita e itálica como camisa de time, etiquetas e botões com as pontas cortadas em diagonal */
 body{font-size:16px}

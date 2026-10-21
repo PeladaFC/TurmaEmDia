@@ -209,10 +209,13 @@ function linhasTexto(ctx, txt, max) {
   for (const w of txt.split(/\s+/)) { const t = l ? l + ' ' + w : w; if (l && ctx.measureText(t).width > max) { out.push(l); l = w; } else l = t; }
   if (l) out.push(l); return out;
 }
-async function abrirComCartas(eid) {
-  const el = abEl();
-  if (!el || !MOVIMENTO) { if (el) sairAbertura(); return abrirEscola(eid); }
-  await ABERTURA_PRONTA;
+async function abrirComCartas(eid, tab) {
+  let el = abEl();
+  if (!MOVIMENTO) { if (el) sairAbertura(); return abrirEscola(eid, tab); }
+  // sem a abertura na tela (trocando de escola por dentro do app): uma tela do Turma em Dia surge rápido e as cartas viram dela
+  const nova = !el;
+  if (nova) { el = document.createElement('div'); el.id = 'abertura'; el.setAttribute('aria-hidden', 'true'); el.style.opacity = '0'; document.body.appendChild(el); }
+  else await ABERTURA_PRONTA;
   const box = el.querySelector('.ab-esc');
   if (box) { box.style.transition = 'opacity .2s ease'; box.style.opacity = '0'; }
   const m = await marcaDa(eid), nome = (MINHAS[eid] || {}).nome || 'Escola';
@@ -225,7 +228,9 @@ async function abrirComCartas(eid) {
   const [F, fx] = tela(), app = COR_PADRAO;
   fundoRadial(fx, W, H, mistura(app, '#FFFFFF', 0.10), mistura(app, '#000000', 0.38));
   if (!box) {
-    const mr = el.querySelector('.ab-marca').getBoundingClientRect(), nr = el.querySelector('.ab-nome').getBoundingClientRect();
+    const am = el.querySelector('.ab-marca'), an = el.querySelector('.ab-nome');
+    const mr = am ? am.getBoundingClientRect() : { left: W / 2 - 42, top: H / 2 - 66, width: 84, height: 84 };
+    const nr = an ? an.getBoundingClientRect() : { left: 0, top: H / 2 + 38, width: W, height: 46 };
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="9" width="56" height="51" rx="15" fill="rgba(255,255,255,.14)" stroke="#fff" stroke-width="3"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     const mi = await esperaImg('data:image/svg+xml,' + encodeURIComponent(svg));
     if (mi) fx.drawImage(mi, mr.left, mr.top, mr.width, mr.height);
@@ -266,7 +271,8 @@ async function abrirComCartas(eid) {
     }
   };
   quadro(0); el.appendChild(cv); el.classList.add('virando');
-  abrirEscola(eid); // o app vai carregando por baixo, escondido pelas cartas
+  if (nova) { el.style.transition = 'opacity .2s ease'; void el.offsetWidth; el.style.opacity = '1'; await new Promise(r => setTimeout(r, 380)); el.style.transition = ''; }
+  abrirEscola(eid, tab); // o app vai carregando por baixo, escondido pelas cartas
   await new Promise(ok => { const t0 = performance.now(); const passo = now => { const t = now - t0; quadro(Math.min(t, fim)); if (t < fim) requestAnimationFrame(passo); else ok(); }; requestAnimationFrame(passo); });
   ctx.drawImage(V, 0, 0, W, H);
   await new Promise(r => setTimeout(r, 900));
@@ -285,7 +291,7 @@ async function escolherNaAbertura() {
   const box = document.createElement('div'); box.className = 'ab-esc';
   box.innerHTML = `<h2>Qual escola?</h2>${lista.map(([eid, e], i) => { const m = marcaGuardada(eid) || {}, c = hexOk(m.cor) ? m.cor : COR_PADRAO;
     const claro = contraste(c, '#FFFFFF') < 3, ci = claro ? '#1A2030' : '#FFFFFF', cd = claro ? mistura(c, '#000000', 0.45) : c; // cor clara: texto escuro
-    return `<button type="button" class="ab-bt" data-abe="${esc(eid)}" style="--d:${380 + i * 110}ms;--c:${c};--ci:${ci};--cd:${cd}">${m.logo ? `<img src="${esc(m.logo)}" alt="">` : `<span class="ini">${esc(iniciais(e.nome))}</span>`}<span class="grow"><b>${esc(e.nome || 'Escola')}</b><span class="s">${esc(papel(e))}</span></span></button>`; }).join('')}
+    return `<button type="button" class="ab-bt${String(e.nome || '').length > 20 ? ' longo' : ''}" data-abe="${esc(eid)}" style="--d:${380 + i * 110}ms;--c:${c};--ci:${ci};--cd:${cd}">${m.logo ? `<img src="${esc(m.logo)}" alt="">` : `<span class="ini">${esc(iniciais(e.nome))}</span>`}<span class="grow"><b>${esc(e.nome || 'Escola')}</b><span class="s">${esc(papel(e))}</span></span></button>`; }).join('')}
     <button type="button" class="ab-mais" style="--d:${380 + lista.length * 110}ms">Outras opções</button>`;
   el.removeAttribute('aria-hidden'); el.classList.add('escolhe'); el.appendChild(box);
   box.querySelectorAll('[data-abe]').forEach(b => b.onclick = () => { box.querySelectorAll('button').forEach(x => x.disabled = true); abrirComCartas(b.dataset.abe); });
@@ -421,7 +427,7 @@ function telaInicio() {
     </section>
     <button class="btn ghost" id="isair" style="margin-top:8px">Sair da conta</button>
   </div>`;
-  RAIZ().querySelectorAll('[data-e]').forEach(li => li.onclick = () => abrirEscola(li.dataset.e));
+  RAIZ().querySelectorAll('[data-e]').forEach(li => li.onclick = () => abrirComCartas(li.dataset.e)); // trocar de escola: passa o carteado
   RAIZ().querySelectorAll('[data-aceita-conv],[data-recusa-conv]').forEach(b => b.onclick = async () => { const eid = b.dataset.aceitaConv || b.dataset.recusaConv, c = CONVITES.find(x => x.eid === eid); if (!c) return; b.disabled = true;
     try { await responderConvite(c, !!b.dataset.aceitaConv); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
   if ($('ivolta')) $('ivolta').onclick = () => abrirEscola(volta);
