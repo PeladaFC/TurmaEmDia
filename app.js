@@ -1302,8 +1302,9 @@ function sheetPix(chaves, voltar) {
       $('pxc').outerHTML = `<div id="pxc" style="display:flex;flex-direction:column;gap:12px">
         ${N > 1 ? `<div class="banner"><span>Seu pagamento vai em <b>${N} Pix</b>, um para cada recebedor: ${lotes.map((l, i) => `${i < n ? '✓ ' : ''}${esc(nomeRec(l.rec))} ${brl(l.valor)}`).join(' · ')}. Total ${brl(total)}.</span></div>` : ''}
         <div class="headrow"><h2>${N > 1 ? `Pix ${n + 1} de ${N}` : 'Pix'} · para ${esc(nomeRec(d.rec))}</h2></div>
-        ${Object.entries(porAluna).map(([nm, l]) => `<div class="items"><div class="label">${esc(nm)}</div>${l.map(i => `<div class="item"><span>${esc(i.desc)}${i.v < i.total ? ' <span class="sub">(parte da ' + esc(nomeRec(d.rec).split(' ')[0]) + ')</span>' : ''}</span><b class="num">${brl(i.v)}</b></div>`).join('')}</div>`).join('')}
-        ${repasse > 0 ? `<div class="item sub"><span>Taxa de transação (${TAXA_TRANSACAO()}%)</span><span class="num">${brl(repasse)}</span></div>` : ''}
+        ${(() => { // só o que está sendo pago, sem valor de cada coisa; a taxa vai junto do último item ("+ taxa de transação")
+          const grupos = Object.entries(porAluna), ult = grupos.length - 1;
+          return grupos.map(([nm, l], g) => `<div class="items"><div class="label">${esc(nm)}</div>${l.map((i, k) => `<div class="item"><span>${esc(i.desc)}${i.v < i.total ? ' <span class="sub">(parte da ' + esc(nomeRec(d.rec).split(' ')[0]) + ')</span>' : ''}${repasse > 0 && g === ult && k === l.length - 1 ? ' + taxa de transação' : ''}</span></div>`).join('')}</div>`).join(''); })()}
         <div class="tot"><span>Valor deste Pix</span><b class="num">${brl(d.valor)}</b></div>
         <div class="qrbox">${d.qr64 ? `<img src="data:image/png;base64,${d.qr64}" alt="QR Code do Pix">` : qrSVG(d.qr)}</div>
         <div class="code">${esc(d.qr)}</div>
