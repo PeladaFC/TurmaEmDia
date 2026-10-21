@@ -180,7 +180,7 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 #abertura{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff;
   background:radial-gradient(120% 90% at 50% 38%,color-mix(in srgb,var(--accent) 90%,#fff),color-mix(in srgb,var(--accent) 62%,#000));transition:opacity .7s ease}
 #abertura.saindo{opacity:0}
-#abertura .ab-marca{width:84px;height:84px;--marca-borda:var(--accent)}
+#abertura .ab-marca{width:min(176px,45vw);height:min(176px,45vw);--marca-borda:var(--accent)}
 #abertura .ab-marca svg{width:100%;height:100%;overflow:visible}
 #abertura .ab-marca svg rect:first-child{fill:rgba(255,255,255,.14);stroke:#fff;stroke-width:3}
 #abertura .ab-marca svg rect:not(:first-child){fill:#fff}

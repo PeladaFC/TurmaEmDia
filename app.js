@@ -230,8 +230,8 @@ async function abrirComCartas(eid, tab) {
   fundoRadial(fx, W, H, mistura(app, '#FFFFFF', 0.10), mistura(app, '#000000', 0.38));
   if (!box) {
     const am = el.querySelector('.ab-marca'), an = el.querySelector('.ab-nome');
-    const mr = am ? am.getBoundingClientRect() : { left: W / 2 - 42, top: H / 2 - 66, width: 84, height: 84 };
-    const nr = an ? an.getBoundingClientRect() : { left: 0, top: H / 2 + 38, width: W, height: 46 };
+    const q = Math.min(176, Math.round(W * 0.45)), mr = am ? am.getBoundingClientRect() : { left: W / 2 - q / 2, top: H / 2 - q / 2 - 40, width: q, height: q };
+    const nr = an ? an.getBoundingClientRect() : { left: 0, top: H / 2 + q / 2 - 18, width: W, height: 46 };
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="9" width="56" height="51" rx="15" fill="rgba(255,255,255,.14)" stroke="#fff" stroke-width="3"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     const mi = await esperaImg('data:image/svg+xml,' + encodeURIComponent(svg));
     if (mi) fx.drawImage(mi, mr.left, mr.top, mr.width, mr.height);
