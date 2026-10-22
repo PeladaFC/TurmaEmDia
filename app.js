@@ -511,25 +511,57 @@ function voltar() {
   if (S && S.hist && S.hist.length) { S.tab = S.hist.pop(); ls.set('escolinha.tab.' + S.papel, S.tab); render(); window.scrollTo(0, 0); return true; }
   return false;
 }
-(function gestoVoltar() {
-  let x0 = null, y0 = 0, dx = 0, ativo = false, alvo = null;
-  const solta = (a) => { if (!a) return; a.style.transition = ''; a.style.transform = ''; a.style.opacity = ''; };
+/* Gestos de arrastar:
+   - com uma janela aberta, arrastar da beirada esquerda para a direita fecha/volta a janela;
+   - nas telas, arrastar para o lado troca de aba (para a esquerda: a próxima; para a direita: a anterior), na ordem da barra de baixo.
+   Não vale em cima do calendário (lá o arrasto troca o mês), de campos de texto e de faixas que rolam para o lado. */
+let ABAS_ATUAIS = [];
+(function gestos() {
+  let x0 = null, y0 = 0, dx = 0, ativo = false, alvo = null, modo = null;
+  const solta = a => { if (!a) return; a.style.transition = ''; a.style.transform = ''; a.style.opacity = ''; };
+  const livre = el => {
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      if (n.matches && n.matches('input,textarea,select,.mg,#abertura,nav.tabs')) return false;
+      if (n.scrollWidth > n.clientWidth + 2 && /auto|scroll/.test(getComputedStyle(n).overflowX)) return false;
+    }
+    return true;
+  };
+  const vizinha = () => { const i = ABAS_ATUAIS.indexOf(S && S.tab), j = dx < 0 ? i + 1 : i - 1; return i >= 0 && j >= 0 && j < ABAS_ATUAIS.length ? ABAS_ATUAIS[j] : null; };
   document.addEventListener('touchstart', e => {
-    const t = e.touches[0]; if (e.touches.length !== 1 || t.clientX > 28) return;
-    alvo = document.querySelector('#overlay .sheet') || (S ? document.getElementById('tela') : null); if (!alvo) return;
-    if (!document.querySelector('#overlay .sheet') && !(S && S.hist && S.hist.length)) { alvo = null; return; }
+    const t = e.touches[0]; if (e.touches.length !== 1) return;
+    const sh = document.querySelector('#overlay .sheet');
+    if (sh) { if (t.clientX > 28) return; modo = 'janela'; alvo = sh; }
+    else if (S && $('tela') && !abEl() && ABAS_ATUAIS.length > 1 && livre(e.target)) { modo = 'aba'; alvo = $('tela'); }
+    else return;
     x0 = t.clientX; y0 = t.clientY; dx = 0; ativo = false;
   }, { passive: true });
   document.addEventListener('touchmove', e => {
     if (x0 == null) return; const t = e.touches[0]; dx = t.clientX - x0; const dy = Math.abs(t.clientY - y0);
-    if (!ativo) { if (dy > 16 && dy > dx) { x0 = null; return; } if (dx > 10) ativo = true; }
-    if (ativo) { alvo.style.transition = 'none'; alvo.style.transform = `translateX(${Math.max(0, dx)}px)`; alvo.style.opacity = String(1 - Math.min(0.45, dx / 700)); }
+    if (!ativo) {
+      if (dy > 12 && dy > Math.abs(dx)) { x0 = null; return; }
+      if (modo === 'janela' ? dx > 10 : Math.abs(dx) > 14 && Math.abs(dx) > dy * 1.4) ativo = true; else return;
+    }
+    alvo.style.transition = 'none';
+    if (modo === 'janela') { alvo.style.transform = `translateX(${Math.max(0, dx)}px)`; alvo.style.opacity = String(1 - Math.min(0.45, dx / 700)); }
+    else { const d = vizinha() ? dx : dx * 0.2; alvo.style.transform = `translateX(${d}px)`; alvo.style.opacity = String(1 - Math.min(0.5, Math.abs(d) / 600)); }
   }, { passive: true });
   const fim = () => {
-    if (x0 == null) return; const a = alvo, foi = ativo && dx > 80; x0 = null; alvo = null;
+    if (x0 == null) return; const a = alvo; x0 = null; alvo = null;
     a.style.transition = 'transform .2s ease, opacity .2s ease';
-    if (foi) { a.style.transform = 'translateX(100%)'; a.style.opacity = '0'; setTimeout(() => { voltar(); if (document.body.contains(a)) solta(a); }, 190); }
-    else { a.style.transform = ''; a.style.opacity = ''; setTimeout(() => solta(a), 220); }
+    if (modo === 'janela') {
+      if (ativo && dx > 80) { a.style.transform = 'translateX(100%)'; a.style.opacity = '0'; setTimeout(() => { voltar(); if (document.body.contains(a)) solta(a); }, 190); }
+      else { a.style.transform = ''; a.style.opacity = ''; setTimeout(() => solta(a), 220); }
+      return;
+    }
+    const prox = ativo && Math.abs(dx) > 70 ? vizinha() : null;
+    if (!prox) { a.style.transform = ''; a.style.opacity = ''; setTimeout(() => solta(a), 220); return; }
+    const lado = dx < 0 ? -1 : 1;
+    a.style.transform = `translateX(${lado * 100}%)`; a.style.opacity = '0';
+    setTimeout(() => {
+      irPara(prox); const nt = $('tela'); if (!nt) return;
+      nt.style.transition = 'none'; nt.style.transform = `translateX(${-lado * 40}px)`; nt.style.opacity = '0';
+      requestAnimationFrame(() => requestAnimationFrame(() => { nt.style.transition = 'transform .22s ease, opacity .22s ease'; nt.style.transform = ''; nt.style.opacity = ''; setTimeout(() => solta(nt), 260); }));
+    }, 170);
   };
   document.addEventListener('touchend', fim); document.addEventListener('touchcancel', fim);
 })();
@@ -891,6 +923,7 @@ function render() {
   </div>
   <nav class="tabs" aria-label="Seções"><div class="in">${abas.map(([k, n, ic]) => `<button data-tab="${k}" aria-current="${S.tab === k ? 'page' : 'false'}">${ICO[ic]}${n}</button>`).join('')}</div></nav>`;
   RAIZ().querySelectorAll('[data-tab]').forEach(b => b.onclick = () => irPara(b.dataset.tab));
+  ABAS_ATUAIS = abas.map(([k]) => k);
   $('hcfg').onclick = () => sheetAjustes();
   if ($('htroca')) $('htroca').onclick = () => trocarEscola();
   if (comMes) { $('mprev').onclick = () => { S.mes = mesMais(S.mes, -1); render(); }; $('mnext').onclick = () => { S.mes = mesMais(S.mes, 1); render(); }; }
