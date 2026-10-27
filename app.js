@@ -465,6 +465,8 @@ function telaInicio() {
 function sheetCriarEscola() {
   sheet(`<h3>Criar escola</h3>
     <div class="field"><label for="cnome">Nome da escola</label><input id="cnome" maxlength="60" placeholder="Ex.: Escolinha Movimento"></div>
+    <div class="two"><div class="field"><label for="ccid">Cidade</label><input id="ccid" maxlength="60" placeholder="Ex.: Recife" autocomplete="address-level2"></div>
+    <div class="field"><label for="cuf">Estado</label><select id="cuf"><option value="">Escolha</option>${UFS.map(u => `<option>${u}</option>`).join('')}</select></div></div>
     <div class="two"><div class="field"><label for="cvenc">Vencimento (dia do mês)</label><input id="cvenc" type="number" min="1" max="28" value="10"></div>
     <div class="field"><label for="cloc">Local (opcional)</label><input id="cloc" maxlength="60" placeholder="Ex.: Unidade Centro"></div></div>
     <div class="note">Depois você cadastra as turmas, os grupos e os alunos.</div>
@@ -474,6 +476,7 @@ function sheetCriarEscola() {
     $('cok').onclick = async () => {
       const nome = $('cnome').value.trim(), venc = Number($('cvenc').value), loc = $('cloc').value.trim();
       if (!nome) return $('cerr').textContent = 'Digite o nome da escola.';
+      const cidade = $('ccid').value.trim(), uf = $('cuf').value; if (!cidade || !uf) return $('cerr').textContent = 'Diga a cidade e o estado da escola.';
       if (!(venc >= 1 && venc <= 28)) return $('cerr').textContent = 'O vencimento vai do dia 1 ao 28.';
       if (!$('ctermos').checked) return $('cerr').textContent = 'Para criar a escola, aceite os Termos de uso e a Política de privacidade.';
       $('cok').disabled = true;
@@ -481,7 +484,7 @@ function sheetCriarEscola() {
       try {
         const ops = [
           { op: 'set', p: 'escolas/' + eid, d: { nome, dono: EU.uid, admins: [EU.uid], adminsInfo: { [EU.uid]: { nome: EU.nome || '', email: EU.email || '', em: Date.now() } }, criadaEm: Date.now(), termosAceitos: { em: Date.now(), versao: VERSAO_TERMOS, uid: EU.uid } } },
-          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: venc, pixRepassa: false, descIrmas: 0, descMulti: 0 } }
+          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: venc, pixRepassa: false, descIrmas: 0, descMulti: 0, cidade, uf } }
         ];
         if (loc) ops.push({ op: 'set', p: `escolas/${eid}/locais/${novoId()}`, d: { nome: loc, ordem: 1 } });
         await B.lote(ops);
@@ -791,6 +794,7 @@ const ICO_WA = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentCol
 
 /* ================= Casca da escola ================= */
 /* ================= Aparência: cor e logo da escola ================= */
+const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 const COR_PADRAO = '#8B6B47';
 const CORES = [['#8B6B47', 'Bege'], ['#C2305A', 'Rosa'], ['#2357C6', 'Azul'], ['#0E7C86', 'Turquesa'], ['#1E7F4F', 'Verde'], ['#D2601A', 'Laranja'], ['#C62828', 'Vermelho'], ['#6B3FC0', 'Roxo'], ['#22252E', 'Grafite']];
 const hexOk = c => /^#[0-9a-f]{6}$/i.test(c || '');
@@ -2622,8 +2626,8 @@ function baixarPdf(r) {
 // botão da empresa nos Ajustes: só aparece para os e-mails liberados (o servidor confere)
 function ligarNotasPlataforma(volta) {
   const mostrar = () => { const el = $('jnotasplat'); if (!el || !NOTAS_PLAT) return;
-    el.innerHTML = '<button type="button" class="linha-botao" id="jnfplat"><span class="grow"><b>Notas fiscais (empresa)</b><span class="s">Comissão do mês de cada escola e professor(a)</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>';
-    $('jnfplat').onclick = () => abrirDe(volta, () => sheetNotasPlataforma()); };
+    el.innerHTML = '<button type="button" class="linha-botao" id="jnfplat"><span class="grow"><b>Painel do dono</b><span class="s">Uso do app por região e notas fiscais da comissão</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>';
+    $('jnfplat').onclick = () => abrirDe(volta, () => sheetPainelDono()); };
   if (NOTAS_PLAT === undefined) { NOTAS_PLAT = null; notasServidor('acesso').then(() => { NOTAS_PLAT = true; mostrar(); }, () => { NOTAS_PLAT = false; }); }
   else mostrar();
 }
@@ -2635,9 +2639,9 @@ const mesAnteriorNF = () => { const d = new Date(Date.now() - 3 * 36e5); d.setUT
 async function sheetNotasPlataforma(mes, editar) {
   mes = mes || mesAnteriorNF();
   const [ano, mm] = mes.split('-'), nomeM = C.MESES[Number(mm) - 1];
-  const topo = `<h3>Notas fiscais</h3><div class="sub">Comissão de 1% dos Pix, separada por quem recebe (escola ou professor com conta própria). Uma nota para cada um, uma vez por mês.</div>
+  const topo = `${abasDono('notas')}<h3>Notas fiscais</h3><div class="sub">Comissão de 1% dos Pix, separada por quem recebe (escola ou professor com conta própria). Uma nota para cada um, uma vez por mês.</div>
     <div class="cal-topo"><button type="button" class="icon-btn" id="nfant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="nfprox" aria-label="Próximo mês">›</button></div>`;
-  const nav = () => { const vai = n => { const [y, m] = mes.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1)); sheetNotasPlataforma(d.toISOString().slice(0, 7)); }; $('nfant').onclick = () => vai(-1); $('nfprox').onclick = () => vai(1); };
+  const nav = () => { const vai = n => { const [y, m] = mes.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1)); sheetNotasPlataforma(d.toISOString().slice(0, 7)); }; $('nfant').onclick = () => vai(-1); $('nfprox').onclick = () => vai(1); ligarAbasDono(); };
   sheet(`${topo}<div class="empty">Somando as comissões…</div><button class="btn ghost" data-fechar>Fechar</button>`, nav);
   let D; try { D = await notasServidor('relatorio', { mes }); } catch (e) { return sheet(`${topo}<div class="banner"><span>${esc(e.message)}</span></div><button class="btn ghost" data-fechar>Fechar</button>`, nav); }
   const L = D.linhas || [], F = D.nfse || null;
@@ -2689,6 +2693,54 @@ async function sheetNotasPlataforma(mes, editar) {
         .concat(L.map(l => [l.grupo, l.nome, l.tipoDoc, l.doc, l.email, l.qtd, Number(l.total).toFixed(2).replace('.', ','), textoNota(l, mes).split('Descrição: ')[1]].map(q).join(';')));
       const u = URL.createObjectURL(new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8' })), el = document.createElement('a');
       el.href = u; el.download = `TurmaEmDia_notas_${mes}.csv`; document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(u), 2000); };
+  });
+}
+// abas do painel do dono: visão geral e notas fiscais
+const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Visão geral</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas fiscais</button></div>`;
+function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; b.dataset.dono === 'geral' ? sheetPainelDono() : sheetNotasPlataforma(); }); }
+const REG_ORDEM = ['Nordeste', 'Sudeste', 'Sul', 'Centro-Oeste', 'Norte', 'Sem cidade informada'];
+let PAINEL = null, PAINEL_MET = 'escolas';
+function painelMock() { const r = (nome, escolas, ativas, alunos, contas, pagantes) => ({ nome, escolas, ativas, alunos, contas, pagantes, comissaoMes: pagantes * 18.2 });
+  return { em: Date.now(), mes: new Date(Date.now() - 3 * 36e5).toISOString().slice(0, 7), contas: { total: 268, novas30: 41, ativas30: 203 },
+    totais: { escolas: 14, ativas: 11, alunos: 612, familias: 233, comPix: 8, pagantes: 6, pixMes: 389, volumeMes: 52740.5, comissaoMes: 527.41, semCidade: 1 },
+    regioes: [r('Nordeste', 11, 9, 498, 196, 5), r('Sudeste', 2, 2, 89, 52, 1), r('Sem cidade informada', 1, 0, 25, 9, 0)],
+    estados: [r('PE', 8, 7, 362, 141, 4), r('PB', 2, 1, 81, 31, 1), r('SP', 2, 2, 89, 52, 1), r('AL', 1, 1, 55, 24, 0)],
+    cidades: [r('Recife · PE', 5, 5, 241, 98, 3), r('Olinda · PE', 2, 1, 76, 27, 1), r('Jaboatão dos Guararapes · PE', 1, 1, 45, 16, 0), r('João Pessoa · PB', 2, 1, 81, 31, 1), r('São Paulo · SP', 2, 2, 89, 52, 1), r('Maceió · AL', 1, 1, 55, 24, 0)] }; }
+async function sheetPainelDono(recarregar) {
+  const desenhar = (corpo, ligar) => sheet(`${abasDono('geral')}<h3>Painel do dono</h3><div class="sub">Como o app está sendo usado. Só você e a empresa veem esta tela.</div>${corpo}<button class="btn ghost" data-fechar>Fechar</button>`, sh => { ligarAbasDono(); ligar && ligar(sh); });
+  if (!PAINEL || recarregar) {
+    desenhar('<div class="empty">Contando contas, escolas e alunos…</div>');
+    try { PAINEL = MOCK ? painelMock() : await notasServidor('painel'); } catch (e) { return desenhar(`<div class="banner"><span>${esc(e.message)}</span></div><button type="button" class="btn" id="dnovo">Tentar de novo</button>`, () => { $('dnovo').onclick = () => sheetPainelDono(true); }); }
+  }
+  const D = PAINEL, T = D.totais, Ct = D.contas, [, m] = D.mes.split('-'), met = PAINEL_MET;
+  const n = v => Number(v || 0).toLocaleString('pt-BR'), pl = (v, um, varios) => n(v) + ' ' + (Number(v) === 1 ? um : (varios || um + 's'));
+  const tile = (rot, val, sub) => `<div class="dono-tile"><span class="lbl">${rot}</span><b class="num">${val}</b>${sub ? `<span class="s">${sub}</span>` : ''}</div>`;
+  const MET = { escolas: 'Escolas', alunos: 'Alunos', contas: 'Contas', pagantes: 'Pagantes' };
+  const barras = (lista, ord) => { const L = ord ? lista.slice().sort((x, y) => ord.indexOf(x.nome) - ord.indexOf(y.nome)) : lista, max = Math.max(1, ...L.map(r => r[met] || 0));
+    return L.length ? `<div class="dono-barras">${L.map(r => `<div><div class="dono-lin"><b>${esc(r.nome)}</b><b class="num">${n(r[met])}</b></div>
+      <div class="dono-trilho"><i style="width:${Math.round((r[met] || 0) / max * 100)}%" class="${r.nome === 'Sem cidade informada' ? 'cinza' : ''}"></i></div>
+      <span class="s">${pl(r.escolas, 'escola')} · ${pl(r.ativas, 'ativa')} · ${pl(r.alunos, 'aluno')} · ${pl(r.contas, 'conta')} · ${pl(r.pagantes, 'pagante')}</span></div>`).join('')}</div>` : '<span class="s">Nada ainda.</span>'; };
+  desenhar(`<div class="dono-tiles">
+      ${tile('Contas criadas', n(Ct.total), `+${n(Ct.novas30)} nos últimos 30 dias`)}
+      ${tile('Contas ativas', n(Ct.ativas30), 'usaram nos últimos 30 dias')}
+      ${tile('Escolas', n(T.escolas), `${n(T.ativas)} com Pix nos últimos 30 dias`)}
+      ${tile('Alunos ativos', n(T.alunos), `${n(T.familias)} famílias com conta`)}
+      ${tile('Escolas com Pix', n(T.comPix), 'Mercado Pago conectado')}
+      ${tile('Escolas pagantes', n(T.pagantes), `geraram comissão em ${C.MESES[Number(m) - 1]}`)}
+      ${tile('Pix no mês', n(T.pixMes), brl(T.volumeMes) + ' movimentados')}
+      ${tile('Comissão no mês', brl(T.comissaoMes), '1% dos Pix aprovados')}</div>
+    <span class="s">"Pagantes" conta quem gerou comissão no Pix. Quando houver assinatura, ela entra aqui também.</span>
+    <section class="dono-bloco"><h2>Uso por região</h2>
+      <div class="seg">${Object.entries(MET).map(([k, v]) => `<button type="button" data-met="${k}" aria-pressed="${met === k}">${v}</button>`).join('')}</div>
+      ${barras(D.regioes, REG_ORDEM)}
+      ${T.semCidade ? `<span class="s">${pl(T.semCidade, 'escola')} sem cidade. A administração preenche em engrenagem → Ajustes da escola → Cidade e Estado.</span>` : ''}</section>
+    <section class="dono-bloco"><h2>Por estado</h2>${barras(D.estados)}</section>
+    <section class="dono-bloco"><h2>Cidades</h2><div class="dono-tab"><table><thead><tr><th>Cidade</th><th>Escolas</th><th>Alunos</th><th>Contas</th><th>Pag.</th></tr></thead>
+      <tbody>${D.cidades.length ? D.cidades.map(c => `<tr><td>${esc(c.nome)}</td><td class="num">${n(c.escolas)}</td><td class="num">${n(c.alunos)}</td><td class="num">${n(c.contas)}</td><td class="num">${n(c.pagantes)}</td></tr>`).join('') : '<tr><td colspan="5">Nenhuma cidade informada ainda.</td></tr>'}</tbody></table></div></section>
+    <span class="s" style="text-align:center">Atualizado às ${new Date(D.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+    <button type="button" class="btn ghost" id="datual">Atualizar números</button>`, sh => {
+    sh.querySelectorAll('[data-met]').forEach(b => b.onclick = () => { PAINEL_MET = b.dataset.met; const y = sh.scrollTop; sheetPainelDono(); const ns = document.querySelector('#overlay .sheet'); if (ns) ns.scrollTop = y; });
+    $('datual').onclick = () => sheetPainelDono(true);
   });
 }
 // a administração baixa as notas da escola
@@ -3297,6 +3349,8 @@ function sheetAjustes() {
     </section>
     <section><h2>Mensalidade</h2>
       <div class="field"><label for="jnome">Nome da escola</label><input id="jnome" maxlength="60" value="${esc(S.escola.nome || '')}"></div>
+      <div class="two"><div class="field"><label for="jcid">Cidade</label><input id="jcid" maxlength="60" value="${esc(c.cidade || '')}" placeholder="Ex.: Recife" autocomplete="address-level2"></div>
+      <div class="field"><label for="juf">Estado</label><select id="juf"><option value="">Escolha</option>${UFS.map(u => `<option ${c.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
       <div class="two"><div class="field"><label for="jvenc">Vencimento (dia)</label><input id="jvenc" type="number" min="1" max="28" value="${esc(c.vencDia || 10)}"></div><div></div></div>
       <div class="two"><div class="field"><label for="jirm">Desconto de irmãos (%)</label><input id="jirm" type="number" min="0" max="100" value="${esc(Math.round((Number(c.descIrmas) || 0) * 100))}"></div>
       <div class="field"><label for="jmul">Mais de uma atividade (%)</label><input id="jmul" type="number" min="0" max="100" value="${esc(Math.round((Number(c.descMulti) || 0) * 100))}"></div></div>
@@ -3349,7 +3403,7 @@ function sheetAjustes() {
       if (!(aMul >= 0) || aMul > MULTA_MAX) return err('A multa por atraso pode ser de no máximo 2%, pela lei.');
       if (!(aJur >= 0) || aJur > JUROS_MAX) return err('Os juros por atraso podem ser de no máximo 1% ao mês, pela lei.');
       $('jok').disabled = true;
-      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
+      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
       catch (e) { err(msgErro(e)); $('jok').disabled = false; }
     };
   });

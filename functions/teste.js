@@ -33,7 +33,7 @@ Module._load = function (req, ...r) {
   if (req === 'firebase-functions/v2/firestore') return { onDocumentWritten: (p, h) => h };
   if (req === 'firebase-admin/firestore') return { FieldValue: { delete: () => ({ __fv: 'del' }), arrayUnion: (...x) => ({ __fv: 'union', x }), arrayRemove: (...x) => ({ __fv: 'remove', x }) } };
   // token "ok:uid" ou "ok:uid:v" (e-mail confirmado)
-  if (req === 'firebase-admin') return { auth: () => ({ verifyIdToken: async t => { if (!t.startsWith('ok:')) throw new Error('x'); const [, uid, v] = t.split(':'); return { uid, email: uid + '@x.com', email_verified: v === 'v', name: uid }; } }) };
+  if (req === 'firebase-admin') return { auth: () => ({ listUsers: async () => ({ users: [{ metadata: { creationTime: new Date(Date.now() - 5 * 864e5).toUTCString(), lastSignInTime: new Date(Date.now() - 864e5).toUTCString() } }, { metadata: { creationTime: new Date(Date.now() - 90 * 864e5).toUTCString() } }] }), verifyIdToken: async t => { if (!t.startsWith('ok:')) throw new Error('x'); const [, uid, v] = t.split(':'); return { uid, email: uid + '@x.com', email_verified: v === 'v', name: uid }; } }) };
   return original.call(this, req, ...r);
 };
 process.env.GCLOUD_PROJECT = 'escola-teste';
@@ -307,6 +307,18 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     let r = resp(); await N.notaComissao(req({ eid: 'e9' }, 'ok:mae'), r); assert.strictEqual(r.code, 403);
     r = resp(); await N.notaComissao(req({ eid: 'e9' }, 'ok:adm9'), r); assert.strictEqual(r.code, 200);
     assert.deepStrictEqual(r.body.notas.map(n => [n.mes, n.valor, n.teste]), [['2026-09', 3.75, true]]);
+  });
+  await t('painel do dono: escolas por região, estado e cidade; contas, alunos e pagantes', async () => {
+    assert.deepStrictEqual(N.interno.ondeFica({ cidade: 'Recife', uf: 'pe' }, []), { uf: 'PE', cidade: 'Recife', regiao: 'Nordeste', origem: 'ajustes' });
+    assert.strictEqual(N.interno.ondeFica({}, [{ nome: 'Unidade Centro - Natal/RN' }]).cidade, 'Natal');
+    assert.strictEqual(N.interno.ondeFica({}, [{ nome: 'Quadra do bairro' }]).regiao, 'Sem cidade informada');
+    set9('config/geral', { cidade: 'João Pessoa', uf: 'PB', mpConectadoEm: 1 }); set9('alunas/x1', { nome: 'A' }); set9('alunas/x2', { nome: 'B', ativa: false }); set9('membros/f1', {});
+    set9('cobrancas/c6', { status: 'approved', rec: 'escola', fee: 1, valor: 100, criadoEm: Date.now() - 864e5, pagoEm: Date.now() - 864e5 });
+    let r = resp(); await N.notasPlataforma(req({ acao: 'painel' }, 'ok:adm9'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await N.notasPlataforma(req({ acao: 'painel' }, 'ok:dona'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    const pb = r.body.cidades.find(c => c.nome === 'João Pessoa · PB');
+    assert.deepStrictEqual([pb.escolas, pb.ativas, pb.alunos, pb.contas, pb.pagantes], [1, 1, 1, 2, 1]);
+    assert.strictEqual(r.body.contas.total, 2); assert.ok(r.body.regioes.some(x => x.nome === 'Nordeste'));
   });
   Date.now = realNow;
   console.log(`\n${n} testes passaram.`);

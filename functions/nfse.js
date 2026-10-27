@@ -17,6 +17,7 @@
 'use strict';
 const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
+const admin = require('firebase-admin');
 
 const COD_RECIFE = '2611606';
 const VER_APLIC = 'TurmaEmDia-1';
@@ -168,12 +169,65 @@ module.exports = (db, PAG) => {
     return u;
   }
   const mesOk = m => /^\d{4}-(0[1-9]|1[0-2])$/.test(m || '');
+
+  /* ---------- painel do dono: uso do app por região (como no Pelota FC) ---------- */
+  const UF_REGIAO = { AC: 'Norte', AP: 'Norte', AM: 'Norte', PA: 'Norte', RO: 'Norte', RR: 'Norte', TO: 'Norte',
+    AL: 'Nordeste', BA: 'Nordeste', CE: 'Nordeste', MA: 'Nordeste', PB: 'Nordeste', PE: 'Nordeste', PI: 'Nordeste', RN: 'Nordeste', SE: 'Nordeste',
+    DF: 'Centro-Oeste', GO: 'Centro-Oeste', MT: 'Centro-Oeste', MS: 'Centro-Oeste', ES: 'Sudeste', MG: 'Sudeste', RJ: 'Sudeste', SP: 'Sudeste', PR: 'Sul', RS: 'Sul', SC: 'Sul' };
+  const mesRecife = ms => new Date(ms - 3 * 3600e3).toISOString().slice(0, 7);
+  // cidade/UF da escola: o que a administração informou nos Ajustes; senão, tenta tirar do nome de um local ("Unidade Centro - Recife/PE")
+  function ondeFica(cfg, locais) {
+    let uf = String(cfg.uf || '').toUpperCase(), cidade = String(cfg.cidade || '').trim(), origem = UF_REGIAO[uf] ? 'ajustes' : '';
+    if (!origem) {
+      uf = '';
+      for (const l of locais) {
+        const txt = String(l.endereco || l.end || l.nome || ''), m = txt.match(/(?:^|[\s,\-\/])([A-Za-z]{2})\s*$/), u2 = m && m[1].toUpperCase();
+        if (UF_REGIAO[u2]) { uf = u2; const partes = txt.split(/[,\-\/]/).map(x => x.trim()).filter(Boolean); cidade = cidade || (partes.length > 1 ? partes[partes.length - 2] : ''); origem = 'local'; break; }
+      }
+    }
+    return { uf, cidade, regiao: UF_REGIAO[uf] || 'Sem cidade informada', origem };
+  }
+  async function painel() {
+    const agora = Date.now(), d30 = agora - 30 * 864e5, mes = mesRecife(agora);
+    const contas = { total: 0, novas30: 0, ativas30: 0 };
+    let tok;
+    do {
+      const r = await admin.auth().listUsers(1000, tok);
+      r.users.forEach(u => { contas.total++; const c = Date.parse(u.metadata.creationTime) || 0, l = Date.parse(u.metadata.lastRefreshTime || u.metadata.lastSignInTime) || 0; if (c > d30) contas.novas30++; if (l > d30) contas.ativas30++; });
+      tok = r.pageToken;
+    } while (tok);
+    const tot = { escolas: 0, ativas: 0, alunos: 0, familias: 0, comPix: 0, pagantes: 0, pixMes: 0, volumeMes: 0, comissaoMes: 0, semCidade: 0 };
+    const reg = {}, ufs = {}, cids = {};
+    const soma = (map, k, e) => { const o = map[k] = map[k] || { nome: k, escolas: 0, ativas: 0, alunos: 0, contas: 0, pagantes: 0, comissaoMes: 0 };
+      o.escolas++; if (e.ativa) o.ativas++; o.alunos += e.alunos; o.contas += e.contas; if (e.pagante) o.pagantes++; o.comissaoMes += e.comissao; };
+    const escolas = await db.collection('escolas').get();
+    for (const ed of escolas.docs) {
+      const p = `escolas/${ed.id}`, e0 = ed.data();
+      const [cfgS, locS, aluS, memS, cobS] = await Promise.all([db.doc(`${p}/config/geral`).get(), db.collection(`${p}/locais`).get(), db.collection(`${p}/alunas`).get(),
+        db.collection(`${p}/membros`).get(), db.collection(`${p}/cobrancas`).get()]);
+      const cfg = cfgS.exists ? cfgS.data() : {};
+      const onde = ondeFica(cfg, locS.docs.map(d => d.data()));
+      let pix = 0, volume = 0, comissao = 0, recente = false;
+      cobS.forEach(c => { const x = c.data(); if ((x.criadoEm || 0) > d30) recente = true;
+        if (x.status !== 'approved' || mesRecife(x.pagoEm || x.atualizadoEm || x.criadoEm || 0) !== mes) return; pix++; volume += Number(x.valor) || 0; comissao += Number(x.fee) || 0; });
+      const alunos = aluS.docs.filter(d => d.data().ativa !== false).length;
+      const e = { ativa: recente, alunos, contas: memS.docs.length + (e0.admins || []).length, pagante: comissao > 0, comissao };
+      tot.escolas++; if (e.ativa) tot.ativas++; tot.alunos += alunos; tot.familias += memS.docs.length; if (cfg.mpConectadoEm) tot.comPix++; if (e.pagante) tot.pagantes++;
+      tot.pixMes += pix; tot.volumeMes += volume; tot.comissaoMes += comissao; if (!onde.uf) tot.semCidade++;
+      soma(reg, onde.regiao, e);
+      if (onde.uf) { soma(ufs, onde.uf, e); soma(cids, (onde.cidade || 'Cidade não informada') + ' · ' + onde.uf, e); }
+    }
+    const lista = m => Object.values(m).map(o => ({ ...o, comissaoMes: Math.round(o.comissaoMes * 100) / 100 })).sort((a, b) => b.escolas - a.escolas || b.alunos - a.alunos);
+    tot.volumeMes = Math.round(tot.volumeMes * 100) / 100; tot.comissaoMes = Math.round(tot.comissaoMes * 100) / 100;
+    return { em: agora, mes, contas, totais: tot, regioes: lista(reg), estados: lista(ufs), cidades: lista(cids).slice(0, 30) };
+  }
   const notasPlataforma = onRequest({ cors: true, maxInstances: 2, memory: '512MiB', timeoutSeconds: 300 }, async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST.' });
       await daPlataforma(req);
       const b = req.body || {};
       if (b.acao === 'acesso') return res.json({ ok: true });
+      if (b.acao === 'painel') return res.json(await painel());
       if (b.acao === 'tomador') {
         const [eid, rec] = String(b.gid || '').split('~'), doc = String(b.doc || '').replace(/\D/g, '');
         const ok = x => /^[A-Za-z0-9_-]{1,60}$/.test(x || '');
@@ -210,5 +264,5 @@ module.exports = (db, PAG) => {
     } catch (e) { logger.error(e); res.status(e.http || 500).json({ erro: e.http ? e.message : 'Algo deu errado. Tente de novo.' }); }
   });
 
-  return { notasPlataforma, notaComissao, interno: { tarefaDiaria, emitirMes, parametros, mesAnterior, store, contador } };
+  return { notasPlataforma, notaComissao, interno: { ondeFica, painel, tarefaDiaria, emitirMes, parametros, mesAnterior, store, contador } };
 };

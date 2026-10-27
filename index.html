@@ -555,6 +555,22 @@ details>summary::-webkit-details-marker{display:none}
 .nf-auto{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:12px 14px;font-size:.9rem}
 .nf-auto .btn{align-self:flex-start}
 .nf-passos{margin:0;padding-left:20px;font-size:.88rem;line-height:1.6}
+/* painel do dono */
+.dono-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.dono-tile{display:flex;flex-direction:column;gap:2px;background:var(--surface2);border-radius:5px;padding:10px 12px;min-width:0}
+.dono-tile .lbl{font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.dono-tile b{font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.6rem;line-height:1.05;overflow-wrap:anywhere}
+.dono-tile .s{font-size:.78rem;color:var(--muted)}
+.dono-bloco{display:flex;flex-direction:column;gap:12px;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:14px}
+.dono-barras{display:flex;flex-direction:column;gap:12px}
+.dono-lin{display:flex;justify-content:space-between;gap:8px}
+.dono-trilho{height:12px;border-radius:2px;background:var(--surface2);overflow:hidden;margin:4px 0 3px}
+.dono-trilho i{display:block;height:100%;background:var(--accent)}
+.dono-trilho i.cinza{background:var(--muted);opacity:.5}
+.dono-tab{overflow-x:auto}
+.dono-tab table{width:100%;border-collapse:collapse;font-size:.85rem}
+.dono-tab th{text-align:right;padding:6px 4px;font-size:.75rem;color:var(--muted)} .dono-tab th:first-child,.dono-tab td:first-child{text-align:left}
+.dono-tab td{padding:6px 4px;border-top:1px solid var(--line);text-align:right}
 /* botão pequeno e discreto de adicionar (contorno, sem fundo) */
 .add-disc{flex:none;border:1.5px solid var(--accent);background:transparent;color:var(--accent);border-radius:4px;padding:5px 12px;font-family:var(--f-display);font-style:italic;font-weight:700;text-transform:uppercase;font-size:.9rem;letter-spacing:.03em;white-space:nowrap}
 /* janelinha da taxa: simula quanto a família paga e quanto a escola recebe */
