@@ -275,6 +275,39 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     r = resp(); await P.mpConectar(req({ eid: 'e1', volta: 'https://x.github.io/escolinha/' }, 'ok:adm'), r); assert.strictEqual(r.code, 200);
     assert.match(r.body.url, /^https:\/\/auth\.mercadopago\.com\.br\/authorization\?client_id=123&.*redirect_uri=https%3A%2F%2Fsouthamerica-east1-escola-teste\.cloudfunctions\.net%2FmpRetorno/);
   });
+  /* ---------- notas fiscais da comissão ---------- */
+  const N = require('./nfse')(db, P.interno);
+  const set9 = (k, v) => S.set('escolas/e9/' + k, v);
+  S.set('escolas/e9', { nome: 'Ballet Arte', admins: ['adm9'] });
+  set9('professoras/p1', { nome: 'Juliana Costa' });
+  set9('segredos/nota_escola', { nome: 'Ballet Arte Ltda', doc: '11444777000161', tipoDoc: 'CNPJ', email: 'ballet@x.com' });
+  set9('cobrancas/c1', { status: 'approved', rec: 'escola', fee: 1.5, pagoEm: Date.parse('2026-09-10T15:00:00Z') });
+  set9('cobrancas/c2', { status: 'approved', rec: 'escola', fee: 2.25, pagoEm: Date.parse('2026-09-30T23:30:00Z') }); // 20h30 no Recife: ainda é setembro
+  set9('cobrancas/c3', { status: 'approved', rec: 'p1', fee: 0.8, pagoEm: Date.parse('2026-09-12T15:00:00Z') });
+  set9('cobrancas/c4', { status: 'pending', rec: 'escola', fee: 9, criadoEm: Date.parse('2026-09-12T15:00:00Z') });
+  set9('cobrancas/c5', { status: 'approved', rec: 'escola', fee: 5, pagoEm: Date.parse('2026-10-01T04:00:00Z') }); // 1h de outubro no Recife
+  await t('notas: comissão do mês por quem recebe (escola e professor com conta própria), pelo horário do Recife', async () => {
+    const r = await P.interno.comissoesDoMes('2026-09'), L = r.linhas.filter(l => l.eid === 'e9');
+    assert.deepStrictEqual(L.map(l => [l.gid, l.qtd, l.total, l.doc]), [['e9~escola', 2, 3.75, '11444777000161'], ['e9~p1', 1, 0.8, '']]);
+    assert.strictEqual(L[1].grupo, 'Ballet Arte · Juliana Costa');
+  });
+  S.set('servidor/plataforma', { emails: ['dona@x.com'] });
+  await t('notas: relatório e dados do tomador só para a empresa do app', async () => {
+    let r = resp(); await N.notasPlataforma(req({ acao: 'relatorio', mes: '2026-09' }, 'ok:adm9'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await N.notasPlataforma(req({ acao: 'relatorio', mes: '2026-09' }, 'ok:dona'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.ok(r.body.nfse.falta.includes('certificado digital A1')); assert.ok(r.body.linhas.some(l => l.gid === 'e9~p1' && !l.nota));
+    r = resp(); await N.notasPlataforma(req({ acao: 'tomador', gid: 'e9~p1', nome: 'Juliana Costa', doc: '529.982.247-25' }, 'ok:dona'), r); assert.strictEqual(r.code, 200);
+    assert.strictEqual(S.get('escolas/e9/segredos/nota_p1').doc, '52998224725');
+    r = resp(); await N.notasPlataforma(req({ acao: 'tomador', gid: 'e9/x~p1', nome: 'X', doc: '52998224725' }, 'ok:dona'), r); assert.strictEqual(r.code, 404);
+    r = resp(); await N.notasPlataforma(req({ acao: 'emitir', mes: '2026-09' }, 'ok:dona'), r); assert.strictEqual(r.code, 412); // sem configuração fiscal
+  });
+  await t('notas: a administração vê só as notas da própria escola', async () => {
+    S.set('servidor/nfse/notas/2026-09_e9~escola', { mes: '2026-09', eid: 'e9', rec: 'escola', status: 'ok', valor: 3.75, chave: 'CH1', ambiente: 'restrita' });
+    S.set('servidor/nfse/notas/2026-09_e9~p1', { mes: '2026-09', eid: 'e9', rec: 'p1', status: 'ok', valor: 0.8, chave: 'CH2', ambiente: 'restrita' });
+    let r = resp(); await N.notaComissao(req({ eid: 'e9' }, 'ok:mae'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await N.notaComissao(req({ eid: 'e9' }, 'ok:adm9'), r); assert.strictEqual(r.code, 200);
+    assert.deepStrictEqual(r.body.notas.map(n => [n.mes, n.valor, n.teste]), [['2026-09', 3.75, true]]);
+  });
   Date.now = realNow;
   console.log(`\n${n} testes passaram.`);
 })().catch(e => { console.error('✗', e); process.exit(1); });

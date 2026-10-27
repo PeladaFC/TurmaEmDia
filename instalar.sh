@@ -14,6 +14,8 @@ echo "==> Testando o cálculo, o Pix, os convites e os eventos"
 node functions/teste.js >/dev/null && echo "    ok"
 echo "==> Instalando dependências do servidor"
 (cd functions && npm install --omit=dev --no-audit --no-fund --loglevel=error)
+echo "==> Testando a nota fiscal (sem certificado, sem enviar nada)"
+node functions/teste-nfse.mjs || echo "    ⚠️  o teste da nota fiscal falhou (o resto continua). Mande uma foto desta parte."
 gcloud config set project "$PROJ" >/dev/null 2>&1 || true
 FB="npx --yes firebase-tools@latest"
 publicar() { $FB deploy --only functions,firestore:rules --project "$PROJ" --force --non-interactive; }

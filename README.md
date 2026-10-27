@@ -108,3 +108,10 @@ Ficou para depois (perguntar antes):
 - Só quem entra no app com aquele e-mail vê o convite e pode aceitar ou recusar. Não existe código: ninguém se coloca na administração sozinho.
 - Um "Ciente" no termo vale para toda a administração; fica registrado o nome de quem deu.
 - **Servidor:** feito em 20/10/2026 (veja "Servidor" acima).
+
+## Notas fiscais da comissão
+
+A empresa do app emite, todo mês, uma NFS-e da comissão de 1% para cada escola (e professor com conta própria), no CPF/CNPJ do dono da conta do Mercado Pago.
+- Relatório da empresa: engrenagem → Conta → Notas fiscais (empresa). Liberar os e-mails com `configurar-notas.sh`.
+- Emissão automática (dia 1º, 10h) pelo Emissor Nacional com o certificado A1: `configurar-nfse.sh`. Série padrão 901 (a do Pelota FC é 900).
+- A escola baixa as notas em engrenagem → Ajustes da escola → Notas fiscais da comissão.

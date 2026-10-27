@@ -83,12 +83,16 @@ module.exports = db => {
     }
     return d;
   }
-  async function dadosConta(token) {
+  // nome e CPF/CNPJ (mascarado) do dono da conta conectada (a escola vê) e, à parte, os dados completos
+  // para a nota fiscal da comissão (só o servidor vê: escolas/{eid}/segredos/nota_{rec})
+  async function dadosConta(token, eid, rec) {
     try {
       const r = await fetch(MP + '/users/me', { headers: { Authorization: 'Bearer ' + token } }); if (!r.ok) return null;
       const u = await r.json(), id = u.identification || {}, n = String(id.number || '').replace(/\D/g, '');
       const doc = n.length === 11 ? `***.${n.slice(3, 6)}.${n.slice(6, 9)}-**` : n.length === 14 ? `**.***.${n.slice(5, 8)}/${n.slice(8, 12)}-**` : '';
-      return { nome: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.nickname || '', doc, tipoDoc: id.type || '' };
+      const nome = [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.nickname || '';
+      if (eid) await db.doc(`escolas/${eid}/segredos/nota_${rec || 'escola'}`).set({ nome, doc: n, tipoDoc: id.type || (n.length === 14 ? 'CNPJ' : n.length === 11 ? 'CPF' : ''), email: u.email || '', mpUser: u.id != null ? String(u.id) : null, origem: 'mp', em: Date.now() }, { merge: true }).catch(e => logger.warn('nota tomador', eid, rec, e.message));
+      return { nome, doc, tipoDoc: id.type || '' };
     } catch (e) { return null; }
   }
   async function usuario(req) {
@@ -238,7 +242,7 @@ module.exports = db => {
       const cobRef = db.doc(`escolas/${eid}/cobrancas/${chave}`), cob = (await cobRef.get()).data();
       if (!cob || (cob.rec || 'escola') !== rec) return res.status(200).send('ok');
       if (cob.mpId && cob.mpId !== String(p.id) && cob.status === 'approved') return res.status(200).send('ok');
-      await cobRef.set({ status: p.status, mpId: String(p.id), atualizadoEm: Date.now() }, { merge: true });
+      await cobRef.set({ status: p.status, mpId: String(p.id), atualizadoEm: Date.now(), ...(p.status === 'approved' && !cob.pagoEm ? { pagoEm: Date.parse(p.date_approved || '') || Date.now() } : {}) }, { merge: true });
       if (p.status === 'approved') { await darBaixa(eid, cob, p.id); logger.info('pago', eid, chave, p.id); }
       res.status(200).send('ok');
     } catch (e) { logger.error(e); res.status(200).send('ok'); }
@@ -312,7 +316,7 @@ module.exports = db => {
       }
       if (acao === 'info') {
         const c = await contaMP(eid); if (!c || !c.token) return res.status(404).json({ erro: 'Nenhuma conta conectada.' });
-        const conta = await dadosConta(c.token); if (conta) await db.doc(`escolas/${eid}/config/mp`).set({ conta }, { merge: true });
+        const conta = await dadosConta(c.token, eid, 'escola'); if (conta) await db.doc(`escolas/${eid}/config/mp`).set({ conta }, { merge: true });
         return res.json({ conta });
       }
       if (acao === 'desconectar') {
@@ -347,13 +351,13 @@ module.exports = db => {
       if (e.pid) {
         // professor(a) ligou a própria conta pelo link que a escola mandou
         await segredoDe(e.eid, e.pid).set({ ...n, via: 'oauth', em: Date.now(), por: 'link' });
-        const conta = await dadosConta(n.token), esc_ = (await ler(`escolas/${e.eid}`)) || {};
+        const conta = await dadosConta(n.token, e.eid, e.pid), esc_ = (await ler(`escolas/${e.eid}`)) || {};
         await db.doc(`escolas/${e.eid}/professoras/${e.pid}`).set({ mpConectadoEm: Date.now(), mpConta: (conta && conta.nome) || null, mpDoc: (conta && conta.doc) || null }, { merge: true });
         logger.info('mp professor conectado', e.eid, e.pid, n.mpUser);
         return res.status(200).set('Content-Type', 'text/html; charset=utf-8').send(paginaSimples('Conta ligada!', `A sua conta do Mercado Pago${conta && conta.nome ? ` (${esc(conta.nome)})` : ''} vai receber os pagamentos das suas turmas na ${esc(esc_.nome || 'escola')}. Pode fechar esta página.`));
       }
       await db.doc(`escolas/${e.eid}/segredos/mp`).set({ ...n, via: 'oauth', em: Date.now(), por: e.uid });
-      const conta = await dadosConta(n.token);
+      const conta = await dadosConta(n.token, e.eid, 'escola');
       await db.doc(`escolas/${e.eid}/config/geral`).set({ mpConectadoEm: Date.now(), mpTaxaApp: P.comissao }, { merge: true });
       await db.doc(`escolas/${e.eid}/config/mp`).set({ conta: conta || null, confirmada: false }, { merge: true });
       logger.info('mp conectado', e.eid, n.mpUser);
@@ -373,5 +377,31 @@ module.exports = db => {
     } catch (err) { logger.error(err); res.status(500).send('Tente de novo.'); }
   });
 
-  return { criarPix, mpWebhook, mpConectar, mpRetorno, mpLigar, vinculos };
+  /* Comissão do app (1%) no mês, por quem recebe os Pix: cada escola e cada professor(a) com conta própria.
+     É o "tomador" da nota fiscal que a empresa do app emite. Conta o Pix aprovado no mês, pelo horário do Recife. */
+  const mesDe = ms => new Date(ms - 3 * 3600e3).toISOString().slice(0, 7);
+  async function comissoesDoMes(mes) {
+    const linhas = [];
+    const escolas = await db.collection('escolas').get();
+    for (const e of escolas.docs) {
+      const cobs = await db.collection(`escolas/${e.id}/cobrancas`).where('status', '==', 'approved').get();
+      const por = {};
+      cobs.forEach(c => { const x = c.data(), quando = x.pagoEm || x.atualizadoEm || x.criadoEm || 0; if (mesDe(quando) !== mes) return;
+        const f = Number(x.fee) || 0; if (!(f > 0)) return; const rec = x.rec || 'escola'; por[rec] = por[rec] || { total: 0, qtd: 0 }; por[rec].total += f; por[rec].qtd++; });
+      if (!Object.keys(por).length) continue;
+      const escola = e.data(), profs = Object.keys(por).some(r => r !== 'escola') ? await mapa(`escolas/${e.id}/professoras`) : {};
+      for (const [rec, v] of Object.entries(por)) {
+        let t = await ler(`escolas/${e.id}/segredos/nota_${rec}`);
+        if (!t || !t.doc) { const c = await contaMP(e.id, rec); if (c && c.token) { await dadosConta(c.token, e.id, rec); t = await ler(`escolas/${e.id}/segredos/nota_${rec}`); } }
+        t = t || {};
+        const nomeEscola = escola.nome || 'Escola', prof = rec === 'escola' ? null : ((profs[rec] || {}).nome || 'Professor(a)');
+        linhas.push({ gid: `${e.id}~${rec}`, eid: e.id, rec, grupo: prof ? `${nomeEscola} · ${prof}` : nomeEscola, qtd: v.qtd, total: Math.round(v.total * 100) / 100,
+          nome: t.nome || '', doc: t.doc || '', tipoDoc: t.tipoDoc || '', email: t.email || '', origem: t.origem || '' });
+      }
+    }
+    linhas.sort((a, c) => c.total - a.total);
+    return { mes, linhas, total: Math.round(linhas.reduce((s, l) => s + l.total, 0) * 100) / 100 };
+  }
+
+  return { criarPix, mpWebhook, mpConectar, mpRetorno, mpLigar, vinculos, interno: { comissoesDoMes, usuario } };
 };

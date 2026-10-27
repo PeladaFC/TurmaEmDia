@@ -5,7 +5,7 @@
       "source": "functions",
       "codebase": "default",
       "runtime": "nodejs22",
-      "ignore": ["node_modules", "teste.js"]
+      "ignore": ["node_modules", "teste.js", "teste-nfse.mjs"]
     }
   ]
 }

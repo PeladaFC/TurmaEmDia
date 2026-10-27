@@ -2593,6 +2593,119 @@ function sheetCalendario(ano) {
 }
 
 
+/* ================= Notas fiscais da comissão =================
+   A empresa do app (Kathy) emite, todo mês, uma nota fiscal da comissão de 1% para cada escola (e para cada professor(a)
+   que recebe com conta própria), no CPF/CNPJ do dono da conta do Mercado Pago. Emissão automática pelo Emissor Nacional
+   (servidor/nfse.js), quando o certificado digital estiver instalado.
+   - a escola baixa as notas dela: Ajustes da escola → Notas fiscais da comissão;
+   - a empresa vê o relatório do mês (só e-mails liberados no servidor): Ajustes → Conta → Notas fiscais (empresa). */
+let NOTAS_PLAT; // undefined: ainda não sabe; true/false
+const NF_MOCK = () => (window.__nfMock = window.__nfMock || [
+  { gid: 'esc1~escola', eid: 'esc1', rec: 'escola', grupo: 'Escolinha Movimento', qtd: 38, total: 52.4, nome: 'Movimento Esportes Ltda', doc: '11444777000161', tipoDoc: 'CNPJ', email: 'contato@movimento.com' },
+  { gid: 'esc1~p1', eid: 'esc1', rec: 'p1', grupo: 'Escolinha Movimento · Juliana Costa', qtd: 9, total: 11.7, nome: 'Juliana Costa', doc: '', tipoDoc: '', email: '' },
+  { gid: 'e2~escola', eid: 'e2', rec: 'escola', grupo: 'Ballet Arte', qtd: 21, total: 27.3, nome: 'Ana Paula Ribeiro', doc: '52998224725', tipoDoc: 'CPF', email: 'ballet@exemplo.com' }]);
+async function notasServidor(acao, extra) {
+  if (MOCK) {
+    if (acao === 'acesso') return { ok: true };
+    const L = NF_MOCK();
+    if (acao === 'emitir') { let n = 0; L.forEach(l => { if (l.doc && !(l.nota && l.nota.status === 'ok')) { l.nota = { status: 'ok', chave: '26116062211444777000161000000000000126091234567890', ambiente: 'restrita' }; n++; } }); return { ok: n }; }
+    if (acao === 'pdf') throw new Error('No modo de teste não há PDF.');
+    if (acao === 'tomador') { const l = L.find(x => x.gid === extra.gid), d = extra.doc.replace(/\D/g, ''); if (l) Object.assign(l, { nome: extra.nome, doc: d, email: extra.email, tipoDoc: d.length === 14 ? 'CNPJ' : 'CPF' }); return { ok: true }; }
+    return { mes: extra.mes, linhas: L, total: C.r2(L.reduce((x, l) => x + l.total, 0)), nfse: { ligado: false, ambiente: 'restrita', falta: ['certificado digital A1'], validade: null } };
+  }
+  return servidor('notasPlataforma', { acao, ...(extra || {}) });
+}
+function baixarPdf(r) {
+  const b = atob(r.pdf), u8 = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u8[i] = b.charCodeAt(i);
+  const u = URL.createObjectURL(new Blob([u8], { type: 'application/pdf' })), el = document.createElement('a'); el.href = u; el.download = r.nome || 'nota.pdf'; document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+}
+// botão da empresa nos Ajustes: só aparece para os e-mails liberados (o servidor confere)
+function ligarNotasPlataforma(volta) {
+  const mostrar = () => { const el = $('jnotasplat'); if (!el || !NOTAS_PLAT) return;
+    el.innerHTML = '<button type="button" class="linha-botao" id="jnfplat"><span class="grow"><b>Notas fiscais (empresa)</b><span class="s">Comissão do mês de cada escola e professor(a)</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>';
+    $('jnfplat').onclick = () => abrirDe(volta, () => sheetNotasPlataforma()); };
+  if (NOTAS_PLAT === undefined) { NOTAS_PLAT = null; notasServidor('acesso').then(() => { NOTAS_PLAT = true; mostrar(); }, () => { NOTAS_PLAT = false; }); }
+  else mostrar();
+}
+const fmtDoc = d => d && d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : d && d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '';
+function textoNota(l, mes) { const [a, m] = mes.split('-');
+  return `Tomador: ${l.nome}\n${l.tipoDoc || 'CPF'}: ${l.doc}\n${l.email ? 'E-mail: ' + l.email + '\n' : ''}Valor: ${Number(l.total).toFixed(2).replace('.', ',')}\nDescrição: Comissão de intermediação de pagamentos via aplicativo Turma em Dia (${l.grupo}), competência ${m}/${a}. ${l.qtd} pagamento${l.qtd === 1 ? '' : 's'} por Pix.`; }
+const mesAnteriorNF = () => { const d = new Date(Date.now() - 3 * 36e5); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); };
+// relatório da empresa: comissão do mês por escola/professor(a), situação de cada nota, dados do tomador
+async function sheetNotasPlataforma(mes, editar) {
+  mes = mes || mesAnteriorNF();
+  const [ano, mm] = mes.split('-'), nomeM = C.MESES[Number(mm) - 1];
+  const topo = `<h3>Notas fiscais</h3><div class="sub">Comissão de 1% dos Pix, separada por quem recebe (escola ou professor com conta própria). Uma nota para cada um, uma vez por mês.</div>
+    <div class="cal-topo"><button type="button" class="icon-btn" id="nfant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="nfprox" aria-label="Próximo mês">›</button></div>`;
+  const nav = () => { const vai = n => { const [y, m] = mes.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1)); sheetNotasPlataforma(d.toISOString().slice(0, 7)); }; $('nfant').onclick = () => vai(-1); $('nfprox').onclick = () => vai(1); };
+  sheet(`${topo}<div class="empty">Somando as comissões…</div><button class="btn ghost" data-fechar>Fechar</button>`, nav);
+  let D; try { D = await notasServidor('relatorio', { mes }); } catch (e) { return sheet(`${topo}<div class="banner"><span>${esc(e.message)}</span></div><button class="btn ghost" data-fechar>Fechar</button>`, nav); }
+  const L = D.linhas || [], F = D.nfse || null;
+  const situacao = l => { const n = l.nota; if (!n) return '<span class="s">Nota ainda não emitida.</span>';
+    if (n.status === 'ok') return `<span class="chip pago" style="align-self:flex-start">Nota emitida${n.ambiente !== 'producao' ? ' · teste' : ''}</span>`;
+    if (n.status === 'pendente' || n.status === 'emitindo') return '<span class="s">Enviando ao Emissor Nacional… o app tenta de novo sozinho.</span>';
+    if (n.status === 'erro') return `<div class="banner"><span><b>A nota foi recusada.</b> ${esc(n.motivo || '')}</span></div>`;
+    if (n.status === 'sem_dados') return '<span class="s">Falta o CPF ou CNPJ para emitir.</span>';
+    return ''; };
+  const auto = !F ? '' : F.falta && F.falta.length ? `<div class="banner"><span><b>Emissão automática ainda não ligada.</b> Falta: ${esc(F.falta.join(', '))}. Enquanto isso, dá para emitir à mão (no fim da tela).</span></div>`
+    : `<div class="nf-auto"><div><b>${F.ligado ? 'Emissão automática ligada' : 'Emissão automática desligada'}</b>${F.ligado ? ': todo dia 1º, o app emite a nota do mês anterior para cada um.' : '.'}${F.ambiente !== 'producao' ? ' <b>Modo de teste</b>: as notas não têm valor fiscal.' : ''}</div>
+      ${F.validade ? `<span class="s">Certificado digital vale até ${new Date(F.validade).toLocaleDateString('pt-BR')}.${F.validade - Date.now() < 30 * 864e5 ? ' <b>Renove logo!</b>' : ''}</span>` : ''}
+      ${L.some(l => l.doc && (!l.nota || l.nota.status === 'erro')) ? '<button type="button" class="btn btn-mini" id="nfemitir">Emitir as notas deste mês agora</button>' : ''}</div>`;
+  const card = (l, i) => editar === l.gid ? `<li class="nf-card"><div class="grow"><b>${esc(l.grupo)}</b><span class="s">Dados de quem recebe os Pix (dono da conta do Mercado Pago).</span>
+      <div class="field"><label for="nfnome">Nome completo ou razão social</label><input id="nfnome" value="${esc(l.nome)}"></div>
+      <div class="field"><label for="nfdoc">CPF ou CNPJ</label><input id="nfdoc" inputmode="numeric" value="${esc(fmtDoc(l.doc))}"></div>
+      <div class="field"><label for="nfemail">E-mail (para mandar a nota)</label><input id="nfemail" type="email" value="${esc(l.email)}"></div>
+      <div class="err" id="nferr" role="alert"></div>
+      <div class="actions"><button type="button" class="btn ghost" id="nfcanc">Cancelar</button><button type="button" class="btn" id="nfsalva" data-gid="${esc(l.gid)}">Salvar</button></div></div></li>`
+    : `<li class="nf-card"><div class="grow"><div class="nf-lin"><b>${esc(l.grupo)}</b><b class="num">${brl(l.total)}</b></div>
+      <span class="s">${l.qtd} Pix aprovado${l.qtd === 1 ? '' : 's'} no mês</span>
+      <span class="s">Tomador: <b>${esc(l.nome || '—')}</b>${l.doc ? ` · ${esc(l.tipoDoc || 'CPF')} <span class="num">${fmtDoc(l.doc)}</span>` : ''}${l.email ? `<br>${esc(l.email)}` : ''}</span>
+      ${l.doc ? '' : '<div class="banner"><span>O Mercado Pago não informou o CPF ou CNPJ. Peça e preencha para emitir a nota.</span></div>'}
+      ${situacao(l)}
+      <div class="nf-acoes">${l.nota && l.nota.status === 'ok' ? `<button type="button" class="btn btn-mini" data-nfpdf="${esc(l.gid)}">Baixar PDF</button>` : l.doc ? `<button type="button" class="btn ghost btn-mini" data-nfcop="${i}">Copiar dados da nota</button>` : ''}<button type="button" class="btn ghost btn-mini" data-nfed="${esc(l.gid)}">${l.doc ? 'Corrigir dados' : 'Preencher dados'}</button></div></div></li>`;
+  sheet(`${topo}
+    ${!L.length ? '<div class="empty"><span>Nenhuma comissão neste mês. Não precisa emitir nota.</span></div>' : `${auto}
+    <div class="conta">${contaL(`Total do mês · ${L.length} nota${L.length === 1 ? '' : 's'}`, `<b>${brl(D.total)}</b>`, 'total')}</div>
+    <ul class="list">${L.map(card).join('')}</ul>
+    <button type="button" class="btn ghost" id="nfplan">Baixar planilha do mês</button>`}
+    <details class="historico"><summary><span class="grow"><b>Emitir à mão (se precisar)</b><span class="s">Pelo site gratuito do governo</span></span><span class="seta" aria-hidden="true">▾</span></summary>
+      <div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:10px"><a class="btn ghost" href="https://www.nfse.gov.br/EmissorNacional/" target="_blank" rel="noopener">Abrir o Emissor Nacional</a>
+      <ol class="nf-passos"><li>Entre no Emissor Nacional com o gov.br da Kathy ou com o certificado da empresa.</li><li>Toque em <b>Emitir NFS-e</b> e informe o CPF ou CNPJ e o nome do tomador (a escola ou o professor).</li>
+      <li>Serviço: use o código de <b>agenciamento e intermediação</b> que a contadora indicar.</li><li>Valor e descrição: toque em <b>Copiar dados da nota</b> aqui e cole.</li><li>Emita e mande a nota para o e-mail do tomador.</li></ol>
+      <span class="s">Conta como comissão o Pix aprovado dentro do mês, pelo horário do Recife.</span></div></details>
+    <button class="btn ghost" data-fechar>Fechar</button>`, sh => {
+    nav();
+    sh.querySelectorAll('[data-nfed]').forEach(b => b.onclick = () => sheetNotasPlataforma(mes, b.dataset.nfed));
+    if ($('nfcanc')) $('nfcanc').onclick = () => sheetNotasPlataforma(mes);
+    if ($('nfsalva')) $('nfsalva').onclick = async () => { const doc = $('nfdoc').value.replace(/\D/g, ''), nome = $('nfnome').value.trim();
+      if (!nome) return $('nferr').textContent = 'Coloque o nome completo.'; if (doc.length !== 11 && doc.length !== 14) return $('nferr').textContent = 'CPF ou CNPJ incompleto.';
+      $('nfsalva').disabled = true; try { await notasServidor('tomador', { gid: $('nfsalva').dataset.gid, nome, doc, email: $('nfemail').value.trim() }); aviso('Dados salvos'); sheetNotasPlataforma(mes); } catch (e) { $('nferr').textContent = e.message; $('nfsalva').disabled = false; } };
+    sh.querySelectorAll('[data-nfcop]').forEach(b => b.onclick = () => copiar(textoNota(L[Number(b.dataset.nfcop)], mes), 'Dados da nota copiados'));
+    sh.querySelectorAll('[data-nfpdf]').forEach(b => b.onclick = async () => { b.disabled = true; try { baixarPdf(await notasServidor('pdf', { mes, gid: b.dataset.nfpdf })); } catch (e) { aviso(e.message); } b.disabled = false; });
+    if ($('nfemitir')) $('nfemitir').onclick = async () => { const b = $('nfemitir'); b.disabled = true; b.textContent = 'Emitindo… (pode levar um minuto)';
+      try { const r = await notasServidor('emitir', { mes }); aviso(r.ok ? `${r.ok} nota${r.ok === 1 ? '' : 's'} emitida${r.ok === 1 ? '' : 's'}` : 'Nenhuma nota nova emitida. Veja a situação de cada uma.'); } catch (e) { aviso(e.message); } sheetNotasPlataforma(mes); };
+    if ($('nfplan')) $('nfplan').onclick = () => { const q = x => '"' + String(x ?? '').replace(/"/g, '""') + '"';
+      const linhas = [['Escola / professor(a)', 'Tomador', 'Tipo', 'CPF/CNPJ', 'E-mail', 'Pix aprovados', 'Comissão (R$)', 'Descrição'].map(q).join(';')]
+        .concat(L.map(l => [l.grupo, l.nome, l.tipoDoc, l.doc, l.email, l.qtd, Number(l.total).toFixed(2).replace('.', ','), textoNota(l, mes).split('Descrição: ')[1]].map(q).join(';')));
+      const u = URL.createObjectURL(new Blob(['﻿' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8' })), el = document.createElement('a');
+      el.href = u; el.download = `TurmaEmDia_notas_${mes}.csv`; document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(u), 2000); };
+  });
+}
+// a administração baixa as notas da escola
+async function sheetNotasEscola() {
+  const corpo = h => `<h3>Notas fiscais da comissão</h3><div class="sub">O Turma em Dia fica com <b>1% de cada Pix</b> que cai na conta do Mercado Pago da escola. Todo mês, a empresa do app emite uma nota fiscal desse valor no CPF ou CNPJ do dono da conta, e ela aparece aqui para baixar.</div>${h}
+    <span class="s">Cada nota tem uma chave de acesso e um QR Code no PDF para conferir no site oficial (nfse.gov.br).</span><button class="btn ghost" data-fechar>Fechar</button>`;
+  sheet(corpo('<div class="empty">Buscando as notas…</div>'));
+  let R; try { R = MOCK ? { notas: [{ mes: '2026-09', valor: 52.4, chave: 'x', teste: true }] } : await servidor('notaComissao', { eid: S.eid }); }
+  catch (e) { return sheet(corpo(`<div class="banner"><span>${esc(e.message)}</span></div>`)); }
+  const N = R.notas || [];
+  sheet(corpo(!N.length ? '<div class="empty"><span>Nenhuma nota ainda. A primeira sai no dia 1º do mês seguinte ao primeiro Pix pelo app.</span></div>'
+    : `<ul class="list">${N.map(n => { const [a, m] = n.mes.split('-'), nm = C.MESES[Number(m) - 1]; return `<li><div class="grow"><div class="t">${nm[0].toUpperCase() + nm.slice(1)} de ${a}</div>${linhas(`<span class="num">${brl(n.valor)}</span>${n.teste ? ' · teste, sem valor fiscal' : ''}`)}</div><button type="button" class="btn btn-mini" data-nfm="${esc(n.mes)}">Baixar PDF</button></li>`; }).join('')}</ul>`), sh => {
+    sh.querySelectorAll('[data-nfm]').forEach(b => b.onclick = async () => { b.disabled = true; const t0 = b.textContent; b.textContent = 'Gerando…';
+      try { if (MOCK) throw new Error('No modo de teste não há PDF.'); baixarPdf(await servidor('notaComissao', { eid: S.eid, acao: 'pdf', mes: b.dataset.nfm })); } catch (e) { aviso(e.message); } b.disabled = false; b.textContent = t0; });
+  });
+}
+
 /* ================= Termo de matrícula: saúde, emergência, primeiros socorros e imagem ================= */
 const VERSAO_TERMO_MAT = 1;
 const PERGUNTAS_SAUDE = [
@@ -3157,7 +3270,9 @@ function sheetAjustes() {
       ${P ? `<section><h2>Meu Mercado Pago</h2>${P.mpConectadoEm ? `<div class="banner ok"><span>Ligado${P.mpConta ? ' à conta de <b>' + esc(P.mpConta) + '</b>' : ''}. Os pagamentos que a escola direcionar para você caem direto na sua conta.</span></div><button class="btn ghost" id="pmdes" style="color:var(--out)">Desligar</button>`
         : `<div class="sub">Ligue a sua conta do Mercado Pago para receber direto os pagamentos que a escola direcionar para você.</div><button class="btn" id="pmcon">Conectar meu Mercado Pago</button>`}</section>` : ''}
       ${S.prof ? '' : `<section><h2>Privacidade e dados</h2><button type="button" class="linha-botao" id="jprivf"><span class="grow"><b>Baixar meus dados ou pedir exclusão</b><span class="s">Seus dados e os dos seus filhos</span></span><span aria-hidden="true">›</span></button></section>`}
+      <div id="jnotasplat"></div>
       <div class="actions"><button class="btn ghost" id="jtroca">Minhas escolas</button><button class="btn ghost" id="jsair">Sair da conta</button></div><button class="btn ghost" data-fechar>Fechar</button>`, () => {
+      ligarNotasPlataforma(sheetAjustes);
       if ($('jprivf')) $('jprivf').onclick = () => abrirDe(sheetAjustes, sheetPrivFamilia);
       $('jtroca').onclick = () => { fecharSheet(); telaInicio(); }; $('jsair').onclick = () => { fecharSheet(); B.sair(); };
       // no teste, ligar/desligar é simulado; no app de verdade usa o mesmo OAuth da escola
@@ -3170,7 +3285,8 @@ function sheetAjustes() {
     <section><h2>Pix automático</h2>
       ${c.mpConectadoEm ? `<div class="banner ok"><span>Conectado${conta ? ` à conta de <b>${esc(conta.nome)}</b> ${esc(conta.doc || '')}` : ''}.</span></div>
         ${conta && S.mpc.confirmada === false ? `<div class="sub">É essa a conta que deve receber os pagamentos?</div><div class="actions"><button class="btn ok" id="mpsim">Sim, é essa conta</button><button class="btn ghost" id="mpout">Não, conectar outra</button></div>` : ''}
-        <div class="actions"><button class="btn ghost" id="mpinfo">Atualizar dados da conta</button><button class="btn ghost" id="mpdes" style="color:var(--out)">Desconectar</button></div>`
+        <div class="actions"><button class="btn ghost" id="mpinfo">Atualizar dados da conta</button><button class="btn ghost" id="mpdes" style="color:var(--out)">Desconectar</button></div>
+        <button type="button" class="linha-botao" id="jnotas"><span class="grow"><b>Notas fiscais da comissão</b><span class="s">As notas do Turma em Dia para a escola, para baixar</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`
         : `<div class="sub">O dinheiro cai direto na conta do Mercado Pago da escola, e a baixa no app é automática. Antes de conectar, confira: conta no nome de quem recebe, maior de 18 anos, identidade confirmada e uma chave Pix cadastrada.</div>
         <div class="note">Se o Mercado Pago já estiver aberto neste celular, ele conecta direto com essa conta. Depois você confere o nome e o CPF.</div>
         <button class="btn" id="mpcon">Conectar Mercado Pago</button>`}
@@ -3209,9 +3325,12 @@ function sheetAjustes() {
     <div class="err" id="jerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="jok">Salvar ajustes</button></div>
     <section><h2>Conta</h2><div class="sub">${esc(EU.nome || '')} · ${esc(EU.email || '')}</div>
+      <div id="jnotasplat"></div>
       <div class="actions"><button class="btn ghost" id="jtroca">Minhas escolas</button><button class="btn ghost" id="jsair">Sair da conta</button></div></section>`, () => {
     if ($('jsimv')) { const verJ = ligarSimTaxa('jsim', () => $('jrep').checked); $('jrep').addEventListener('change', verJ); }
     const err = m => $('jerr').textContent = m;
+    if ($('jnotas')) $('jnotas').onclick = () => abrirDe(sheetAjustes, sheetNotasEscola);
+    ligarNotasPlataforma(sheetAjustes);
     $('japar').onclick = () => abrirDe(sheetAjustes, sheetAparencia);
     $('jmsgs').onclick = () => abrirDe(sheetAjustes, () => sheetModelos());
     $('jpriv').onclick = () => abrirDe(sheetAjustes, sheetPrivEscola);
