@@ -294,12 +294,13 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
   S.set('servidor/plataforma', { emails: ['dona@x.com'] });
   await t('notas: relatório e dados do tomador só para a empresa do app', async () => {
     let r = resp(); await N.notasPlataforma(req({ acao: 'relatorio', mes: '2026-09' }, 'ok:adm9'), r); assert.strictEqual(r.code, 403);
-    r = resp(); await N.notasPlataforma(req({ acao: 'relatorio', mes: '2026-09' }, 'ok:dona'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    r = resp(); await N.notasPlataforma(req({ acao: 'relatorio', mes: '2026-09' }, 'ok:dona'), r); assert.strictEqual(r.code, 403); // e-mail ainda não confirmado
+    r = resp(); await N.notasPlataforma(req({ acao: 'relatorio', mes: '2026-09' }, 'ok:dona:v'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
     assert.ok(r.body.nfse.falta.includes('certificado digital A1')); assert.ok(r.body.linhas.some(l => l.gid === 'e9~p1' && !l.nota));
-    r = resp(); await N.notasPlataforma(req({ acao: 'tomador', gid: 'e9~p1', nome: 'Juliana Costa', doc: '529.982.247-25' }, 'ok:dona'), r); assert.strictEqual(r.code, 200);
+    r = resp(); await N.notasPlataforma(req({ acao: 'tomador', gid: 'e9~p1', nome: 'Juliana Costa', doc: '529.982.247-25' }, 'ok:dona:v'), r); assert.strictEqual(r.code, 200);
     assert.strictEqual(S.get('escolas/e9/segredos/nota_p1').doc, '52998224725');
-    r = resp(); await N.notasPlataforma(req({ acao: 'tomador', gid: 'e9/x~p1', nome: 'X', doc: '52998224725' }, 'ok:dona'), r); assert.strictEqual(r.code, 404);
-    r = resp(); await N.notasPlataforma(req({ acao: 'emitir', mes: '2026-09' }, 'ok:dona'), r); assert.strictEqual(r.code, 412); // sem configuração fiscal
+    r = resp(); await N.notasPlataforma(req({ acao: 'tomador', gid: 'e9/x~p1', nome: 'X', doc: '52998224725' }, 'ok:dona:v'), r); assert.strictEqual(r.code, 404);
+    r = resp(); await N.notasPlataforma(req({ acao: 'emitir', mes: '2026-09' }, 'ok:dona:v'), r); assert.strictEqual(r.code, 412); // sem configuração fiscal
   });
   await t('notas: a administração vê só as notas da própria escola', async () => {
     S.set('servidor/nfse/notas/2026-09_e9~escola', { mes: '2026-09', eid: 'e9', rec: 'escola', status: 'ok', valor: 3.75, chave: 'CH1', ambiente: 'restrita' });
@@ -315,7 +316,7 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     set9('config/geral', { cidade: 'João Pessoa', uf: 'PB', mpConectadoEm: 1 }); set9('alunas/x1', { nome: 'A' }); set9('alunas/x2', { nome: 'B', ativa: false }); set9('membros/f1', {});
     set9('cobrancas/c6', { status: 'approved', rec: 'escola', fee: 1, valor: 100, criadoEm: Date.now() - 864e5, pagoEm: Date.now() - 864e5 });
     let r = resp(); await N.notasPlataforma(req({ acao: 'painel' }, 'ok:adm9'), r); assert.strictEqual(r.code, 403);
-    r = resp(); await N.notasPlataforma(req({ acao: 'painel' }, 'ok:dona'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    r = resp(); await N.notasPlataforma(req({ acao: 'painel' }, 'ok:dona:v'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
     const pb = r.body.cidades.find(c => c.nome === 'João Pessoa · PB');
     assert.deepStrictEqual([pb.escolas, pb.ativas, pb.alunos, pb.contas, pb.pagantes], [1, 1, 1, 2, 1]);
     assert.strictEqual(r.body.contas.total, 2); assert.ok(r.body.regioes.some(x => x.nome === 'Nordeste'));

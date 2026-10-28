@@ -33,8 +33,12 @@ const N = require('./nfse')(db, P.interno);
 exports.notasPlataforma = N.notasPlataforma;
 exports.notaComissao = N.notaComissao;
 // Todo dia às 10h (Recife): no dia 1º emite as notas do mês anterior; nos outros dias tenta de novo as pendentes.
+// Também apaga os registros de erro com mais de 90 dias.
 // Sem certificado instalado ou com a emissão desligada, não faz nada.
 exports.rotinaDiaria = onSchedule({ schedule: '0 10 * * *', timeZone: 'America/Recife', maxInstances: 1, memory: '512MiB', timeoutSeconds: 540 }, async () => {
   const hoje = new Date(Date.now() - 3 * 36e5).toISOString().slice(0, 10);
   try { await N.interno.tarefaDiaria(hoje); } catch (e) { logger.error('nota fiscal', e.message); }
+  // registro técnico de erros do app: apaga o que tem mais de 90 dias (como diz a Política de Privacidade)
+  try { const velhos = await db.collection('erros').where('em', '<', Date.now() - 90 * 864e5).limit(400).get(); const b = db.batch(); velhos.docs.forEach(d => b.delete(d.ref)); if (!velhos.empty) await b.commit(); }
+  catch (e) { logger.error('limpar erros', e.message); }
 });

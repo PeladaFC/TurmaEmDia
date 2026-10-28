@@ -166,6 +166,7 @@ module.exports = (db, PAG) => {
     const u = await PAG.usuario(req), em = String(u.email || '').toLowerCase();
     const d = (await ler('servidor/plataforma')) || {}, lista = (d.emails || []).map(x => String(x).toLowerCase().trim());
     if (!em || !lista.includes(em)) throw erro('Acesso só para a empresa do Turma em Dia.', 403);
+    if (u.email_verified !== true) throw erro('Confirme o seu e-mail para abrir o painel do dono.', 403);
     return u;
   }
   const mesOk = m => /^\d{4}-(0[1-9]|1[0-2])$/.test(m || '');

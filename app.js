@@ -95,7 +95,59 @@ const ERROS = {
   'network-request-failed': 'Sem internet. Verifique a conexão.', 'popup-closed-by-user': 'O login com Google foi fechado antes de terminar.',
   'permission-denied': 'Você não tem permissão para isso.', 'unavailable': 'Sem conexão com o servidor. Tente de novo.'
 };
-const msgErro = e => ERROS[e && e.code] || (e && e.message && !/firebase|undefined/i.test(e.message) ? e.message : 'Algo deu errado. Tente de novo.');
+const msgErroTexto = e => ERROS[e && e.code] || (e && e.message && !/firebase|undefined/i.test(e.message) ? e.message : 'Algo deu errado. Tente de novo.');
+// erros "esperados" (senha errada, sem internet...) não vão para o registro; o resto vai
+const ERROS_ESPERADOS = new Set(['invalid-credential', 'wrong-password', 'user-not-found', 'email-already-in-use', 'invalid-email', 'weak-password', 'too-many-requests', 'network-request-failed', 'popup-closed-by-user', 'unavailable', 'cancelled-popup-request', 'popup-blocked']);
+const msgErro = e => { try { if (e && ((e.code && !ERROS_ESPERADOS.has(e.code)) || e instanceof TypeError || e instanceof ReferenceError || e instanceof RangeError || e instanceof SyntaxError)) registrarErro(e, 'tratado'); } catch (x) { } return msgErroTexto(e); };
+
+/* ================= Registro técnico de erros =================
+   Erros de JavaScript, promessas rejeitadas sem tratamento e erros inesperados dos try/catch vão para a coleção "erros",
+   para o dono da plataforma ver (Painel do dono → Erros). Guarda só o necessário para achar o problema:
+   mensagem, stack, tela, ação (o botão tocado, nunca o texto digitado), ID da conta, versão, aparelho e data.
+   Números longos (CPF, telefone) e e-mails que aparecerem na mensagem são trocados por marcadores.
+   O mesmo erro da mesma pessoa vai no máximo uma vez a cada 10 minutos (no aparelho e no banco: o id do documento
+   inclui o intervalo de 10 minutos e as regras só deixam criar, nunca sobrescrever). */
+const VERSAO_APP = '2026.10.28';
+const DEZ_MIN = 10 * 60 * 1000;
+let TELA_SHEET = '', ULTIMA_ACAO = '', ERROS_FILA = [];
+const limpaErro = (x, max) => String(x == null ? '' : x)
+  .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]')
+  .replace(/\d[\d.\-\/() ]{6,}\d/g, '[número]')
+  .slice(0, max);
+const hashErro = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) >>> 0; return h.toString(36); };
+function telaAtual() {
+  const base = !EU ? 'login' : S ? `${S.papel === 'a' ? 'admin' : S.papel === 'p' ? 'professor' : 'familia'}/${S.tab}` : document.getElementById('abertura') ? 'abertura' : 'minhas-escolas';
+  return TELA_SHEET ? `${base} > ${TELA_SHEET}` : base;
+}
+// a ação: qual botão ou campo foi tocado (id ou atributo data-*), nunca o texto da tela
+document.addEventListener('click', e => {
+  try { const el = e.target && e.target.closest && e.target.closest('button,a,[data-ev],[data-tab],li.tap,input,select,label'); if (!el) return;
+    const dat = Object.keys(el.dataset || {})[0];
+    ULTIMA_ACAO = (el.id ? '#' + el.id : dat ? `[data-${dat.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}]` : el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : '')).slice(0, 80);
+  } catch (x) { }
+}, true);
+function registrarErro(err, origem) {
+  try {
+    const e = err instanceof Error ? err : new Error(typeof err === 'string' ? err : (err && err.message) || JSON.stringify(err || '').slice(0, 300));
+    const msg = limpaErro((e.code ? `[${e.code}] ` : '') + (e.message || 'erro sem mensagem'), 500), stack = limpaErro(e.stack || '', 4000);
+    if (/registro-erros|erros\//.test(stack) && /permission/i.test(msg)) return; // não registra o erro do próprio registro
+    const chave = hashErro(msg + '|' + (stack.split('\n')[1] || '')), agora = Date.now();
+    let vistos = {}; try { vistos = JSON.parse(ls.get('ted.errosVistos') || '{}'); } catch (x) { }
+    if (vistos[chave] && agora - vistos[chave] < DEZ_MIN) return;
+    vistos[chave] = agora; for (const k of Object.keys(vistos)) if (agora - vistos[k] > DEZ_MIN) delete vistos[k];
+    ls.set('ted.errosVistos', JSON.stringify(vistos));
+    const d = { msg, stack, tela: telaAtual().slice(0, 120), acao: ULTIMA_ACAO, versao: VERSAO_APP, aparelho: String(navigator.userAgent || '').slice(0, 250), em: agora, origem: String(origem || 'js').slice(0, 30), url: limpaErro(location.pathname + location.search, 200) };
+    ERROS_FILA.push({ chave, d }); if (ERROS_FILA.length > 5) ERROS_FILA.shift();
+    enviarErros();
+  } catch (x) { }
+}
+async function enviarErros() {
+  if (!EU || !B || !ERROS_FILA.length) return;
+  const fila = ERROS_FILA; ERROS_FILA = [];
+  for (const { chave, d } of fila) { try { await B.set(`erros/${EU.uid}_${chave}_${Math.floor(d.em / DEZ_MIN)}`, { ...d, uid: EU.uid }); } catch (x) { /* registro-erros: ignora */ } }
+}
+window.addEventListener('error', ev => { if (ev && (ev.error || ev.message)) registrarErro(ev.error || new Error(String(ev.message) + (ev.filename ? ` (${String(ev.filename).split('/').pop()}:${ev.lineno})` : '')), 'js'); });
+window.addEventListener('unhandledrejection', ev => registrarErro(ev && ev.reason, 'promessa'));
 function aviso(m) { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(aviso.t); aviso.t = setTimeout(() => t.hidden = true, 3200); }
 async function copiar(txt, ok) { try { await navigator.clipboard.writeText(txt); aviso(ok || 'Copiado'); } catch (e) { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); aviso(ok || 'Copiado'); } catch (_) { aviso('Não deu para copiar. Selecione o texto e copie.'); } ta.remove(); } }
 function qrSVG(txt) { if (typeof qrcode !== 'function') return ''; const q = qrcode(0, 'M'); q.addData(txt); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
@@ -387,7 +439,7 @@ async function servidor(nome, corpo) {
   const t = await B.token().catch(() => null); if (!t) throw new Error('Entre na sua conta de novo.');
   let r; try { r = await fetch(URLF(nome), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify(corpo) }); }
   catch (e) { throw new Error('Sem conexão com o servidor. Tente de novo.'); }
-  const j = await r.json().catch(() => ({})); if (!r.ok) throw Object.assign(new Error(j.erro || 'Não deu certo agora. Tente de novo.'), { code: j.codigo || '' });
+  const j = await r.json().catch(() => ({})); if (!r.ok) { const x = Object.assign(new Error(j.erro || 'Não deu certo agora. Tente de novo.'), { code: j.codigo || '' }); if (r.status >= 500) registrarErro(Object.assign(new Error(`servidor ${nome} respondeu ${r.status}: ${j.erro || ''}`), { stack: '' }), 'servidor'); throw x; }
   return j;
 }
 async function convitesPara(u) {
@@ -569,6 +621,7 @@ let ABAS_ATUAIS = [];
   document.addEventListener('touchend', fim); document.addEventListener('touchcancel', fim);
 })();
 function sheet(html, montar, aoFechar) {
+  try { const l = (new Error().stack || '').split('\n').map(x => (x.match(/(?:at\s+)?([A-Za-z_$][\w$]*)/) || [])[1]).filter(x => x && !['Error', 'sheet', 'at', 'async'].includes(x)); TELA_SHEET = l[0] || 'janela'; } catch (x) { TELA_SHEET = 'janela'; }
   if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); }
   SHEET_VOLTAR = PROX_VOLTAR; PROX_VOLTAR = null; travarFundo(true);
   $('overlay').innerHTML = `<div class="sheet-bg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
@@ -577,7 +630,7 @@ function sheet(html, montar, aoFechar) {
   SHEET_FECHA = aoFechar || null;
   montar && montar($('overlay').querySelector('.sheet'));
 }
-function fecharSheet() { if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); } SHEET_VOLTAR = null; $('overlay').innerHTML = ''; travarFundo(false); }
+function fecharSheet() { TELA_SHEET = ''; if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); } SHEET_VOLTAR = null; $('overlay').innerHTML = ''; travarFundo(false); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('overlay').innerHTML) fecharSheet(); });
 function confirmar(titulo, texto, botao, acao) {
   sheet(`<h3>${esc(titulo)}</h3><p class="sub" style="margin:0">${texto}</p><div class="err" id="kerr" role="alert"></div>
@@ -2628,7 +2681,9 @@ function ligarNotasPlataforma(volta) {
   const mostrar = () => { const el = $('jnotasplat'); if (!el || !NOTAS_PLAT) return;
     el.innerHTML = '<button type="button" class="linha-botao" id="jnfplat"><span class="grow"><b>Painel do dono</b><span class="s">Uso do app por região e notas fiscais da comissão</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>';
     $('jnfplat').onclick = () => abrirDe(volta, () => sheetPainelDono()); };
-  if (NOTAS_PLAT === undefined) { NOTAS_PLAT = null; notasServidor('acesso').then(() => { NOTAS_PLAT = true; mostrar(); }, () => { NOTAS_PLAT = false; }); }
+  if (NOTAS_PLAT === undefined) { NOTAS_PLAT = null; notasServidor('acesso').then(() => { NOTAS_PLAT = true; mostrar(); }, e => { NOTAS_PLAT = false;
+    // dono com e-mail ainda não confirmado: mostra como confirmar
+    const el = $('jnotasplat'); if (el && /Confirme o seu e-mail/.test(e && e.message || '')) { el.innerHTML = '<div class="banner"><span><b>Painel do dono:</b> confirme o seu e-mail para abrir.</span><button id="jverif">Enviar e-mail</button></div>'; $('jverif').onclick = async () => { try { await B.verificarEmail(); aviso('E-mail enviado. Abra o link e depois entre de novo no app.'); } catch (x) { aviso(msgErroTexto(x)); } }; NOTAS_PLAT = undefined; } }); }
   else mostrar();
 }
 const fmtDoc = d => d && d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : d && d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '';
@@ -2696,8 +2751,35 @@ async function sheetNotasPlataforma(mes, editar) {
   });
 }
 // abas do painel do dono: visão geral e notas fiscais
-const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Visão geral</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas fiscais</button></div>`;
-function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; b.dataset.dono === 'geral' ? sheetPainelDono() : sheetNotasPlataforma(); }); }
+const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Visão geral</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas fiscais</button><button type="button" data-dono="erros" aria-pressed="${at === 'erros'}">Erros</button></div>`;
+function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; ({ geral: sheetPainelDono, notas: sheetNotasPlataforma, erros: sheetErros })[b.dataset.dono](); }); }
+// registro técnico de erros, agrupado pela mensagem (só o dono da plataforma lê: regras do Firestore)
+function lerErros() { return new Promise((ok, falha) => { let u = null; u = B.ouvirCol('erros', docs => { ok(docs); setTimeout(() => u && u(), 0); }, e => falha(e)); }); }
+async function sheetErros() {
+  const desenhar = (corpo, ligar) => sheet(`${abasDono('erros')}<h3>Erros do app</h3><div class="sub">Registro técnico automático, agrupado pela mensagem. Sem nome, CPF, telefone nem dados de saúde. Apagado sozinho depois de 90 dias.</div>${corpo}<button class="btn ghost" data-fechar>Fechar</button>`, sh => { ligarAbasDono(); ligar && ligar(sh); });
+  desenhar('<div class="empty">Buscando os erros…</div>');
+  let docs; try { docs = await lerErros(); } catch (e) { return desenhar(`<div class="banner"><span>${esc(msgErroTexto(e))}</span></div>`); }
+  const G = {};
+  for (const { id, data: d } of docs) { const g = G[d.msg] = G[d.msg] || { msg: d.msg, n: 0, ids: [], uids: new Set(), telas: new Set(), acoes: new Set(), versoes: new Set(), aparelhos: new Set(), ultimo: null, primeiro: Infinity };
+    g.n++; g.ids.push(id); g.uids.add(d.uid); if (d.tela) g.telas.add(d.tela); if (d.acao) g.acoes.add(d.acao); if (d.versao) g.versoes.add(d.versao); if (d.aparelho) g.aparelhos.add(d.aparelho);
+    g.primeiro = Math.min(g.primeiro, d.em || 0); if (!g.ultimo || (d.em || 0) > g.ultimo.em) g.ultimo = d; }
+  const L = Object.values(G).sort((a, b) => b.ultimo.em - a.ultimo.em);
+  const quando = ms => new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const detalhe = g => [`Erro: ${g.msg}`, `Vezes: ${g.n} (${g.uids.size} conta${g.uids.size === 1 ? '' : 's'})`, `Primeira: ${new Date(g.primeiro).toLocaleString('pt-BR')} · Última: ${new Date(g.ultimo.em).toLocaleString('pt-BR')}`,
+    `Telas: ${[...g.telas].join(' | ')}`, `Ações: ${[...g.acoes].join(' | ')}`, `Versões: ${[...g.versoes].join(', ')}`, `Origem: ${g.ultimo.origem || ''}`, `Aparelho (último): ${g.ultimo.aparelho || ''}`, `Endereço: ${g.ultimo.url || ''}`, '', 'Stack (último):', g.ultimo.stack || '(sem stack)'].join('\n');
+  desenhar(!L.length ? '<div class="empty"><span>Nenhum erro registrado. 🎉</span></div>' : `
+    <div class="conta">${contaL(`${L.length} tipo${L.length === 1 ? '' : 's'} de erro`, `<b>${docs.length} registro${docs.length === 1 ? '' : 's'}</b>`, 'total')}</div>
+    <ul class="list">${L.map((g, i) => `<li class="nf-card"><div class="grow"><div class="nf-lin"><b class="erro-msg">${esc(g.msg)}</b><b class="num">${g.n}×</b></div>
+      <span class="s">${g.uids.size} conta${g.uids.size === 1 ? '' : 's'} · última vez ${quando(g.ultimo.em)} · versão ${esc([...g.versoes].join(', '))}</span>
+      <span class="s">Tela: ${esc([...g.telas].slice(0, 3).join(' | '))}${g.acoes.size ? ` · ação: ${esc([...g.acoes].slice(0, 3).join(', '))}` : ''}</span>
+      <div class="nf-acoes"><button type="button" class="btn btn-mini" data-ecop="${i}">Copiar detalhe</button><button type="button" class="btn ghost btn-mini" data-edel="${i}">Apagar</button></div></div></li>`).join('')}</ul>
+    <button type="button" class="btn ghost" id="eapagtudo" style="color:var(--out)">Apagar todos os erros</button>`, sh => {
+    sh.querySelectorAll('[data-ecop]').forEach(b => b.onclick = () => copiar(detalhe(L[Number(b.dataset.ecop)]), 'Detalhe copiado. Cole na conversa.'));
+    const apagar = async ids => { for (let i = 0; i < ids.length; i += 400) await B.lote(ids.slice(i, i + 400).map(id => ({ op: 'del', p: 'erros/' + id }))); };
+    sh.querySelectorAll('[data-edel]').forEach(b => b.onclick = async () => { b.disabled = true; try { await apagar(L[Number(b.dataset.edel)].ids); aviso('Apagado'); sheetErros(); } catch (e) { aviso(msgErroTexto(e)); b.disabled = false; } });
+    if ($('eapagtudo')) $('eapagtudo').onclick = () => abrirDe(sheetErros, () => confirmar('Apagar todos os erros?', 'O registro técnico fica vazio. Os erros novos continuam sendo registrados.', 'Apagar', async () => { await apagar(L.flatMap(g => g.ids)); setTimeout(sheetErros, 60); }));
+  });
+}
 const REG_ORDEM = ['Nordeste', 'Sudeste', 'Sul', 'Centro-Oeste', 'Norte', 'Sem cidade informada'];
 let PAINEL = null, PAINEL_MET = 'escolas';
 function painelMock() { const r = (nome, escolas, ativas, alunos, contas, pagantes) => ({ nome, escolas, ativas, alunos, contas, pagantes, comissaoMes: pagantes * 18.2 });
@@ -3562,6 +3644,7 @@ async function semearMock() {
     pararOuvintes(); fecharSheet(); EU = u; $('toast').hidden = true;
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
     if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
+    if (u) setTimeout(enviarErros, 3000); // erros guardados antes do login
     // sem conta (abriu sem login ou saiu da conta): a apresentação do app aparece de novo antes do login
     if (!u) { S = null; INTRO_VISTA = false; sairAbertura(); return telaLogin(); }
     const perfil = await B.get('users/' + u.uid).catch(() => null);

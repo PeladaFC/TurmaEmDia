@@ -27,6 +27,24 @@ service cloud.firestore {
     match /servidor/{doc=**} { allow read, write: if false; }
     match /convitesAdm/{doc} { allow read, write: if false; }
 
+    // Registro técnico de erros do app: quem está logado só cria (o próprio, sem dados pessoais, com tamanho limitado);
+    // só o dono da plataforma (e-mails em servidor/plataforma, com e-mail confirmado) lê e apaga. Os admins das escolas não.
+    function donoPlataforma() {
+      return logado() && request.auth.token.email_verified == true && request.auth.token.email is string
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/servidor/plataforma).data.get('emails', []);
+    }
+    function textoAte(d, campo, max) { return !(campo in d) || (d[campo] is string && d[campo].size() <= max); }
+    match /erros/{id} {
+      allow create: if logado() && id.matches('^' + eu() + '_[a-z0-9]{1,12}_[0-9]{1,12}$')
+        && request.resource.data.uid == eu()
+        && request.resource.data.keys().hasOnly(['msg', 'stack', 'tela', 'acao', 'uid', 'versao', 'aparelho', 'em', 'origem', 'url'])
+        && request.resource.data.msg is string && request.resource.data.msg.size() <= 500
+        && textoAte(request.resource.data, 'stack', 4000) && textoAte(request.resource.data, 'tela', 120) && textoAte(request.resource.data, 'acao', 80)
+        && textoAte(request.resource.data, 'versao', 20) && textoAte(request.resource.data, 'aparelho', 250) && textoAte(request.resource.data, 'origem', 30) && textoAte(request.resource.data, 'url', 200)
+        && request.resource.data.em is int;
+      allow read, delete: if donoPlataforma();
+    }
+
     // Código do responsável → escola + cadastro do responsável.
     match /codigos/{codigo} {
       allow get: if logado();
