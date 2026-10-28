@@ -17,6 +17,13 @@ echo "==> Instalando dependências do servidor"
 echo "==> Testando a nota fiscal (sem certificado, sem enviar nada)"
 node functions/teste-nfse.mjs || echo "    ⚠️  o teste da nota fiscal falhou (o resto continua). Mande uma foto desta parte."
 gcloud config set project "$PROJ" >/dev/null 2>&1 || true
+echo "==> Registro de erros: apagar sozinho depois de 90 dias"
+if gcloud firestore fields ttls list --project "$PROJ" --format='value(name)' 2>/dev/null | grep -q "erros/fields/expiraEm"; then
+  echo "    já está ligado"
+else
+  gcloud firestore fields ttls update expiraEm --collection-group=erros --enable-ttl --async --project "$PROJ" >/dev/null 2>&1 \
+    && echo "    ligado" || echo "    ⚠️  não deu para ligar agora (o resto continua; a rotina diária do servidor também apaga)."
+fi
 FB="npx --yes firebase-tools@latest"
 publicar() { $FB deploy --only functions,firestore:rules --project "$PROJ" --force --non-interactive; }
 # Se o Google falhar em alguma função (acontece de vez em quando, principalmente na primeira vez), publica uma por uma.

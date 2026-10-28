@@ -37,12 +37,16 @@ service cloud.firestore {
     match /erros/{id} {
       allow create: if logado() && id.matches('^' + eu() + '_[a-z0-9]{1,12}_[0-9]{1,12}$')
         && request.resource.data.uid == eu()
-        && request.resource.data.keys().hasOnly(['msg', 'stack', 'tela', 'acao', 'uid', 'versao', 'aparelho', 'em', 'origem', 'url'])
+        && request.resource.data.keys().hasOnly(['msg', 'stack', 'chave', 'cod', 'tela', 'acao', 'uid', 'versao', 'aparelho', 'telaPx', 'pwa', 'em', 'expiraEm', 'origem', 'url'])
         && request.resource.data.msg is string && request.resource.data.msg.size() <= 500
-        && textoAte(request.resource.data, 'stack', 4000) && textoAte(request.resource.data, 'tela', 120) && textoAte(request.resource.data, 'acao', 80)
-        && textoAte(request.resource.data, 'versao', 20) && textoAte(request.resource.data, 'aparelho', 250) && textoAte(request.resource.data, 'origem', 30) && textoAte(request.resource.data, 'url', 200)
-        && request.resource.data.em is int;
-      allow read, delete: if donoPlataforma();
+        && textoAte(request.resource.data, 'stack', 4000) && textoAte(request.resource.data, 'chave', 20) && textoAte(request.resource.data, 'cod', 60)
+        && textoAte(request.resource.data, 'tela', 120) && textoAte(request.resource.data, 'acao', 80) && textoAte(request.resource.data, 'versao', 20)
+        && textoAte(request.resource.data, 'aparelho', 250) && textoAte(request.resource.data, 'telaPx', 20) && textoAte(request.resource.data, 'origem', 30) && textoAte(request.resource.data, 'url', 200)
+        && (!('pwa' in request.resource.data) || request.resource.data.pwa is bool)
+        && request.resource.data.em is int && request.resource.data.expiraEm is timestamp;
+      // o dono lê e apaga tudo; cada pessoa só os próprios (para apagar quando pede a exclusão dos dados)
+      allow read, delete: if donoPlataforma() || (logado() && resource.data.uid == eu());
+      allow update: if false;
     }
 
     // Código do responsável → escola + cadastro do responsável.

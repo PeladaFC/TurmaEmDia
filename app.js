@@ -34,6 +34,8 @@ async function backendReal() {
     tirar: (p, campo) => F.updateDoc(ref(p), { [campo]: F.deleteField() }).catch(erro),
     del: p => F.deleteDoc(ref(p)).catch(erro),
     ouvirDoc: (p, cb, err) => F.onSnapshot(ref(p), s => cb(s.exists() ? s.data() : null), e => err && err(e)),
+    ultimos: async (p, campo, n) => (await F.getDocs(F.query(F.collection(fs, p), F.orderBy(campo, 'desc'), F.limit(n))).catch(erro)).docs.map(d => ({ id: d.id, data: d.data() })),
+    meus: async (p, campo, v) => (await F.getDocs(F.query(F.collection(fs, p), F.where(campo, '==', v))).catch(erro)).docs.map(d => d.id),
     ouvirCol: (p, cb, err, onde) => F.onSnapshot(onde ? F.query(F.collection(fs, p), F.where(onde[0], '==', onde[1])) : F.collection(fs, p), s => cb(lista(s)), e => err && err(e)),
     lote: async ops => { const b = F.writeBatch(fs); for (const o of ops) { if (o.op === 'del') b.delete(ref(o.p)); else b.set(ref(o.p), o.d, o.op === 'merge' ? { merge: true } : {}); } await b.commit().catch(erro); }
   };
@@ -64,6 +66,8 @@ function backendMock() {
     tirar: async (p, campo) => { const d = clone(store.get(p)) || {}; const ks = campo.split('.'); let o = d; for (const k of ks.slice(0, -1)) o = o[k] || {}; delete o[ks.at(-1)]; store.set(p, d); fire(p); },
     del: async p => { store.delete(p); fire(p); },
     ouvirDoc: (p, cb) => { setTimeout(() => cb(clone(store.get(p)) ?? null), 0); if (!docL.has(p)) docL.set(p, []); docL.get(p).push(cb); return () => docL.set(p, docL.get(p).filter(x => x !== cb)); },
+    ultimos: async (p, campo, n) => colDocs(p).sort((a, b) => (b.data[campo] || 0) - (a.data[campo] || 0)).slice(0, n),
+    meus: async (p, campo, v) => colDocs(p, [campo, v]).map(d => d.id),
     ouvirCol: (c, cb, err, onde) => { const l = { c, cb, onde }; setTimeout(() => cb(colDocs(c, onde)), 0); colL.push(l); return () => { const i = colL.indexOf(l); if (i >= 0) colL.splice(i, 1); }; },
     lote: async ops => { for (const o of ops) { if (o.op === 'del') await api.del(o.p); else await api.set(o.p, o.d, { merge: o.op === 'merge' }); } }
   };
@@ -97,26 +101,26 @@ const ERROS = {
 };
 const msgErroTexto = e => ERROS[e && e.code] || (e && e.message && !/firebase|undefined/i.test(e.message) ? e.message : 'Algo deu errado. Tente de novo.');
 // erros "esperados" (senha errada, sem internet...) não vão para o registro; o resto vai
-const ERROS_ESPERADOS = new Set(['invalid-credential', 'wrong-password', 'user-not-found', 'email-already-in-use', 'invalid-email', 'weak-password', 'too-many-requests', 'network-request-failed', 'popup-closed-by-user', 'unavailable', 'cancelled-popup-request', 'popup-blocked']);
+const ERROS_ESPERADOS = new Set(['invalid-credential', 'wrong-password', 'user-not-found', 'email-already-in-use', 'invalid-email', 'weak-password', 'missing-password', 'too-many-requests', 'network-request-failed', 'popup-closed-by-user', 'unavailable', 'cancelled-popup-request', 'popup-blocked']);
 const msgErro = e => { try { if (e && ((e.code && !ERROS_ESPERADOS.has(e.code)) || e instanceof TypeError || e instanceof ReferenceError || e instanceof RangeError || e instanceof SyntaxError)) registrarErro(e, 'tratado'); } catch (x) { } return msgErroTexto(e); };
 
-/* ================= Registro técnico de erros =================
-   Erros de JavaScript, promessas rejeitadas sem tratamento e erros inesperados dos try/catch vão para a coleção "erros",
-   para o dono da plataforma ver (Painel do dono → Erros). Guarda só o necessário para achar o problema:
-   mensagem, stack, tela, ação (o botão tocado, nunca o texto digitado), ID da conta, versão, aparelho e data.
-   Números longos (CPF, telefone) e e-mails que aparecerem na mensagem são trocados por marcadores.
-   O mesmo erro da mesma pessoa vai no máximo uma vez a cada 10 minutos (no aparelho e no banco: o id do documento
-   inclui o intervalo de 10 minutos e as regras só deixam criar, nunca sobrescrever). */
+/* ================= Registro técnico de erros (igual ao Pelota FC) =================
+   Erros de JavaScript, promessas rejeitadas, erros mostrados no console e erros inesperados dos try/catch vão para a
+   coleção "erros", para o dono da plataforma ver (Painel do dono → Erros). Guarda só o necessário para achar o problema:
+   mensagem, stack, código, tela, ação (o botão tocado, nunca o texto digitado), ID da conta, versão, aparelho, tamanho
+   da tela, se o app está instalado e a data. Números longos (CPF, telefone) e e-mails são trocados por marcadores.
+   O mesmo erro da mesma pessoa vai no máximo uma vez a cada 10 minutos: no aparelho e no banco (o id do documento inclui
+   o intervalo de 10 minutos e as regras só deixam criar, nunca sobrescrever). No máximo 30 registros por abertura do app.
+   Some sozinho depois de 90 dias (expiraEm, com a rotina diária do servidor). */
 const VERSAO_APP = '2026.10.28';
 const DEZ_MIN = 10 * 60 * 1000;
-let TELA_SHEET = '', ULTIMA_ACAO = '', ERROS_FILA = [];
-const limpaErro = (x, max) => String(x == null ? '' : x)
-  .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]')
-  .replace(/\d[\d.\-\/() ]{6,}\d/g, '[número]')
-  .slice(0, max);
+const ERR_IGNORA = /ResizeObserver loop|^Script error\.?$|Load failed|Failed to fetch|NetworkError|AbortError|operation was aborted|Sem conexão com o servidor/i;
+let TELA_SHEET = '', ULTIMA_ACAO = '', ERROS_FILA = [], ERR_N = 0, ERR_ENVIANDO = false; const ERR_MEM = {};
+const limpaErro = (x, max) => String(x == null ? '' : x).replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[email]').replace(/\d[\d.\-\/() ]{6,}\d/g, '[número]').slice(0, max);
 const hashErro = t => { let h = 5381; for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) >>> 0; return h.toString(36); };
 function telaAtual() {
-  const base = !EU ? 'login' : S ? `${S.papel === 'a' ? 'admin' : S.papel === 'p' ? 'professor' : 'familia'}/${S.tab}` : document.getElementById('abertura') ? 'abertura' : 'minhas-escolas';
+  let base = 'inicio';
+  try { base = !EU ? 'login' : S ? `${S.papel === 'a' ? 'admin' : S.papel === 'p' ? 'professor' : 'familia'}/${S.tab}` : document.getElementById('abertura') ? 'abertura' : 'minhas-escolas'; } catch (x) { }
   return TELA_SHEET ? `${base} > ${TELA_SHEET}` : base;
 }
 // a ação: qual botão ou campo foi tocado (id ou atributo data-*), nunca o texto da tela
@@ -128,26 +132,37 @@ document.addEventListener('click', e => {
 }, true);
 function registrarErro(err, origem) {
   try {
-    const e = err instanceof Error ? err : new Error(typeof err === 'string' ? err : (err && err.message) || JSON.stringify(err || '').slice(0, 300));
-    const msg = limpaErro((e.code ? `[${e.code}] ` : '') + (e.message || 'erro sem mensagem'), 500), stack = limpaErro(e.stack || '', 4000);
-    if (/registro-erros|erros\//.test(stack) && /permission/i.test(msg)) return; // não registra o erro do próprio registro
-    const chave = hashErro(msg + '|' + (stack.split('\n')[1] || '')), agora = Date.now();
-    let vistos = {}; try { vistos = JSON.parse(ls.get('ted.errosVistos') || '{}'); } catch (x) { }
-    if (vistos[chave] && agora - vistos[chave] < DEZ_MIN) return;
-    vistos[chave] = agora; for (const k of Object.keys(vistos)) if (agora - vistos[k] > DEZ_MIN) delete vistos[k];
+    if (!err || ERR_ENVIANDO) return;
+    const e = err instanceof Error ? err : typeof err === 'string' ? new Error(err) : Object.assign(new Error((err && (err.message || err.reason)) || JSON.stringify(err).slice(0, 300)), { code: err.code, status: err.status, stack: err.stack || '' });
+    const cod = String(e.code || '').replace(/^(auth|firestore)\//, '');
+    const msg = limpaErro((cod ? `[${cod}] ` : '') + (e.message || 'erro sem mensagem'), 500);
+    if (ERR_IGNORA.test(e.message || '') || ERROS_ESPERADOS.has(cod) || [400, 401, 403, 404, 409].includes(e.status) || ERR_N >= 30) return;
+    const stack = limpaErro(e.stack || '', 4000);
+    const chave = hashErro(msg + '|' + (stack.split('\n').find(l => /:\d+:\d+/.test(l)) || '')), agora = Date.now();
+    let uid = ''; try { uid = (EU && EU.uid) || ''; } catch (x) { }
+    const k = chave + '.' + uid; let vistos = {}; try { vistos = JSON.parse(ls.get('ted.errosVistos') || '{}'); } catch (x) { }
+    if (agora - Math.max(ERR_MEM[k] || 0, vistos[k] || 0) < DEZ_MIN) return;
+    ERR_MEM[k] = agora; vistos[k] = agora; for (const x of Object.keys(vistos)) if (agora - vistos[x] > DEZ_MIN) delete vistos[x];
     ls.set('ted.errosVistos', JSON.stringify(vistos));
-    const d = { msg, stack, tela: telaAtual().slice(0, 120), acao: ULTIMA_ACAO, versao: VERSAO_APP, aparelho: String(navigator.userAgent || '').slice(0, 250), em: agora, origem: String(origem || 'js').slice(0, 30), url: limpaErro(location.pathname + location.search, 200) };
-    ERROS_FILA.push({ chave, d }); if (ERROS_FILA.length > 5) ERROS_FILA.shift();
+    ERR_N++;
+    const d = { msg, stack, chave, cod: cod.slice(0, 60), tela: telaAtual().slice(0, 120), acao: ULTIMA_ACAO, origem: String(origem || 'js').slice(0, 30), versao: VERSAO_APP,
+      aparelho: String(navigator.userAgent || '').slice(0, 250), telaPx: `${innerWidth}x${innerHeight}`, pwa: !!(window.matchMedia && matchMedia('(display-mode: standalone)').matches || navigator.standalone),
+      url: limpaErro(location.pathname + location.search, 200), em: agora, expiraEm: new Date(agora + 90 * 864e5) };
+    ERROS_FILA.push(d); if (ERROS_FILA.length > 5) ERROS_FILA.shift();
     enviarErros();
   } catch (x) { }
 }
+window.registrarErro = registrarErro;
 async function enviarErros() {
-  if (!EU || !B || !ERROS_FILA.length) return;
+  let uid = ''; try { uid = (EU && EU.uid) || ''; } catch (x) { }
+  if (!uid || !B || !ERROS_FILA.length) return;
   const fila = ERROS_FILA; ERROS_FILA = [];
-  for (const { chave, d } of fila) { try { await B.set(`erros/${EU.uid}_${chave}_${Math.floor(d.em / DEZ_MIN)}`, { ...d, uid: EU.uid }); } catch (x) { /* registro-erros: ignora */ } }
+  for (const d of fila) { ERR_ENVIANDO = true; try { await B.set(`erros/${uid}_${d.chave}_${Math.floor(d.em / DEZ_MIN)}`, { ...d, uid }); } catch (x) { } finally { ERR_ENVIANDO = false; } }
 }
-window.addEventListener('error', ev => { if (ev && (ev.error || ev.message)) registrarErro(ev.error || new Error(String(ev.message) + (ev.filename ? ` (${String(ev.filename).split('/').pop()}:${ev.lineno})` : '')), 'js'); });
-window.addEventListener('unhandledrejection', ev => registrarErro(ev && ev.reason, 'promessa'));
+window.addEventListener('error', ev => { if (ev && (ev.error || ev.message)) registrarErro(ev.error || { message: String(ev.message), stack: `${ev.filename || ''}:${ev.lineno || 0}:${ev.colno || 0}` }, 'janela'); });
+window.addEventListener('unhandledrejection', ev => { const r = ev && ev.reason; registrarErro(r instanceof Error ? r : { message: 'Promessa rejeitada: ' + ((r && (r.message || r)) || ''), stack: (r && r.stack) || '', code: r && r.code }, 'promessa'); });
+// erros mostrados no console (console.warn/console.error com um erro dentro)
+['warn', 'error'].forEach(n => { const orig = console[n].bind(console); console[n] = (...a) => { orig(...a); try { const e = a.find(x => x instanceof Error || (x && typeof x === 'object' && x.message && (x.stack || x.code))); if (e) registrarErro(e, 'console'); } catch (x) { } }; });
 function aviso(m) { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(aviso.t); aviso.t = setTimeout(() => t.hidden = true, 3200); }
 async function copiar(txt, ok) { try { await navigator.clipboard.writeText(txt); aviso(ok || 'Copiado'); } catch (e) { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); aviso(ok || 'Copiado'); } catch (_) { aviso('Não deu para copiar. Selecione o texto e copie.'); } ta.remove(); } }
 function qrSVG(txt) { if (typeof qrcode !== 'function') return ''; const q = qrcode(0, 'M'); q.addData(txt); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
@@ -2753,31 +2768,42 @@ async function sheetNotasPlataforma(mes, editar) {
 // abas do painel do dono: visão geral e notas fiscais
 const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Visão geral</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas fiscais</button><button type="button" data-dono="erros" aria-pressed="${at === 'erros'}">Erros</button></div>`;
 function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; ({ geral: sheetPainelDono, notas: sheetNotasPlataforma, erros: sheetErros })[b.dataset.dono](); }); }
-// registro técnico de erros, agrupado pela mensagem (só o dono da plataforma lê: regras do Firestore)
-function lerErros() { return new Promise((ok, falha) => { let u = null; u = B.ouvirCol('erros', docs => { ok(docs); setTimeout(() => u && u(), 0); }, e => falha(e)); }); }
-async function sheetErros() {
-  const desenhar = (corpo, ligar) => sheet(`${abasDono('erros')}<h3>Erros do app</h3><div class="sub">Registro técnico automático, agrupado pela mensagem. Sem nome, CPF, telefone nem dados de saúde. Apagado sozinho depois de 90 dias.</div>${corpo}<button class="btn ghost" data-fechar>Fechar</button>`, sh => { ligarAbasDono(); ligar && ligar(sh); });
-  desenhar('<div class="empty">Buscando os erros…</div>');
-  let docs; try { docs = await lerErros(); } catch (e) { return desenhar(`<div class="banner"><span>${esc(msgErroTexto(e))}</span></div>`); }
+// registro técnico de erros, agrupado pelo tipo de erro (só o dono da plataforma lê: regras do Firestore)
+const topN = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${k} (${v})`).join(', ') || '—';
+const dataHoraErro = ms => new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+function gruposErros(lista) {
   const G = {};
-  for (const { id, data: d } of docs) { const g = G[d.msg] = G[d.msg] || { msg: d.msg, n: 0, ids: [], uids: new Set(), telas: new Set(), acoes: new Set(), versoes: new Set(), aparelhos: new Set(), ultimo: null, primeiro: Infinity };
-    g.n++; g.ids.push(id); g.uids.add(d.uid); if (d.tela) g.telas.add(d.tela); if (d.acao) g.acoes.add(d.acao); if (d.versao) g.versoes.add(d.versao); if (d.aparelho) g.aparelhos.add(d.aparelho);
-    g.primeiro = Math.min(g.primeiro, d.em || 0); if (!g.ultimo || (d.em || 0) > g.ultimo.em) g.ultimo = d; }
-  const L = Object.values(G).sort((a, b) => b.ultimo.em - a.ultimo.em);
-  const quando = ms => new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const detalhe = g => [`Erro: ${g.msg}`, `Vezes: ${g.n} (${g.uids.size} conta${g.uids.size === 1 ? '' : 's'})`, `Primeira: ${new Date(g.primeiro).toLocaleString('pt-BR')} · Última: ${new Date(g.ultimo.em).toLocaleString('pt-BR')}`,
-    `Telas: ${[...g.telas].join(' | ')}`, `Ações: ${[...g.acoes].join(' | ')}`, `Versões: ${[...g.versoes].join(', ')}`, `Origem: ${g.ultimo.origem || ''}`, `Aparelho (último): ${g.ultimo.aparelho || ''}`, `Endereço: ${g.ultimo.url || ''}`, '', 'Stack (último):', g.ultimo.stack || '(sem stack)'].join('\n');
-  desenhar(!L.length ? '<div class="empty"><span>Nenhum erro registrado. 🎉</span></div>' : `
-    <div class="conta">${contaL(`${L.length} tipo${L.length === 1 ? '' : 's'} de erro`, `<b>${docs.length} registro${docs.length === 1 ? '' : 's'}</b>`, 'total')}</div>
-    <ul class="list">${L.map((g, i) => `<li class="nf-card"><div class="grow"><div class="nf-lin"><b class="erro-msg">${esc(g.msg)}</b><b class="num">${g.n}×</b></div>
-      <span class="s">${g.uids.size} conta${g.uids.size === 1 ? '' : 's'} · última vez ${quando(g.ultimo.em)} · versão ${esc([...g.versoes].join(', '))}</span>
-      <span class="s">Tela: ${esc([...g.telas].slice(0, 3).join(' | '))}${g.acoes.size ? ` · ação: ${esc([...g.acoes].slice(0, 3).join(', '))}` : ''}</span>
-      <div class="nf-acoes"><button type="button" class="btn btn-mini" data-ecop="${i}">Copiar detalhe</button><button type="button" class="btn ghost btn-mini" data-edel="${i}">Apagar</button></div></div></li>`).join('')}</ul>
-    <button type="button" class="btn ghost" id="eapagtudo" style="color:var(--out)">Apagar todos os erros</button>`, sh => {
-    sh.querySelectorAll('[data-ecop]').forEach(b => b.onclick = () => copiar(detalhe(L[Number(b.dataset.ecop)]), 'Detalhe copiado. Cole na conversa.'));
-    const apagar = async ids => { for (let i = 0; i < ids.length; i += 400) await B.lote(ids.slice(i, i + 400).map(id => ({ op: 'del', p: 'erros/' + id }))); };
-    sh.querySelectorAll('[data-edel]').forEach(b => b.onclick = async () => { b.disabled = true; try { await apagar(L[Number(b.dataset.edel)].ids); aviso('Apagado'); sheetErros(); } catch (e) { aviso(msgErroTexto(e)); b.disabled = false; } });
-    if ($('eapagtudo')) $('eapagtudo').onclick = () => abrirDe(sheetErros, () => confirmar('Apagar todos os erros?', 'O registro técnico fica vazio. Os erros novos continuam sendo registrados.', 'Apagar', async () => { await apagar(L.flatMap(g => g.ids)); setTimeout(sheetErros, 60); }));
+  for (const { id, data: d } of lista) { const k = d.chave || d.msg; const g = G[k] = G[k] || { chave: k, msg: d.msg, ids: [], uids: new Set(), versoes: new Set(), telas: {}, acoes: {}, primeiro: d.em, ultimo: 0, ult: d };
+    g.ids.push(id); if (d.uid) g.uids.add(d.uid); if (d.versao) g.versoes.add(d.versao); if (d.tela) g.telas[d.tela] = (g.telas[d.tela] || 0) + 1; if (d.acao) g.acoes[d.acao] = (g.acoes[d.acao] || 0) + 1;
+    if (d.em < g.primeiro) g.primeiro = d.em; if (d.em > g.ultimo) { g.ultimo = d.em; g.ult = d; } }
+  return Object.values(G).sort((a, b) => b.ids.length - a.ids.length || b.ultimo - a.ultimo);
+}
+function textoErro(g) { const d = g.ult;
+  return ['Turma em Dia · erro registrado', `Mensagem: ${g.msg}`, d.cod ? `Código: ${d.cod}` : '', `Vezes: ${g.ids.length} · pessoas: ${g.uids.size}`, `Primeira: ${dataHoraErro(g.primeiro)} · última: ${dataHoraErro(g.ultimo)}`,
+    `Versões: ${[...g.versoes].join(', ') || '—'}`, `Telas: ${topN(g.telas, 5)}`, `Ações: ${topN(g.acoes, 5)}`, `Origem: ${d.origem || '—'}`,
+    `Aparelho (último): ${d.aparelho || '—'} · ${d.telaPx || ''}${d.pwa ? ' · app instalado' : ''}`, `Endereço: ${d.url || '—'}`, '', 'Stack (último):', d.stack || '(sem stack)'].filter(x => x !== '').join('\n'); }
+async function sheetErros() {
+  const desenhar = (corpo, ligar) => sheet(`${abasDono('erros')}<h3>Erros do app</h3><div class="sub">Registro automático dos erros que acontecem no celular das pessoas. Só você vê esta tela. Não guarda nome, e-mail, CPF, telefone nem dados de saúde.</div>
+    <div class="nf-acoes"><button type="button" class="btn ghost btn-mini" id="eatual">Atualizar</button><button type="button" class="btn ghost btn-mini" id="eteste">Gerar erro de teste</button></div>${corpo}<button class="btn ghost" data-fechar>Fechar</button>`,
+    sh => { ligarAbasDono(); $('eatual').onclick = () => sheetErros();
+      $('eteste').onclick = () => { ls.set('ted.errosVistos', null); ERR_N = 0; Object.keys(ERR_MEM).forEach(x => delete ERR_MEM[x]); registrarErro(new Error('Teste do registro de erros (pode apagar)'), 'teste'); aviso('Erro de teste registrado'); setTimeout(sheetErros, 1200); };
+      ligar && ligar(sh); });
+  desenhar('<div class="empty">Carregando…</div>');
+  let lista; try { lista = await B.ultimos('erros', 'em', 500); }
+  catch (e) { return desenhar(`<div class="banner"><span>${e.code === 'permission-denied' ? 'Sem permissão para ler os erros. Rode o comando do Cloud Shell para atualizar as regras, e confira se o seu e-mail está confirmado.' : 'Não consegui carregar os erros. Tente de novo.'}</span></div>`); }
+  const G = gruposErros(lista);
+  desenhar(`<span class="s">${lista.length} registro${lista.length === 1 ? '' : 's'} (os 500 mais recentes) em ${G.length} tipo${G.length === 1 ? '' : 's'} de erro. Cada registro some sozinho depois de 90 dias.</span>
+    ${!G.length ? '<div class="empty"><span>Nenhum erro registrado.</span></div>' : `<ul class="list">${G.map((g, i) => `<li class="nf-card"><div class="grow">
+      <div class="nf-lin"><b class="erro-msg">${esc(g.msg)}</b><span class="erro-n num">${g.ids.length}×</span></div>
+      <span class="s">${g.uids.size} pessoa${g.uids.size === 1 ? '' : 's'} · última vez ${dataHoraErro(g.ultimo)} · versão ${esc([...g.versoes].slice(0, 3).join(', ') || '—')}</span>
+      <span class="s">Tela: ${esc(topN(g.telas, 2))} · Ação: ${esc(topN(g.acoes, 2))}</span>
+      <details class="erro-det"><summary>Ver detalhe</summary><pre>${esc(textoErro(g))}</pre></details>
+      <div class="nf-acoes"><button type="button" class="btn btn-mini" data-ecop="${i}">Copiar detalhe</button><button type="button" class="btn ghost btn-mini" data-edel="${i}">Apagar</button></div></div></li>`).join('')}</ul>`}`, sh => {
+    sh.querySelectorAll('[data-ecop]').forEach(b => b.onclick = () => copiar(textoErro(G[Number(b.dataset.ecop)]), 'Detalhe copiado. É só colar na conversa.'));
+    sh.querySelectorAll('[data-edel]').forEach(b => b.onclick = async () => { const g = G[Number(b.dataset.edel)];
+      // apagar pede um segundo toque
+      if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = `Toque de novo para apagar ${g.ids.length}`; setTimeout(() => { if (b.isConnected) { b.dataset.ok = ''; b.textContent = 'Apagar'; } }, 4000); return; }
+      b.disabled = true; try { for (let i = 0; i < g.ids.length; i += 400) await B.lote(g.ids.slice(i, i + 400).map(id => ({ op: 'del', p: 'erros/' + id }))); aviso('Erros apagados'); sheetErros(); } catch (e) { aviso('Não deu para apagar. Tente de novo.'); b.disabled = false; } });
   });
 }
 const REG_ORDEM = ['Nordeste', 'Sudeste', 'Sul', 'Centro-Oeste', 'Norte', 'Sem cidade informada'];
@@ -3326,6 +3352,8 @@ function sheetPrivFamilia() {
         const id = novoId();
         await B.lote([{ op: 'set', p: `escolas/${S.eid}/pedidos/${id}`, d: { tipo: 'exclusao', uid: EU.uid, nome: EU.nome || '', email: EU.email || '', rids: Object.keys(S.resps), alunas: Object.keys(S.alunas), em: Date.now(), status: 'pendente' } },
           { op: 'merge', p: `escolas/${S.eid}/membros/${EU.uid}`, d: { pedidoExclusao: Date.now() } }]);
+        // o registro técnico de erros ligado a esta conta sai na hora
+        try { const ids = await B.meus('erros', 'uid', EU.uid); for (let i = 0; i < ids.length; i += 400) await B.lote(ids.slice(i, i + 400).map(id => ({ op: 'del', p: 'erros/' + id }))); } catch (x) { }
         aviso('Pedido enviado para a escola');
       });
     };
