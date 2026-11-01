@@ -3525,6 +3525,51 @@ function ligarPreviaDoc(raiz, f, alid, tid) {
   });
 }
 
+// "escanear": depois da foto, acha as bordas do documento, deixa ajustar os 4 cantos e endireita (scanner.js)
+async function ajustarFoto(arq) {
+  if (!arq || !/^image\//.test(arq.type || '') || !window.Scanner) return arq;
+  let fonte; try { fonte = await abrirImagem(arq, 2000); } catch (e) { return arq; }
+  const W = fonte.width, H = fonte.height; let q = null;
+  try { q = Scanner.detectar(fonte); } catch (e) { q = null; }
+  const achou = !!q; if (!q) q = [{ x: W * .06, y: H * .06 }, { x: W * .94, y: H * .06 }, { x: W * .94, y: H * .94 }, { x: W * .06, y: H * .94 }];
+  let modo = 'cor';
+  return new Promise(ok => {
+    const el = document.createElement('div'); el.className = 'scan'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Ajustar o documento');
+    el.innerHTML = `<div class="scan-topo"><button type="button" class="scan-bt" data-s="cancela">Cancelar</button><span class="scan-tit">${achou ? 'Confira os cantos' : 'Arraste os cantos até as bordas'}</span><button type="button" class="scan-bt forte" data-s="ok">Pronto</button></div>
+      <div class="scan-palco"><canvas></canvas><svg aria-hidden="true"><polygon></polygon></svg>${[0, 1, 2, 3].map(i => `<div class="scan-canto" data-c="${i}" aria-hidden="true"></div>`).join('')}</div>
+      <div class="scan-baixo"><div class="scan-modos">${[['cor', 'Cor'], ['realce', 'Realçado']].map(([k, n]) => `<button type="button" data-m="${k}" aria-pressed="${k === modo}">${n}</button>`).join('')}</div>
+        <button type="button" class="scan-bt" data-s="inteira">Usar a foto inteira</button></div>`;
+    document.body.appendChild(el);
+    const palco = el.querySelector('.scan-palco'), cv = el.querySelector('canvas'), pol = el.querySelector('polygon'), cantos = [...el.querySelectorAll('.scan-canto')];
+    let s = 1, ox = 0, oy = 0;
+    const desenhar = () => {
+      const pw = palco.clientWidth, ph = palco.clientHeight; s = Math.min(pw / W, ph / H); const cw = W * s, ch = H * s; ox = (pw - cw) / 2; oy = (ph - ch) / 2;
+      const dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+      Object.assign(cv.style, { width: cw + 'px', height: ch + 'px', left: ox + 'px', top: oy + 'px' }); cv.getContext('2d').drawImage(fonte, 0, 0, cv.width, cv.height); posicionar(); };
+    const posicionar = () => { cantos.forEach((c, i) => { c.style.left = (ox + q[i].x * s) + 'px'; c.style.top = (oy + q[i].y * s) + 'px'; }); pol.setAttribute('points', q.map(p => `${ox + p.x * s},${oy + p.y * s}`).join(' ')); };
+    desenhar(); const aoGirar = () => desenhar(); window.addEventListener('resize', aoGirar);
+    let ativo = -1;
+    palco.addEventListener('pointerdown', e => { const c = e.target.closest('.scan-canto'); if (!c) return; ativo = Number(c.dataset.c); c.classList.add('arrasta'); palco.setPointerCapture(e.pointerId); e.preventDefault(); });
+    palco.addEventListener('pointermove', e => { if (ativo < 0) return; const r = palco.getBoundingClientRect();
+      q[ativo] = { x: Math.max(0, Math.min(W, (e.clientX - r.left - ox) / s)), y: Math.max(0, Math.min(H, (e.clientY - r.top - oy) / s)) }; posicionar(); });
+    const solta = () => { if (ativo >= 0) cantos[ativo].classList.remove('arrasta'); ativo = -1; };
+    palco.addEventListener('pointerup', solta); palco.addEventListener('pointercancel', solta);
+    el.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { modo = b.dataset.m; el.querySelectorAll('[data-m]').forEach(x => x.setAttribute('aria-pressed', x.dataset.m === modo)); });
+    const fechar = v => { window.removeEventListener('resize', aoGirar); el.remove(); ok(v); };
+    const gerar = async inteira => {
+      el.querySelector('.scan-tit').textContent = 'Preparando…';
+      await new Promise(r => setTimeout(r, 30));
+      let c = fonte;
+      if (!inteira) { const cx = q.reduce((a, p) => a + p.x, 0) / 4, cy = q.reduce((a, p) => a + p.y, 0) / 4; // um fio para dentro: sem sobra do fundo na borda
+        c = Scanner.endireitar(fonte, Scanner.ordenar(q.map(p => ({ x: p.x + (cx - p.x) * 0.006, y: p.y + (cy - p.y) * 0.006 }))), 1800); }
+      if (modo === 'realce') c = Scanner.realcar(c);
+      c.toBlob(b => fechar(b ? new File([b], (arq.name || 'documento').replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' }) : arq), 'image/jpeg', 0.9);
+    };
+    el.querySelector('[data-s="cancela"]').onclick = () => fechar(null);
+    el.querySelector('[data-s="ok"]').onclick = () => gerar(false);
+    el.querySelector('[data-s="inteira"]').onclick = () => gerar(true);
+  });
+}
 // guardar ou ver um documento de um aluno (escola ou família)
 function sheetDocAluno(alid, tid, volta) {
   const avulso = !tid || ehAvulso(tid);
@@ -3561,8 +3606,8 @@ function sheetDocAluno(alid, tid, volta) {
     };
     const ler = async (arq, max) => { err(''); try { return await prepararAtestado(arq, { img: max, oque: 'documento' }); } catch (e) { err(e.message); return null; } };
     let frente = null; // a foto original da frente, para reduzir mais se vier o verso
-    $('darq').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq) return; const n = await ler(arq, DOC_MAX_1); if (n) { novos = [n]; frente = arq; verNovos(); } };
-    $('dverso').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq || !novos.length) return;
+    $('darq').onchange = async e => { let arq = e.target.files[0]; e.target.value = ''; if (!arq) return; arq = await ajustarFoto(arq); if (!arq) return; const n = await ler(arq, DOC_MAX_1); if (n) { novos = [n]; frente = arq; verNovos(); } };
+    $('dverso').onchange = async e => { let arq = e.target.files[0]; e.target.value = ''; if (!arq || !novos.length) return; arq = await ajustarFoto(arq); if (!arq) return;
       // com duas fotos, cada uma fica um pouco menor para caber no mesmo documento
       const n = await ler(arq, DOC_MAX_2); if (!n) return;
       if (novos[0].tam > DOC_MAX_2 && frente) { const r = await ler(frente, DOC_MAX_2); if (r) novos[0] = r; }
@@ -3852,7 +3897,8 @@ function sheetEnviarAtestado(alid, op = {}) {
     <div class="actions"><button type="button" class="btn ghost" data-fechar>${op.depoisTermo ? 'Enviar depois' : 'Fechar'}</button><button type="button" class="btn" id="atok" hidden>${adm ? 'Guardar atestado' : 'Enviar atestado'}</button></div>`, sh => {
     if (jaTem) carregarAtestado(alid).then(f => { const box = $('atatual'); if (!box) return; box.innerHTML = previaAtestado(f); if (f) ligarPrevia(box, f, alid); });
     $('atarq').onchange = async e => {
-      const arq = e.target.files[0]; e.target.value = ''; if (!arq) return;
+      let arq = e.target.files[0]; e.target.value = ''; if (!arq) return;
+      arq = await ajustarFoto(arq); if (!arq) return;
       $('aterr').textContent = ''; $('atbtn').firstChild.textContent = 'Preparando…';
       try { novo = await prepararAtestado(arq); } catch (er) { novo = null; $('aterr').textContent = er.message; }
       $('atbtn').firstChild.textContent = novo ? 'Escolher outro' : (jaTem ? 'Trocar o atestado' : 'Tirar foto ou escolher arquivo');

@@ -709,6 +709,23 @@ nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:up
 .pf-resumo span{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .pf-resumo b{font-size:1.02rem;overflow-wrap:anywhere}
 .pf-resumo .ruim b{color:var(--out)}
+
+/* escanear documento: tela cheia para ajustar os cantos */
+.scan{position:fixed;inset:0;z-index:60;background:#111;color:#fff;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);touch-action:none;user-select:none;-webkit-user-select:none}
+.scan-topo,.scan-baixo{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px}
+.scan-tit{font-weight:700;font-size:.95rem;text-align:center;flex:1}
+.scan-bt{height:38px;padding:0 16px;border-radius:999px;border:0;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:.9rem}
+.scan-bt.forte{background:#fff;color:#111}
+.scan-palco{position:relative;flex:1;margin:4px 18px;min-height:0}
+.scan-palco canvas{position:absolute}
+.scan-palco svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.scan-palco polygon{fill:rgba(64,156,255,.18);stroke:#409cff;stroke-width:2}
+.scan-canto{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;touch-action:none;cursor:grab}
+.scan-canto::after{content:"";position:absolute;inset:11px;border-radius:50%;border:2.5px solid #fff;background:rgba(64,156,255,.35);box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+.scan-canto.arrasta::after{inset:4px;background:rgba(64,156,255,.25)}
+.scan-modos{display:flex;gap:4px;background:rgba(255,255,255,.12);padding:3px;border-radius:999px}
+.scan-modos button{height:32px;padding:0 14px;border:0;border-radius:999px;background:none;color:#fff;font-weight:700;font-size:.85rem}
+.scan-modos button[aria-pressed="true"]{background:#fff;color:#111}
 </style>
 </head>
 <body>
@@ -719,6 +736,7 @@ nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:up
 <script src="regras.js"></script>
 <script src="qrcode.js"></script>
 <script src="pdf-simples.js"></script>
+<script src="scanner.js"></script>
 <script src="relatorio.js"></script>
 <script type="module" src="app.js"></script>
 </body>
