@@ -189,7 +189,7 @@ const RAIZ = () => $('raiz');
 function pararOuvintes() { OUV.forEach(f => { try { f(); } catch (e) { } }); OUV = []; }
 
 /* ================= Login ================= */
-const MARCA_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="9" width="56" height="51" rx="15" fill="currentColor"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="currentColor" stroke="var(--marca-borda,#fff)" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="currentColor" stroke="var(--marca-borda,#fff)" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const MARCA_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="9" width="56" height="51" rx="15" fill="currentColor"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="currentColor" stroke="var(--marca-borda,#fff)" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="currentColor" stroke="var(--marca-borda,#fff)" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#34C759" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const NOME_APP = () => CFG.nomeApp || 'Turma em Dia';
 // topo da página inicial: marca, nome, para que serve e as três vantagens
 function capaApp(compacta) {
@@ -302,7 +302,7 @@ async function abrirComCartas(eid, tab) {
     const am = el.querySelector('.ab-marca'), an = el.querySelector('.ab-nome');
     const q = Math.min(176, Math.round(W * 0.45)), mr = am ? am.getBoundingClientRect() : { left: W / 2 - q / 2, top: H / 2 - q / 2 - 40, width: q, height: q };
     const nr = an ? an.getBoundingClientRect() : { left: 0, top: H / 2 + q / 2 - 18, width: W, height: 46 };
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="9" width="56" height="51" rx="15" fill="rgba(255,255,255,.14)" stroke="#fff" stroke-width="3"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="4" y="9" width="56" height="51" rx="15" fill="rgba(255,255,255,.14)" stroke="#fff" stroke-width="3"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="#fff" stroke="${app}" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#34C759" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     const mi = await esperaImg('data:image/svg+xml,' + encodeURIComponent(svg));
     if (mi) fx.drawImage(mi, mr.left, mr.top, mr.width, mr.height);
     fx.fillStyle = '#fff'; fx.font = '800 40px "Bricolage Grotesque", "Trebuchet MS", sans-serif'; fx.textAlign = 'center'; fx.textBaseline = 'middle';
