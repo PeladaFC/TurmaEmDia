@@ -169,6 +169,16 @@ service cloud.firestore {
       }
       // Documentos dos alunos (parecer cardiológico, identidade e outros que a escola pede): só a família do aluno e a administração.
       // A situação (datas e validade) fica em docsAlunos, leve, para as listas; o arquivo (até 2 fotos reduzidas ou 1 PDF pequeno) em documentos.
+      // Notas da equipe sobre o aluno: só a administração lê e escreve (as famílias não veem).
+      // Cada nota leva quem escreveu; só o autor edita o texto; a administração pode apagar.
+      match /notasAlunos/{nid} {
+        allow read: if admin(eid);
+        allow create: if admin(eid) && request.resource.data.autorUid == eu()
+          && request.resource.data.alid is string && request.resource.data.texto is string && request.resource.data.texto.size() <= 2000;
+        allow update: if admin(eid) && resource.data.autorUid == eu() && soMuda(['texto', 'tag', 'editadoEm'])
+          && request.resource.data.texto is string && request.resource.data.texto.size() <= 2000;
+        allow delete: if admin(eid);
+      }
       match /docsAlunos/{alid} {
         allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
         allow create, update: if admin(eid) || (minhaAluna(eid, alid) && request.resource.data.responsavelId == ridDaAluna(eid, alid));

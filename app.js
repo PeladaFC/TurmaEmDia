@@ -168,6 +168,7 @@ async function copiar(txt, ok) { try { await navigator.clipboard.writeText(txt);
 function qrSVG(txt) { if (typeof qrcode !== 'function') return ''; const q = qrcode(0, 'M'); q.addData(txt); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }
 const LINK_APP = location.origin + location.pathname;
 const ICO = {
+  lupa: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   evento: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M12 13.2l1 2 2.2.3-1.6 1.5.4 2.2-2-1.1-2 1.1.4-2.2-1.6-1.5 2.2-.3z"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   painel: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
@@ -987,7 +988,7 @@ function render() {
   RAIZ().innerHTML = `<div class="wrap">
     <header class="top">
       <div class="brand">${S.cfg.logo ? `<img class="marca" src="${esc(S.cfg.logo)}" alt="">` : ''}<h1><small>${esc(titulo)}</small>${esc(S.escola.nome || 'Escola')}</h1>
-        <div class="acts"><button class="icon-btn" id="hcfg" aria-label="Ajustes">${ICO.gear}</button></div></div>
+        <div class="acts">${adm ? `<button class="icon-btn" id="hbusca" aria-label="Buscar aluno ou responsável">${ICO.lupa}</button>` : ''}<button class="icon-btn" id="hcfg" aria-label="Ajustes">${ICO.gear}</button></div></div>
       ${Object.keys(MINHAS).length > 1 ? `<button class="troca-btn" id="htroca">${ICO.troca}<span>Trocar escola</span></button>` : ''}
       ${comMes ? `<div class="monthbar"><button id="mprev" aria-label="Mês anterior">‹</button><div class="m num">${esc(nomeMesAno(S.mes))}</div><button id="mnext" aria-label="Próximo mês">›</button></div>` : ''}
     </header>
@@ -998,6 +999,7 @@ function render() {
   RAIZ().querySelectorAll('[data-tab]').forEach(b => b.onclick = () => irPara(b.dataset.tab));
   ABAS_ATUAIS = abas.map(([k]) => k);
   $('hcfg').onclick = () => sheetAjustes();
+  if ($('hbusca')) $('hbusca').onclick = () => sheetBusca();
   if ($('htroca')) $('htroca').onclick = () => trocarEscola();
   if (comMes) { $('mprev').onclick = () => { S.mes = mesMais(S.mes, -1); render(); }; $('mnext').onclick = () => { S.mes = mesMais(S.mes, 1); render(); }; }
   faixa();
@@ -1901,7 +1903,7 @@ function tAlunas(v) {
   $('ana').onclick = () => sheetAluna();
   if ($('adocs')) $('adocs').onclick = () => sheetDocsEscola();
   v.querySelectorAll('[data-resp]').forEach(li => li.onclick = () => sheetResp(li.dataset.resp));
-  v.querySelectorAll('[data-al]').forEach(li => li.onclick = () => sheetAluna(li.dataset.al));
+  v.querySelectorAll('[data-al]').forEach(li => li.onclick = () => S.admin ? sheetPerfilAluno(li.dataset.al) : sheetAluna(li.dataset.al));
   v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vmud));
   v.querySelectorAll('[data-nova]').forEach(li => li.onclick = () => sheetAluna(null, li.dataset.nova));
   v.querySelectorAll('[data-nao]').forEach(b => b.onclick = () => B.set(`escolas/${S.eid}/config/geral`, { naoRepetidos: [...(S.cfg.naoRepetidos || []), b.dataset.nao] }, { merge: true }));
@@ -1969,10 +1971,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     <div class="field"><span class="lb">Turma</span>
       <div class="checks">${listaT.map(([tid, t]) => { const n = alunasDaTurma(tid).length, cheia = t.vagas && n >= t.vagas && !minhas.has(tid); return `<label><input type="checkbox" data-tu="${esc(tid)}" ${minhas.has(tid) ? 'checked' : ''}><span class="grow"><span class="t" style="display:block">${esc(t.nome)}</span><span class="s">${esc(C.faixaTxt(t))}</span>${t.horario ? `<span class="s">${esc(t.horario)}</span>` : ''}${profNome(t) || localDe(t) ? `<span class="s">${esc([profNome(t), localDe(t)].filter(Boolean).join(' · '))}</span>` : ''}${t.vagas && !cheia ? `<span class="s num">${t.vagas - n === 1 ? 'Resta 1 vaga' : `Restam ${t.vagas - n} vagas`}</span>` : ''}<span class="s fora" data-fx="${esc(tid)}" style="color:var(--out);font-weight:700"></span></span><span class="valor-col">${adm ? `<b class="num">${brl(t.preco)}</b>` : ''}${cheia ? '<span class="chip vencido">Cheia</span>' : ''}</span></label>`; }).join('') || '<div class="grp">Nenhuma turma cadastrada ainda</div>'}</div></div>
     ${Object.keys(S.grupos).length ? `<div class="field"><span class="lb">Grupos</span><div class="chips">${porNome(S.grupos).map(([g, G]) => `<button type="button" class="pick" data-gr="${esc(g)}" aria-pressed="${meusG.has(g)}">${esc(G.nome)}</button>`).join('')}</div></div>` : ''}
-    ${ed && adm ? `<div class="field"><span class="lb">Documentos</span><div class="docs-al">${tiposDoc().map(T => { const d = docDe(alid, T.id);
-      return `<button type="button" class="linha-botao" data-adoc="${esc(T.id)}"><span class="grow"><b>${esc(T.nome)}</b><span class="s">${d ? `${d.familia ? 'Enviado pela família' : 'Guardado pela escola'} em ${dataCurta(d.em)}` : T.familia !== false ? 'A família pode enviar pelo app' : 'Toque para guardar'}</span></span>${chipDoc(d)}<span aria-hidden="true">›</span></button>`; }).join('') || '<div class="sub">Nenhum tipo de documento.</div>'}</div>
-      <button type="button" class="link" id="atipos" style="align-self:flex-start">Mudar os tipos de documento</button></div>`
-      : adm && !ed ? '<div class="note">Documentos (parecer cardiológico, identidade…) você guarda depois de salvar o cadastro.</div>' : ''}
+    ${adm && !ed ? '<div class="note">Os documentos e as notas da equipe ficam no perfil do aluno, depois de salvar o cadastro.</div>' : ''}
     <div class="hero" style="padding:14px;gap:10px"><div class="label">Responsável</div>
       <div class="field"><label for="rnome">Nome</label><input id="rnome" maxlength="60" value="${esc(r0.nome || '')}" placeholder="Quem paga"></div>
       <div class="two"><div class="field"><label for="rtel">WhatsApp</label><input id="rtel" inputmode="tel" maxlength="20" value="${esc(r0.telefone || '')}" placeholder="(81) 99999-9999"></div>
@@ -2074,8 +2073,151 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     if ($('adel')) $('adel').onclick = () => {
       const p = S.pags[alid] || {};
       if (Object.keys(p.mens || {}).length || Object.keys(p.extras || {}).length) return $('aerr').textContent = 'Este(a) aluno(a) tem pagamentos registrados. Para sair, desmarque "Aluno(a) ativo(a)"; o histórico fica guardado. Se a família pediu, use "Apagar dados pessoais".';
-      confirmar('Excluir aluno(a)?', `${esc(a.nome)} sai da escola e das cobranças.${S.docs[alid] ? ' Os documentos guardados também são apagados.' : ''}`, 'Excluir', () => B.lote([{ op: 'del', p: `escolas/${S.eid}/alunas/${alid}` }, ...opsApagarDocs(alid)]));
+      confirmar('Excluir aluno(a)?', `${esc(a.nome)} sai da escola e das cobranças.${S.docs[alid] ? ' Os documentos guardados também são apagados.' : ''}`, 'Excluir', async () => B.lote([{ op: 'del', p: `escolas/${S.eid}/alunas/${alid}` }, ...opsApagarDocs(alid), ...(await B.meus(`escolas/${S.eid}/notasAlunos`, 'alid', alid).catch(() => [])).map(nid => ({ op: 'del', p: `escolas/${S.eid}/notasAlunos/${nid}` }))]));
     };
+  });
+}
+
+
+/* ================= Perfil do aluno, notas da equipe e busca ================= */
+// Notas: escolas/{eid}/notasAlunos/{nid} = { alid, texto, tag, autorUid, autorNome, em, editadoEm }
+// Só a equipe da escola vê (as famílias não). Quem escreveu edita; a administração pode apagar.
+const TAGS_NOTA = [['desempenho', 'Desempenho', '#2F6FB5'], ['comportamento', 'Comportamento', '#8A5A2B'], ['saude', 'Saúde', '#B23B2B'], ['familia', 'Família', '#2B8A6B'], ['outro', 'Outro', '#6B6B6B']];
+const tagNota = k => TAGS_NOTA.find(t => t[0] === k) || null;
+const dataHoraTxt = ms => { const d = new Date(ms); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} às ${pad(d.getHours())}h${pad(d.getMinutes())}`; };
+const meuNome = () => (S.prof && (S.profs[S.prof] || {}).nome) || EU.nome || EU.email || 'Equipe';
+// pendências de um aluno (para o perfil e para os filtros da busca)
+function pendenciasAluno(alid) {
+  const a = S.alunas[alid] || {}, mes = mesHoje(), ativo = C.ativaNoMes(a, mes) && !a.anonimizadoEm;
+  const venc = S.admin ? itensDe(alid).filter(i => !i.pago && st(i) === 'vencido') : [];
+  const docs = S.admin ? tiposDoc().map(T => [T, situacaoDoc(docDe(alid, T.id)).st]).filter(([, s]) => s !== 'ok') : [];
+  return { ativo, atraso: venc.length ? venc.reduce((s, i) => s + (Number(i.v) || 0), 0) : 0, nAtraso: venc.length, termo: ativo && termoDe(alid).st !== 'ok', docs,
+    docRuim: docs.some(([, s]) => s === 'vencido' || s === 'vence'), docFalta: docs.some(([, s]) => s === 'falta'),
+    aniver: !!(a.nascimento && a.nascimento.slice(5, 7) === mes.slice(5, 7)) };
+}
+const categoriaTxt = a => a && /^\d{4}/.test(a.nascimento || '') ? `Categoria ${a.nascimento.slice(0, 4)}` : 'Sem data de nascimento';
+
+function sheetPerfilAluno(alid, volta) {
+  const a = S.alunas[alid]; if (!a) return;
+  const eu = () => sheetPerfilAluno(alid, volta), adm = !!S.admin, r = respDe(alid), P = pendenciasAluno(alid);
+  const ts = (a.turmas || []).map(t => S.turmas[t]).filter(Boolean), gs = porNome(S.grupos).filter(([, G]) => (G.alunas || []).includes(alid)).map(([, G]) => G.nome);
+  const wa = r.telefone ? waLink(r.telefone, `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
+  const cor = hexOk(S.cfg.cor) ? S.cfg.cor : COR_PADRAO;
+  let filtro = '', notas = null, parar = null;
+  const status = [
+    !P.ativo ? '<span class="chip">Inativo(a)</span>' : '',
+    adm && P.nAtraso ? `<span class="chip vencido">Em atraso ${brl(P.atraso)}</span>` : adm && P.ativo ? '<span class="chip pago">Mensalidade em dia</span>' : '',
+    P.termo ? '<span class="chip aberto">Sem termo</span>' : '',
+    adm && P.docRuim ? '<span class="chip vencido">Documento vencendo</span>' : '',
+    P.aniver ? `<span class="chip">🎂 Aniversário dia ${esc(a.nascimento.slice(8, 10))}</span>` : ''].filter(Boolean).join('');
+  const desenharNotas = () => {
+    if (!$('pnotas')) return;
+    if (!notas) { $('pnotas').innerHTML = '<div class="sub">Carregando…</div>'; return; }
+    const usadas = TAGS_NOTA.filter(([k]) => notas.some(n => n.tag === k));
+    $('pfilt').innerHTML = usadas.length > 1 ? [['', 'Todas'], ...usadas].map(([k, n]) => `<button type="button" class="pick" data-nf="${k}" aria-pressed="${filtro === k}">${esc(n)}</button>`).join('') : '';
+    $('pfilt').querySelectorAll('[data-nf]').forEach(b => b.onclick = () => { filtro = b.dataset.nf; desenharNotas(); });
+    const lista = notas.filter(n => !filtro || n.tag === filtro);
+    $('pnotas').innerHTML = lista.length ? lista.map(n => { const T = tagNota(n.tag), meu = n.autorUid === EU.uid;
+      return `<article class="nota" style="--tc:${T ? T[2] : 'var(--line)'}">
+        <div class="nota-cab">${T ? `<span class="nota-tag">${esc(T[1])}</span>` : ''}<span class="s">${esc(dataHoraTxt(n.em))}${n.editadoEm ? ' · editada' : ''}</span></div>
+        <div class="nota-txt" data-nx>${esc(n.texto)}</div>
+        <div class="nota-pe"><span class="nota-autor">${esc(n.autorNome || 'Equipe')}</span>${meu || adm ? `<span class="nota-acoes">${meu ? `<button type="button" class="link" data-ned="${esc(n.id)}">Editar</button>` : ''}<button type="button" class="link" data-ndel="${esc(n.id)}" style="color:var(--out)">Apagar</button></span>` : ''}</div></article>`; }).join('')
+      : `<div class="empty"><b>${filtro ? 'Nenhuma nota com essa etiqueta.' : 'Nenhuma nota ainda.'}</b>${filtro ? '' : '<span>Anote o que a equipe precisa saber: evolução, comportamento, cuidados, conversas com a família. Só a equipe da escola vê.</span>'}</div>`;
+    $('pnotas').querySelectorAll('[data-nx]').forEach(el => { if (el.scrollHeight > el.clientHeight + 4) { el.classList.add('corta'); el.onclick = () => el.classList.toggle('aberta'); } });
+    $('pnotas').querySelectorAll('[data-ned]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetNota(alid, notas.find(n => n.id === b.dataset.ned), eu)));
+    $('pnotas').querySelectorAll('[data-ndel]').forEach(b => b.onclick = () => confirmar('Apagar esta nota?', 'Ela sai do perfil para toda a equipe.', 'Apagar', async () => { await B.del(`escolas/${S.eid}/notasAlunos/${b.dataset.ndel}`); setTimeout(eu, 60); }));
+  };
+  sheet(`<div class="perfil" style="--pc:${esc(cor)}">
+      <div class="perfil-topo"><div class="perfil-ini" aria-hidden="true">${esc(iniciais(a.nome))}</div>
+        <div class="grow"><div class="perfil-nome">${esc(a.nome)}</div><div class="perfil-sub num">${esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · '))}</div></div></div>
+      <dl class="perfil-dl">
+        <dt>Turmas</dt><dd>${ts.length ? ts.map(t => `<span class="perfil-turma"><b>${esc(t.nome)}</b>${t.horario ? `<span>${esc(t.horario)}</span>` : ''}</span>`).join('') : '<span class="sub">Sem turma</span>'}</dd>
+        ${gs.length ? `<dt>Grupos</dt><dd class="perfil-chips">${gs.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</dd>` : ''}
+        <dt>Responsável</dt><dd class="perfil-resp"><span class="grow"><b>${esc(r.nome || '—')}</b>${r.telefone ? `<span class="s num">${esc(r.telefone)}</span>` : ''}</span>${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome || 'responsável')}">${ICO_WA}</a>` : ''}</dd>
+      </dl>
+      ${status ? `<div class="perfil-chips">${status}</div>` : ''}
+    </div>
+    <div class="perfil-botoes">${adm ? '<button type="button" class="btn ghost" id="pedit">Editar cadastro</button><button type="button" class="btn ghost" id="pcob">Cobranças</button>' : ''}</div>
+    ${adm ? `<section><h2>Documentos</h2><div class="docs-al">${tiposDoc().map(T => { const d = docDe(alid, T.id);
+      return `<button type="button" class="linha-botao" data-adoc="${esc(T.id)}"><span class="grow"><b>${esc(T.nome)}</b><span class="s">${d ? `${d.familia ? 'Enviado pela família' : 'Guardado pela escola'} em ${dataCurta(d.em)}` : T.familia !== false ? 'A família pode enviar pelo app' : 'Toque para guardar'}</span></span>${chipDoc(d)}<span aria-hidden="true">›</span></button>`; }).join('') || '<div class="sub">Nenhum tipo de documento. Escolha em Ajustes.</div>'}</div></section>` : ''}
+    <section><div class="headrow"><h2>Notas da equipe</h2><button type="button" class="add" id="pnova">+ Nota</button></div>
+      <div class="chips" id="pfilt"></div>
+      <div id="pnotas"></div></section>
+    <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
+    if (volta) SHEET_VOLTAR = volta;
+    desenharNotas();
+    parar = B.ouvirCol(`escolas/${S.eid}/notasAlunos`, docs => { notas = docs.map(d => ({ id: d.id, ...d.data })).sort((x, y) => (y.em || 0) - (x.em || 0)); desenharNotas(); },
+      e => { if ($('pnotas')) $('pnotas').innerHTML = `<div class="sub">Não deu para carregar as notas. ${esc(msgErroTexto(e))}</div>`; }, ['alid', alid]);
+    $('pnova').onclick = () => abrirDe(eu, () => sheetNota(alid, null, eu));
+    if ($('pedit')) $('pedit').onclick = () => abrirDe(eu, () => sheetAluna(alid));
+    if ($('pcob')) $('pcob').onclick = () => abrirDe(eu, () => sheetCobrancaAluna(alid));
+    sh.querySelectorAll('[data-adoc]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetDocAluno(alid, b.dataset.adoc, eu)));
+  }, () => { if (parar) parar(); });
+}
+
+function sheetNota(alid, n, volta) {
+  const a = S.alunas[alid] || {}; let tag = (n && n.tag) || '';
+  sheet(`<h3>${n ? 'Editar nota' : 'Nova nota'}</h3><div class="sub">${esc(a.nome || '')}</div>
+    <div class="field"><span class="lb">Etiqueta (opcional)</span><div class="chips" id="ntags">${TAGS_NOTA.map(([k, nm, c]) => `<button type="button" class="pick tag-pick" data-tg="${k}" style="--tc:${c}" aria-pressed="${tag === k}">${esc(nm)}</button>`).join('')}</div></div>
+    <div class="field"><label for="ntxt">Nota</label><textarea id="ntxt" rows="6" maxlength="2000" placeholder="Ex.: Melhorou muito no passe. Precisa trabalhar o chute de perna esquerda.">${esc((n && n.texto) || '')}</textarea><span class="sub num" id="nconta"></span></div>
+    <div class="note">Fica salva com o seu nome (${esc(meuNome())}) e a data. Só a equipe da escola vê; a família não.</div>
+    <div class="err" id="nerr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="nok">Salvar nota</button></div>`, sh => {
+    if (volta) SHEET_VOLTAR = volta;
+    const conta = () => { const k = $('ntxt').value.length; $('nconta').textContent = k > 1500 ? `${k} de 2000` : ''; };
+    $('ntxt').oninput = conta; conta(); if (!n) setTimeout(() => $('ntxt').focus(), 50);
+    sh.querySelectorAll('[data-tg]').forEach(b => b.onclick = () => { tag = tag === b.dataset.tg ? '' : b.dataset.tg; sh.querySelectorAll('[data-tg]').forEach(x => x.setAttribute('aria-pressed', x.dataset.tg === tag)); });
+    $('nok').onclick = async () => {
+      const texto = $('ntxt').value.trim(); if (!texto) return $('nerr').textContent = 'Escreva a nota.';
+      $('nok').disabled = true;
+      try {
+        if (n) await B.set(`escolas/${S.eid}/notasAlunos/${n.id}`, { texto, tag: tag || null, editadoEm: Date.now() }, { merge: true });
+        else await B.set(`escolas/${S.eid}/notasAlunos/${novoId()}`, { alid, texto, tag: tag || null, autorUid: EU.uid, autorNome: meuNome(), em: Date.now() });
+        fecharSheet(); aviso(n ? 'Nota atualizada' : 'Nota salva'); if (volta) setTimeout(volta, 60);
+      } catch (e) { $('nerr').textContent = msgErro(e); $('nok').disabled = false; }
+    };
+  });
+}
+
+// busca de aluno e responsável, com filtros
+const BUSCA = { q: '', sit: 'ativos', turma: '', pend: '' };
+const FILTROS_BUSCA = [['atraso', 'Mensalidade atrasada'], ['docs', 'Documento pendente'], ['termo', 'Sem termo'], ['aniver', 'Aniversário no mês']];
+const semAcento = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+function sheetBusca() {
+  const adm = !!S.admin, filtros = FILTROS_BUSCA.filter(([k]) => adm || k === 'aniver' || k === 'termo');
+  sheet(`<h3>Buscar</h3>
+    <div class="field busca-campo"><input id="bq" type="search" autocomplete="off" placeholder="Nome do aluno ou do responsável, telefone ou CPF" aria-label="Buscar" value="${esc(BUSCA.q)}"></div>
+    <div class="busca-filtros">
+      <div class="chips" id="bsit">${[['ativos', 'Ativos'], ['inativos', 'Inativos'], ['todos', 'Todos']].map(([k, n]) => `<button type="button" class="pick" data-bs="${k}" aria-pressed="${BUSCA.sit === k}">${n}</button>`).join('')}</div>
+      <select id="bturma" aria-label="Turma"><option value="">Todas as turmas</option>${ordenar(S.turmas).map(([t, T]) => `<option value="${esc(t)}" ${BUSCA.turma === t ? 'selected' : ''}>${esc(T.nome)}</option>`).join('')}<option value="_sem" ${BUSCA.turma === '_sem' ? 'selected' : ''}>Sem turma</option></select>
+      <div class="chips" id="bpend">${filtros.map(([k, n]) => `<button type="button" class="pick" data-bp="${k}" aria-pressed="${BUSCA.pend === k}">${n}</button>`).join('')}</div>
+    </div>
+    <div class="sub num" id="bconta"></div>
+    <div id="bres"></div>
+    <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
+    const desenhar = () => {
+      const q = semAcento(BUSCA.q.trim()), dig = C.soDigitos(BUSCA.q), mes = mesHoje();
+      const bate = (id, a) => { if (!q && !dig) return true; const r = S.resps[a.responsavelId] || {};
+        return semAcento(a.nome).includes(q) || (q && semAcento(r.nome).includes(q)) || (dig.length >= 3 && (C.soDigitos(r.telefone).includes(dig) || C.soDigitos(r.cpf).includes(dig))); };
+      const al = porNome(S.alunas).filter(([id, a]) => {
+        if (a.anonimizadoEm) return false; const at = C.ativaNoMes(a, mes) || (a.inicio && a.inicio > mes);
+        if (BUSCA.sit === 'ativos' && !at) return false; if (BUSCA.sit === 'inativos' && at) return false;
+        if (BUSCA.turma === '_sem' ? (a.turmas || []).some(t => S.turmas[t]) : BUSCA.turma && !(a.turmas || []).includes(BUSCA.turma)) return false;
+        if (BUSCA.pend) { const P = pendenciasAluno(id); if (BUSCA.pend === 'atraso' && !P.nAtraso) return false; if (BUSCA.pend === 'docs' && !P.docRuim && !P.docFalta) return false; if (BUSCA.pend === 'termo' && !P.termo) return false; if (BUSCA.pend === 'aniver' && !P.aniver) return false; }
+        return bate(id, a); });
+      const marca = t => { if (!q) return esc(t); const s = semAcento(t), i = s.indexOf(q); return i < 0 ? esc(t) : esc(t.slice(0, i)) + '<mark>' + esc(t.slice(i, i + q.length)) + '</mark>' + esc(t.slice(i + q.length)); };
+      $('bconta').textContent = `${al.length} aluno${al.length === 1 ? '' : 's'}`;
+      $('bres').innerHTML = al.length ? `<ul class="list">${al.slice(0, 200).map(([id, a]) => { const r = S.resps[a.responsavelId] || {}, P = BUSCA.pend ? pendenciasAluno(id) : null;
+        const extra = !P ? '' : BUSCA.pend === 'atraso' ? `<span class="chip vencido">${brl(P.atraso)}</span>` : BUSCA.pend === 'aniver' ? `<span class="chip">Dia ${esc(a.nascimento.slice(8, 10))}</span>` : BUSCA.pend === 'docs' ? `<span class="chip vencido">${esc(P.docs.map(([T]) => T.nome).join(', '))}</span>` : '';
+        return `<li class="tap" data-pf="${esc(id)}"><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t">${marca(a.nome)}</div>${linhas(esc([idade(a.nascimento), turmasTxt(a) || 'Sem turma'].filter(Boolean).join(' · ')), `Resp.: ${marca(r.nome || '—')}${dig.length >= 3 && r.telefone ? ` · <span class="num">${esc(r.telefone)}</span>` : ''}`)}</div>${extra}</li>`; }).join('')}</ul>`
+        : '<div class="empty"><b>Nenhum aluno encontrado.</b><span>Confira o nome ou tire algum filtro.</span></div>';
+      $('bres').querySelectorAll('[data-pf]').forEach(li => li.onclick = () => abrirDe(sheetBusca, () => sheetPerfilAluno(li.dataset.pf, sheetBusca)));
+    };
+    $('bq').oninput = e => { BUSCA.q = e.target.value; desenhar(); };
+    sh.querySelectorAll('[data-bs]').forEach(b => b.onclick = () => { BUSCA.sit = b.dataset.bs; sh.querySelectorAll('[data-bs]').forEach(x => x.setAttribute('aria-pressed', x.dataset.bs === BUSCA.sit)); desenhar(); });
+    sh.querySelectorAll('[data-bp]').forEach(b => b.onclick = () => { BUSCA.pend = BUSCA.pend === b.dataset.bp ? '' : b.dataset.bp; sh.querySelectorAll('[data-bp]').forEach(x => x.setAttribute('aria-pressed', x.dataset.bp === BUSCA.pend)); desenhar(); });
+    $('bturma').onchange = e => { BUSCA.turma = e.target.value; desenhar(); };
+    desenhar(); if (!BUSCA.q) setTimeout(() => $('bq').focus(), 60);
   });
 }
 
@@ -2147,7 +2289,7 @@ function tTurmas(v) {
   ligarEventos(v);
   v.querySelectorAll('[data-et]').forEach(e => e.onclick = () => sheetTurma(e.dataset.et));
   v.querySelectorAll('[data-abre]').forEach(b => b.onclick = () => { S.turmasAbertas = S.turmasAbertas || new Set(); const k = b.dataset.abre; S.turmasAbertas.has(k) ? S.turmasAbertas.delete(k) : S.turmasAbertas.add(k); render(); });
-  v.querySelectorAll('[data-al]').forEach(e => e.onclick = () => sheetAluna(e.dataset.al));
+  v.querySelectorAll('[data-al]').forEach(e => e.onclick = () => S.admin ? sheetPerfilAluno(e.dataset.al) : sheetAluna(e.dataset.al));
   v.querySelectorAll('[data-nt]').forEach(e => e.onclick = () => sheetAluna(null, null, e.dataset.nt));
   v.querySelectorAll('[data-pr]').forEach(e => e.onclick = () => sheetProf(e.dataset.pr));
   v.querySelectorAll('[data-g]').forEach(e => e.onclick = () => sheetGrupo(e.dataset.g));
@@ -3795,6 +3937,7 @@ async function apagarDadosPessoais(alids, pedidoId) {
     ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${alid}`, d: { nome: 'Aluno(a) removido(a)', nascimento: null, responsavelId: a.responsavelId || null, turmas: a.turmas || [], desc: null, inicio: a.inicio || null, fim: mesMais(mesHoje(), -1), ativa: false, anonimizadoEm: Date.now() } });
     ops.push({ op: 'del', p: `escolas/${S.eid}/saude/${alid}` }, { op: 'del', p: `escolas/${S.eid}/atestados/${alid}` });
     ops.push(...opsApagarDocs(alid));
+    for (const nid of await B.meus(`escolas/${S.eid}/notasAlunos`, 'alid', alid).catch(() => [])) ops.push({ op: 'del', p: `escolas/${S.eid}/notasAlunos/${nid}` });
     for (const [g, G] of Object.entries(S.grupos)) if ((G.alunas || []).includes(alid)) ops.push({ op: 'merge', p: `escolas/${S.eid}/grupos/${g}`, d: { alunas: G.alunas.filter(x => x !== alid) } });
   }
   // responsável só é apagado se não tiver outro aluno ativo
@@ -4091,6 +4234,8 @@ async function semearMock() {
     await docM('al1', 'r1', 'ident', [docFalso('CERTIDÃO DE NASCIMENTO', 'Sofia Lins', 1200, 800), docFalso('CERTIDÃO · VERSO', 'Sofia Lins', 1200, 800)], null, null, true)]) });
   await set(`${p}/docsAlunos/al3`, { responsavelId: 'r2', docs: Object.fromEntries([await docM('al3', 'r2', 'cardio', [docFalso('PARECER CARDIOLÓGICO', 'Luíza Melo')], diaM(-377), diaM(-12), false)]) });
   await set(`${p}/docsAlunos/al4`, { responsavelId: 'r3', docs: Object.fromEntries([await docM('al4', 'r3', 'cardio', [docFalso('PARECER CARDIOLÓGICO', (alunas.al4 || {}).nome || 'Aluno')], diaM(-345), diaM(20), false)]) });
+  await set(`${p}/notasAlunos/n1`, { alid: 'al1', texto: 'Evoluiu muito no passe curto e na leitura de jogo. Ainda precisa trabalhar o chute com a perna esquerda; combinamos exercícios extras no fim do treino de quinta.', tag: 'desempenho', autorUid: uA, autorNome: 'Paula Diretora', em: Date.now() - 6 * 864e5 });
+  await set(`${p}/notasAlunos/n2`, { alid: 'al1', texto: 'A mãe avisou que ela vai faltar dia 20 por consulta médica.', tag: 'familia', autorUid: 'outro', autorNome: 'Camila Ribeiro', em: Date.now() - 2 * 864e5 });
   await set(`${p}/membros/${uF}/vinculos/r1`, { codigo: 'K7Q2MX' });
   await set('users/' + uA, { escolas: { [eid]: { nome: 'Escolinha Movimento', papel: 'admin' } } });
   // ?mock=1&duas=1: a administração também está numa segunda escola (para ver a escolha na abertura)
