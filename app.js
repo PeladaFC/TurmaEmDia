@@ -3412,7 +3412,7 @@ async function sheetNotaFiscal(volta) {
       <div id="nfcertw" ${cert ? 'hidden' : ''}><input id="nfarq" type="file" accept=".pfx,.p12,application/x-pkcs12" hidden>
         <label for="nfarq" class="linha-botao" style="cursor:pointer;margin-bottom:10px"><span class="grow"><b id="nfarqn">Escolher o arquivo</b><span class="s">O certificado A1 é um arquivo .pfx ou .p12</span></span><span aria-hidden="true" style="font-weight:800">›</span></label>
         <div class="field"><label for="nfsenha">Senha do certificado</label><input id="nfsenha" type="password" autocomplete="off"></div>
-        <button type="button" class="btn ghost" id="nfinst" style="width:100%">Instalar certificado</button>
+        <button type="button" class="btn ghost" id="nfinst" style="width:100%;margin-top:10px">Instalar certificado</button>
         <div class="note">A senha fica só no servidor, protegida. Ninguém vê, nem a escola.${MOCK ? ' (No teste: qualquer arquivo, senha 1234.)' : ''}</div></div></div>
     <div class="field"><label for="nfcnpj">CNPJ</label><input id="nfcnpj" inputmode="numeric" maxlength="18" value="${esc(fmtCnpj(c.cnpj || ''))}" placeholder="00.000.000/0000-00"></div>
     <div class="field"><span class="lb">Tipo de empresa</span><div class="opcoes c3" id="nfreg">${REGIMES_NF.map(([k, n]) => `<button type="button" class="pick" data-rg="${k}" aria-pressed="${regime === k}">${n}</button>`).join('')}</div>
