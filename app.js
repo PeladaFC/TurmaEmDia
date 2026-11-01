@@ -574,6 +574,17 @@ function sheetCriarEscola() {
 let SHEET_FECHA = null;
 // trava a tela de trás enquanto uma janela está aberta (no iPhone, senão a rolagem passa para trás)
 let TRAVA_Y = 0;
+// iPhone: com o teclado aberto, a barra de baixo "sobe" e às vezes fica no meio da tela depois que o teclado fecha.
+// Escondemos a barra enquanto se digita e, quando o teclado fecha, recolocamos tudo no lugar.
+(function teclado() {
+  const campo = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]),textarea,select,[contenteditable="true"]');
+  const ajustar = () => { const b = document.body; b.style.transform = 'translateZ(0)'; requestAnimationFrame(() => { b.style.transform = ''; window.scrollTo(window.scrollX, window.scrollY); }); };
+  let t = null;
+  document.addEventListener('focusin', e => { if (campo(e.target)) { clearTimeout(t); document.body.classList.add('digitando'); } });
+  document.addEventListener('focusout', e => { if (!campo(e.target)) return; clearTimeout(t); t = setTimeout(() => { if (!campo(document.activeElement)) { document.body.classList.remove('digitando'); ajustar(); } }, 120); });
+  const vv = window.visualViewport;
+  if (vv) { let alto = vv.height; vv.addEventListener('resize', () => { if (vv.height > alto + 80) ajustar(); alto = vv.height; }); }
+})();
 function travarFundo(on) {
   const b = document.body;
   if (on && !b.classList.contains('travado')) { TRAVA_Y = window.scrollY; b.style.top = -TRAVA_Y + 'px'; b.classList.add('travado'); }
