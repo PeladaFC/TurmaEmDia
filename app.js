@@ -2229,6 +2229,31 @@ function pendenciasAluno(alid) {
 }
 const categoriaTxt = a => a && /^\d{4}/.test(a.nascimento || '') ? `Categoria ${a.nascimento.slice(0, 4)}` : 'Sem data de nascimento';
 
+// perfil (escola): o que o termo de matrícula tem de diferente de "não" (o que a equipe precisa saber)
+const SAUDE_CURTA = { coracao: 'Problema no coração ou só faz atividade com orientação médica', esforco: 'Dor no peito, falta de ar ou cansaço exagerado no esforço', desmaio: 'Já desmaiou ou teve tontura forte no exercício',
+  doenca: 'Asma, bronquite, epilepsia, diabetes ou outra doença que pede cuidado', ossos: 'Problema em ossos, articulações ou coluna, ou lesão recente', outro: 'Outra razão de saúde para não fazer atividade' };
+function saudePerfilHTML(alid) {
+  const x = termoDe(alid), t = x.t;
+  const cab = `<section class="psec"><div class="psec-cab"><h2>Saúde</h2>${x.st === 'ok' ? `<button type="button" class="pacao" data-psaude="${esc(alid)}">Ver termo</button>` : ''}</div>`;
+  if (!t) return `${cab}<div class="plista"><div class="plinha sub">O termo de matrícula ainda não foi preenchido pela família.</div></div></section>`;
+  const it = [];
+  PERGUNTAS_SAUDE.forEach(([k]) => { if ((t.respostas || {})[k]) it.push(['Saúde', SAUDE_CURTA[k]]); });
+  if (t.detalhes) it.push(['Detalhes', t.detalhes]);
+  if (t.alergias) it.push(['Alergias', t.alergias]);
+  if (t.remedios) it.push(['Remédios', t.remedios]);
+  if (t.primeirosSocorros === false) it.push(['Atenção', 'Não autoriza os primeiros socorros pela escola']);
+  if (t.imagem === false) it.push(['Imagem', 'Não autoriza o uso de imagem (fotos e vídeos)']);
+  if (x.atest) it.push(['Atestado', x.as === 'recusado' ? 'Atestado recusado: a família precisa mandar outro' : x.as === 'conferir' ? 'Atestado enviado: falta a escola conferir' : 'Falta o atestado médico']);
+  if (x.st === 'vencido') it.push(['Termo', 'Vencido: tem mais de 1 ano']);
+  return `${cab}<div class="plista">${it.length ? it.map(([r, v]) => `<div class="plinha psaude"><span class="psaude-r">${esc(r)}</span><span class="grow">${esc(v)}</span></div>`).join('')
+    : '<div class="plinha sub">No termo, tudo "não": nada de saúde a observar.</div>'}</div></section>`;
+}
+// perfil (escola): cancelamento em andamento ou encerrado, em destaque
+function blocoCancelPerfil(alid) {
+  const x = dtrDe(alid); if (!x) return ''; const d = x[1];
+  const txt = d.status === 'pedido' ? 'Pedido de cancelamento · falta confirmar' : d.status === 'confirmado' ? `Matrícula cancelada · último dia ${dataBR(d.ultimo)}` : `Matrícula encerrada em ${dataBR(d.ultimo)}`;
+  return `<button class="faixa-resumo ${d.status === 'encerrado' ? 'neutra' : 'alerta'}" data-dtr="${esc(x[0])}" style="margin:12px 0"><span class="grow"><b>${txt}</b><span class="s">${d.status === 'confirmado' && !d.assinatura ? 'A família ainda não assinou o termo' : 'Ver o pedido e o termo'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`;
+}
 function sheetPerfilAluno(alid, volta) {
   const a = S.alunas[alid]; if (!a) return;
   const eu = () => sheetPerfilAluno(alid, volta), adm = !!S.admin, prof = !!S.prof && !adm;
@@ -2269,12 +2294,14 @@ function sheetPerfilAluno(alid, volta) {
       </div>
     </div>
     ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
-    ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${linhaMatricula(alid, true)}${(() => { const ok = ctAssinado(alid), ult = ok || ctUltimo(alid); if (!ult && !ctPede()) return '';
+    ${adm ? blocoCancelPerfil(alid) + saudePerfilHTML(alid) : ''}
+    ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${(() => { const ok = ctAssinado(alid), ult = ok || ctUltimo(alid); if (!ult && !ctPede()) return '';
       return `<button type="button" class="plinha" ${ult ? `data-pvct="${esc(alid)}"` : 'disabled'}><span class="grow">Contrato</span>${ok ? `<span class="chip pago">Assinado em ${dataBR(new Date(ok.em).toISOString().slice(0, 10))}</span>` : '<span class="chip vencido">Falta assinar</span>'}<span class="seta" aria-hidden="true">${ult ? '›' : ''}</span></button>`; })()}${docsDoAluno(alid).map(t => { const d = docDe(alid, t);
       return `<button type="button" class="plinha" data-adoc="${esc(t)}"><span class="grow">${esc(tipoDoc(t).nome)}</span>${chipDoc(d)}<span class="seta" aria-hidden="true">›</span></button>`; }).join('') || '<div class="plinha sub">Nenhum documento. Toque em "+ Documento".</div>'}</div></section>` : ''}
     <section class="psec"><div class="psec-cab"><h2>Notas da equipe</h2><button type="button" class="pacao pacao-forte" id="pnova">+ Nota</button></div>
       <div class="pfiltros" id="pfilt"></div>
       <div id="pnotas"></div></section>
+    ${adm && !dtrDe(alid) ? `<button type="button" class="link pcancel" data-dtrnovo="${esc(alid)}">Cancelar a matrícula</button>` : ''}
     <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
     if (volta) SHEET_VOLTAR = volta;
     desenharNotas();
@@ -2291,6 +2318,7 @@ function sheetPerfilAluno(alid, volta) {
     sh.querySelectorAll('[data-adoc]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetDocAluno(alid, b.dataset.adoc, eu)));
     if ($('pnovodoc')) $('pnovodoc').onclick = () => abrirDe(eu, () => sheetDocAluno(alid, null, eu));
     sh.querySelectorAll('[data-pvct]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetVerContrato(alid)));
+    sh.querySelectorAll('[data-psaude]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetVerTermo(alid)));
   }, () => { if (parar) parar(); });
 }
 
