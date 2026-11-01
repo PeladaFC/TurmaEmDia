@@ -379,8 +379,8 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
   const NF = require('./notaFamilia')(db, P.interno, { lib: libFalsa });
   const s8 = (k, v) => S.set('escolas/e8/' + k, v);
   S.set('escolas/e8', { nome: 'Escolinha Gol', admins: ['adm8'] }); s8('config/geral', { cidade: 'Recife', uf: 'PE' });
-  s8('turmas/t1', { nome: 'Sub-9', preco: 150 }); s8('turmas/t2', { nome: 'Goleiros', preco: 100, recebedor: 'p8' }); s8('turmas/t3', { nome: 'Recreação', preco: 80, nota: false });
-  s8('extras/x1', { tipo: 'taxa', nome: 'Uniforme', v: 90, nota: false }); s8('extras/x2', { tipo: 'evento', nome: 'Copa Recife', v: 60 });
+  s8('turmas/t1', { nome: 'Sub-9', preco: 150, nota: true }); s8('turmas/t2', { nome: 'Goleiros', preco: 100, recebedor: 'p8', nota: true }); s8('turmas/t3', { nome: 'Recreação', preco: 80, nota: false });
+  s8('extras/x1', { tipo: 'taxa', nome: 'Uniforme', v: 90, nota: false }); s8('extras/x2', { tipo: 'evento', nome: 'Copa Recife', v: 60, nota: true }); s8('extras/x3', { tipo: 'taxa', nome: 'Rifa', v: 20 }); // sem marcar: não emite
   s8('responsaveis/r1', { nome: 'Kate Lima', cpf: '529.982.247-25', email: 'kate@x.com' }); s8('responsaveis/r2', { nome: 'Rui', cpf: '' });
   s8('alunas/a1', { nome: 'Davi Lima', responsavelId: 'r1', turmas: ['t1', 't2'], inicio: '2026-01' }); s8('alunas/a2', { nome: 'Leo', responsavelId: 'r2', turmas: ['t1'], inicio: '2026-01' });
   s8('professoras/p8', { nome: 'Rafa', emailApp: 'rafa@x.com' }); s8('equipe/rafa', { pid: 'p8' });
@@ -406,6 +406,8 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.strictEqual(p.emitente.regime.opSimpNac, '3'); assert.strictEqual(p.valores.pTotTribSN, 6); assert.strictEqual(p.servico.cTribNac, '060401');
     assert.ok(!/Uniforme/.test(p.servico.descricao) && /Copa Recife/.test(p.servico.descricao));
     assert.strictEqual(await NF.interno.aposPix('e8', 'c1', cob), 'pulou'); assert.strictEqual(EMITIDAS.length, 1);
+    // padrão é desligado: taxa que a escola não ligou não entra
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c2b', { rec: 'escola', rids: ['r1'], itens: [{ k: 'x:x3:a1', tipo: 'x', alid: 'a1', xid: 'x3', v: 20 }] }), 'sem_itens');
     // só taxa sem nota: não emite nada
     assert.strictEqual(await NF.interno.aposPix('e8', 'c2', { rec: 'escola', rids: ['r1'], itens: [{ k: 'x:x1:a1', tipo: 'x', alid: 'a1', xid: 'x1', v: 90 }] }), 'sem_itens');
   });

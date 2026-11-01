@@ -1608,7 +1608,7 @@ function sheetExtra(xid, op = {}) {
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
     ${!legado && evsTaxa.length ? `<div class="field"><label for="xev">É de um evento?</label><select id="xev"><option value="">Não, taxa avulsa</option>${evsTaxa.map(([id, e]) => `<option value="${esc(id)}" ${id === evento ? 'selected' : ''}>${esc(e.nome)} · ${esc(periodoTxt(e))}</option>`).join('')}</select>
       <span class="sub" id="xevnota"></span></div>` : ''}
-    ${ligaNota('xnota', x ? x.nota : true, 'Desligue para o que não é serviço da escola, como uniforme ou taxa repassada à federação.')}
+    ${ligaNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.')}
     <div class="field"><span class="lb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
     <div class="xresumo" id="xcont"></div>
     <div class="err" id="xerr" role="alert"></div>
@@ -1685,7 +1685,7 @@ function sheetEvento(xid) {
     <div id="eappw">
     <label class="check"><input type="checkbox" id="erep" ${x && x.pixRepassa === true ? 'checked' : ''}> <span class="grow">Quem paga cobre a taxa do Pix (${TAXA_TRANSACAO()}%)<span class="s" style="display:block;color:var(--muted);font-size:.82rem">Vale para a inscrição e para as taxas deste evento.</span></span></label>
     ${simTaxaHTML('esim', 0, true)}
-    ${ligaNota('enota', x ? x.nota : true, 'Vale para a inscrição paga pelo app. Desligue se for só repasse ao organizador.')}</div>
+    ${ligaNota('enota', !!(x && x.nota === true), 'Vale para a inscrição paga pelo app. Se for só repasse ao organizador, deixe desligado.')}</div>
     <div class="field"><span class="lb">Fotos do evento</span><span class="sub">Cartaz, regulamento, horários. Os responsáveis veem junto com o evento. Até ${FOTOS_EV_MAX} fotos.</span>
       <div class="ev-fotos" id="efotos"></div><input type="file" id="efoto" accept="image/*" hidden><div class="err" id="eferr" role="alert"></div></div>
     <div class="field"><span class="lb">Quem pode ir? Os responsáveis recebem o convite no app</span><div id="equadros"></div></div>
@@ -2612,8 +2612,8 @@ function sheetConta(pid) {
     $('cok').onclick = async () => { $('cok').disabled = true; try { await B.set(`escolas/${S.eid}/professoras/${pid}`, { mpContaInfo: $('cmpc').value.trim(), pixChave: $('cpix').value.trim() }, { merge: true }); fecharSheet(); aviso('Conta salva'); } catch (e) { $('cerr').textContent = msgErro(e); $('cok').disabled = false; } };
   });
 }
-// liga/desliga "Emitir nota fiscal" de cada turma, taxa e evento (padrão: ligado)
-const ligaNota = (id, on, dica) => `<label class="liga"><span class="grow"><b>Emitir nota fiscal</b><span class="s">${dica || 'Desligue se esta cobrança não leva nota.'}</span></span><input type="checkbox" role="switch" id="${id}" ${on !== false ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`;
+// liga/desliga "Emitir nota fiscal" de cada turma, taxa e evento (padrão: desligado; a escola liga o que quiser)
+const ligaNota = (id, on, dica) => `<label class="liga"><span class="grow"><b>Emitir nota fiscal</b><span class="s">${dica || 'Ligue se esta cobrança leva nota.'}</span></span><input type="checkbox" role="switch" id="${id}" ${on === true ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`;
 function sheetTurma(tid, depois) {
   const novoTid = tid || novoId(), t = tid ? S.turmas[tid] : null, n = tid ? Object.values(S.alunas).filter(a => (a.turmas || []).includes(tid)).length : 0, todas = t ? C.todasIdades(t) : false;
   sheetSimples({ titulo: t ? 'Editar turma' : 'Nova turma',
@@ -2630,7 +2630,7 @@ function sheetTurma(tid, depois) {
       <div class="field"><label for="thor">Dias e horário</label><input id="thor" maxlength="60" value="${esc(t ? t.horario || '' : '')}" placeholder="Ex.: Seg e Qua, 17h às 18h"></div>
       <div class="field"><label for="trec">A mensalidade vai para</label><select id="trec">${opcoesRec(t && t.recebedor)}</select>
         <div class="note">O Pix da mensalidade cai direto na conta do Mercado Pago de quem você escolher aqui.</div></div>
-      ${ligaNota('tnota', t ? t.nota : true, 'A nota sai no nome de quem recebe a mensalidade, quando o pagamento entra.')}
+      ${ligaNota('tnota', !!(t && t.nota === true), 'A nota sai no nome de quem recebe a mensalidade, quando o pagamento entra.')}
       ${n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'} nesta turma. Mudar o valor vale para os meses que ainda não foram pagos.</div>` : ''}`,
     montar: () => { $('ttodas').onchange = e => { $('tmin').disabled = $('tmax').disabled = e.target.checked; }; if (!t) $('tprof').onchange = e => { if (e.target.value) $('trec').value = e.target.value; }; },
     salvar: async () => {
@@ -3381,11 +3381,12 @@ function ajudaNF(prof) {
       <li>Escolha o <b>tipo de empresa</b> e o <b>código do serviço</b>.</li>
       <li>Se não for MEI, toque em <b>Buscar na prefeitura</b> para preencher a alíquota do ISS, e coloque o percentual de tributos que o contador informar.</li>
       <li>Deixe em <b>Teste</b> primeiro: as notas saem sem valor fiscal, para conferir. Quando estiver tudo certo, mude para <b>Valendo</b>.</li>
-      <li>Ligue <b>Emitir notas automaticamente</b> e salve.</li></ol>
+      <li>Ligue <b>Emitir notas automaticamente</b> e salve.</li>
+      <li>Ligue o <b>Emitir nota fiscal</b> nas turmas (e nas taxas e eventos que levam nota).</li></ol>
     <h4>Depois de ligado</h4><ul>
       <li><b>Pix pelo app</b>: a nota sai sozinha quando o pagamento entra.</li>
-      <li><b>Dinheiro</b>: ao tocar em "Recebi em dinheiro", deixe marcado "Emitir nota fiscal".</li>
-      <li>Cada <b>turma, taxa e evento</b> tem o seu liga/desliga "Emitir nota fiscal". Uniforme, taxa da federação e outros repasses: desligue, para não pagar imposto à toa.</li>
+      <li><b>Dinheiro</b>: com a nota ligada, "Recebi em dinheiro" também emite. A caixinha "Emitir nota fiscal" já vem marcada; desmarque se não quiser naquela vez.</li>
+      <li>Cada <b>turma, taxa e evento</b> tem o seu liga/desliga "Emitir nota fiscal", que começa <b>desligado</b>. Ligue só no que leva nota (as mensalidades, por exemplo). Uniforme, taxa da federação e outros repasses: deixe desligado, para não pagar imposto à toa.</li>
       <li>Escolha <b>todas as famílias</b> ou <b>só quem pedir</b>. A família pede ou dispensa no app, e ${prof ? 'a escola' : 'você'} também pode mudar no cadastro do responsável.</li>
       <li>Saiu errado? Em <b>Notas emitidas</b>, toque em Cancelar.</li></ul>
     <h4>As palavras difíceis</h4><ul>

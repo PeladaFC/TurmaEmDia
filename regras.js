@@ -95,13 +95,12 @@
     ts.forEach((t, i) => { const w = tot ? (Number(t.preco) || 0) / tot : 1 / ts.length, val = i === ts.length - 1 ? resto : r2(v * w); resto = r2(resto - val); por[recDe(t)] = r2((por[recDe(t)] || 0) + val); });
     return por;
   }
-  // nota fiscal: cada turma, taxa e evento diz se emite nota (padrão: sim). Mensalidade: vale a turma de quem recebe;
-  // acordo: segue as mensalidades (emite). Devolve true/false para a parte deste recebedor no item.
+  // nota fiscal: cada turma, taxa e evento diz se emite nota (padrão: NÃO; a escola liga o que quiser).
+  // Mensalidade e acordo: vale a turma de quem recebe. Devolve true/false para a parte deste recebedor no item.
   function emiteNota(i, rec, a, turmas, extras) {
-    if (i.tipo === 'x') { const x = (extras || {})[i.xid]; return !(x && x.nota === false); }
-    if (i.tipo === 'm') { const ts = ((a && a.turmas) || []).map(t => (turmas || {})[t]).filter(Boolean).filter(t => recDe(t) === rec);
-      return !ts.length || ts.some(t => t.nota !== false); }
-    return true;
+    if (i.tipo === 'x') { const x = (extras || {})[i.xid]; return !!(x && x.nota === true); }
+    const ts = ((a && a.turmas) || []).map(t => (turmas || {})[t]).filter(Boolean).filter(t => recDe(t) === rec);
+    return ts.some(t => t.nota === true);
   }
   // parcela de acordo: divide entre os recebedores na mesma proporção das cobranças que entraram no acordo
   function partesAcordo(A, v) {
