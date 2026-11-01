@@ -489,9 +489,7 @@ details.doc-tipo[open] summary .seta{transform:rotate(180deg)}
 .nota-acoes{display:flex;gap:14px}
 .tag-pick[aria-pressed="true"]{background:var(--tc);border-color:var(--tc);color:#fff}
 .busca-filtros{display:flex;flex-direction:column;gap:8px}
-.busca-filtros .chips{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-inline:-16px;padding-inline:16px}
-.busca-filtros .chips::-webkit-scrollbar{display:none}
-.busca-filtros .pick{flex:none;font-size:.82rem;padding:7px 12px}
+
 .busca-filtros select{font-size:16px;padding:10px;border-radius:4px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
 #bres mark{background:var(--warn-soft);color:inherit;padding:0 1px}
 #bres .chip{max-width:40%;overflow:hidden;text-overflow:ellipsis}
@@ -671,6 +669,14 @@ h2{font-size:1.3rem} h3{font-size:1.7rem;line-height:1.05} .big{font-size:2.6rem
 nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:uppercase;font-size:clamp(.7rem,3.3vw,.85rem);letter-spacing:.02em;min-width:0}
 .progress,.progress i,.stack{border-radius:0}
 .faixa-resumo b{font-family:var(--f-display);font-style:italic;font-size:1.15rem;text-transform:uppercase;letter-spacing:.01em}
+
+/* opções lado a lado com a mesma largura, alinhadas às bordas dos campos */
+.opcoes{display:grid;grid-template-columns:repeat(var(--cols,2),minmax(0,1fr));gap:8px;width:100%}
+.opcoes .pick{width:100%;min-height:46px;margin:0;padding:8px 10px;display:flex;align-items:center;justify-content:center;text-align:center;white-space:normal;line-height:1.1;font-size:.92rem;overflow-wrap:normal;word-break:normal;hyphens:none}
+.opcoes:not(.c3) > :last-child:nth-child(odd){grid-column:1/-1}
+.add-largo{width:100%;align-self:stretch;min-height:46px}
+.opcoes.c3{--cols:3}
+.busca-filtros select,.busca-campo input{width:100%;box-sizing:border-box;min-height:46px}
 </style>
 </head>
 <body>

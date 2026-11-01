@@ -1639,7 +1639,7 @@ function sheetEvento(xid) {
     <div class="field"><label for="eend">Localização</label><input id="eend" maxlength="300" value="${esc((x && x.endereco) || '')}" placeholder="Endereço ou link do Google Maps">
       <span class="sub">As famílias tocam em "Como chegar" e o mapa abre no celular.</span></div>
     <div class="field"><span class="lb">Links e contatos</span><span class="sub">Regulamento, site da inscrição, telefone de quem organiza… Cada um com uma descrição curta.</span>
-      <div class="ev-links" id="elinks"></div><button type="button" class="add-disc" id="elinkadd" style="align-self:flex-start">+ Link ou contato</button></div>
+      <div class="ev-links" id="elinks"></div><button type="button" class="add-disc add-largo" id="elinkadd">+ Link ou contato</button></div>
     <div class="field"><span class="lb">Onde é a inscrição?</span><div class="insc-ops" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" class="insc-op" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${k === 'app' ? 'A família paga a inscrição por Pix no app. Pagou, fica inscrita sozinha.' : 'A família se inscreve e paga direto com quem organiza. Depois confirma no app.'}</span></span></button>`).join('')}</div>
       ${temPagEv ? '<div class="note">Já há inscrições pagas pelo app, então o valor e a forma de pagar não mudam mais.</div>' : ''}</div>
     <div class="grade2">
@@ -1673,7 +1673,7 @@ function sheetEvento(xid) {
     if (xid && x.fotos) B.get(`escolas/${S.eid}/midiaEventos/${xid}`).then(d => { if (d && d.fotos && !fotosMudou) { fotos = d.fotos.slice(0, FOTOS_EV_MAX); verFotos(); } }).catch(() => { });
     // links e contatos: descrição curta + link, telefone ou outra informação
     let links = ((x && x.links) || []).map(l => ({ ...l }));
-    const verLinks = () => { $('elinks').innerHTML = links.map((l, i) => `<div class="ev-link-ed"><input data-ld="${i}" maxlength="40" value="${esc(l.d || '')}" placeholder="Descrição (ex.: Regulamento)" aria-label="Descrição"><input data-lv="${i}" maxlength="300" value="${esc(l.v || '')}" placeholder="Link, telefone ou informação" aria-label="Link, telefone ou informação"><button type="button" class="ev-foto-x" data-lx="${i}" aria-label="Tirar">×</button></div>`).join('');
+    const verLinks = () => { $('elinks').innerHTML = links.map((l, i) => `<div class="ev-link-ed"><input data-ld="${i}" maxlength="40" value="${esc(l.d || '')}" placeholder="Descrição" aria-label="Descrição curta (ex.: Regulamento)"><input data-lv="${i}" maxlength="300" value="${esc(l.v || '')}" placeholder="Link ou telefone" aria-label="Link, telefone ou informação"><button type="button" class="ev-foto-x" data-lx="${i}" aria-label="Tirar">×</button></div>`).join('');
       $('elinks').querySelectorAll('[data-ld]').forEach(e => e.oninput = () => { links[Number(e.dataset.ld)].d = e.value; });
       $('elinks').querySelectorAll('[data-lv]').forEach(e => e.oninput = () => { links[Number(e.dataset.lv)].v = e.value; });
       $('elinks').querySelectorAll('[data-lx]').forEach(b => b.onclick = () => { links.splice(Number(b.dataset.lx), 1); verLinks(); });
@@ -2141,7 +2141,7 @@ function sheetPerfilAluno(alid, volta) {
     ${adm ? `<section><h2>Documentos</h2><div class="docs-al">${tiposDoc().map(T => { const d = docDe(alid, T.id);
       return `<button type="button" class="linha-botao" data-adoc="${esc(T.id)}"><span class="grow"><b>${esc(T.nome)}</b><span class="s">${d ? `${d.familia ? 'Enviado pela família' : 'Guardado pela escola'} em ${dataCurta(d.em)}` : T.familia !== false ? 'A família pode enviar pelo app' : 'Toque para guardar'}</span></span>${chipDoc(d)}<span aria-hidden="true">›</span></button>`; }).join('') || '<div class="sub">Nenhum tipo de documento. Escolha em Ajustes.</div>'}</div></section>` : ''}
     <section><div class="headrow"><h2>Notas da equipe</h2><button type="button" class="add" id="pnova">+ Nota</button></div>
-      <div class="chips" id="pfilt"></div>
+      <div class="opcoes" id="pfilt"></div>
       <div id="pnotas"></div></section>
     <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
     if (volta) SHEET_VOLTAR = volta;
@@ -2158,7 +2158,7 @@ function sheetPerfilAluno(alid, volta) {
 function sheetNota(alid, n, volta) {
   const a = S.alunas[alid] || {}; let tag = (n && n.tag) || '';
   sheet(`<h3>${n ? 'Editar nota' : 'Nova nota'}</h3><div class="sub">${esc(a.nome || '')}</div>
-    <div class="field"><span class="lb">Etiqueta (opcional)</span><div class="chips" id="ntags">${TAGS_NOTA.map(([k, nm, c]) => `<button type="button" class="pick tag-pick" data-tg="${k}" style="--tc:${c}" aria-pressed="${tag === k}">${esc(nm)}</button>`).join('')}</div></div>
+    <div class="field"><span class="lb">Etiqueta (opcional)</span><div class="opcoes" id="ntags">${TAGS_NOTA.map(([k, nm, c]) => `<button type="button" class="pick tag-pick" data-tg="${k}" style="--tc:${c}" aria-pressed="${tag === k}">${esc(nm)}</button>`).join('')}</div></div>
     <div class="field"><label for="ntxt">Nota</label><textarea id="ntxt" rows="6" maxlength="2000" placeholder="Ex.: Melhorou muito no passe. Precisa trabalhar o chute de perna esquerda.">${esc((n && n.texto) || '')}</textarea><span class="sub num" id="nconta"></span></div>
     <div class="note">Fica salva com o seu nome (${esc(meuNome())}) e a data. Só a equipe da escola vê; a família não.</div>
     <div class="err" id="nerr" role="alert"></div>
@@ -2186,11 +2186,11 @@ const semAcento = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').
 function sheetBusca() {
   const adm = !!S.admin, filtros = FILTROS_BUSCA.filter(([k]) => adm || k === 'aniver' || k === 'termo');
   sheet(`<h3>Buscar</h3>
-    <div class="field busca-campo"><input id="bq" type="search" autocomplete="off" placeholder="Nome do aluno ou do responsável, telefone ou CPF" aria-label="Buscar" value="${esc(BUSCA.q)}"></div>
+    <div class="field busca-campo"><input id="bq" type="search" autocomplete="off" placeholder="Nome, telefone ou CPF" aria-label="Buscar por nome do aluno ou do responsável, telefone ou CPF" value="${esc(BUSCA.q)}"></div>
     <div class="busca-filtros">
-      <div class="chips" id="bsit">${[['ativos', 'Ativos'], ['inativos', 'Inativos'], ['todos', 'Todos']].map(([k, n]) => `<button type="button" class="pick" data-bs="${k}" aria-pressed="${BUSCA.sit === k}">${n}</button>`).join('')}</div>
+      <div class="opcoes c3" id="bsit">${[['ativos', 'Ativos'], ['inativos', 'Inativos'], ['todos', 'Todos']].map(([k, n]) => `<button type="button" class="pick" data-bs="${k}" aria-pressed="${BUSCA.sit === k}">${n}</button>`).join('')}</div>
       <select id="bturma" aria-label="Turma"><option value="">Todas as turmas</option>${ordenar(S.turmas).map(([t, T]) => `<option value="${esc(t)}" ${BUSCA.turma === t ? 'selected' : ''}>${esc(T.nome)}</option>`).join('')}<option value="_sem" ${BUSCA.turma === '_sem' ? 'selected' : ''}>Sem turma</option></select>
-      <div class="chips" id="bpend">${filtros.map(([k, n]) => `<button type="button" class="pick" data-bp="${k}" aria-pressed="${BUSCA.pend === k}">${n}</button>`).join('')}</div>
+      <div class="opcoes" id="bpend">${filtros.map(([k, n]) => `<button type="button" class="pick" data-bp="${k}" aria-pressed="${BUSCA.pend === k}">${n}</button>`).join('')}</div>
     </div>
     <div class="sub num" id="bconta"></div>
     <div id="bres"></div>
@@ -3447,7 +3447,7 @@ function sheetTiposDoc(volta) {
   const usados = tid => Object.values(S.docs || {}).filter(x => x && x.docs && x.docs[tid]).length;
   const desenhar = () => {
     $('tdlista').innerHTML = tipos.map((t, i) => `<div class="tipo-doc"><div class="tipo-doc-l1"><input data-tn="${i}" maxlength="40" value="${esc(t.nome)}" placeholder="Nome do documento" aria-label="Nome do documento"><button type="button" class="ev-foto-x" data-tx="${i}" aria-label="Tirar ${esc(t.nome)}">×</button></div>
-      <div class="chips">${VALIDADES_DOC.map(([m, n]) => `<button type="button" class="pick" data-tv="${i}:${m}" aria-pressed="${Number(t.meses || 0) === m}">${n}</button>`).join('')}</div>
+      <div class="opcoes">${VALIDADES_DOC.map(([m, n]) => `<button type="button" class="pick" data-tv="${i}:${m}" aria-pressed="${Number(t.meses || 0) === m}">${n}</button>`).join('')}</div>
       <label class="check"><input type="checkbox" data-tf="${i}" ${t.familia !== false ? 'checked' : ''}> A família envia pelo app</label></div>`).join('') || '<div class="empty">Nenhum tipo de documento.</div>';
     $('tdsug').innerHTML = SUGESTOES_DOC.filter(n => !tipos.some(t => t.nome.toLowerCase() === n.toLowerCase())).map(n => `<button type="button" class="pick" data-ts="${esc(n)}">+ ${esc(n)}</button>`).join('');
     $('tdlista').querySelectorAll('[data-tn]').forEach(e => e.oninput = () => { tipos[Number(e.dataset.tn)].nome = e.value; });
@@ -3461,8 +3461,8 @@ function sheetTiposDoc(volta) {
   sheet(`<h3>Documentos dos alunos</h3>
     <div class="sub">Os documentos que a escola guarda de cada aluno. Com validade, o app avisa quando estiver perto de vencer. Nenhum é obrigatório.</div>
     <div id="tdlista"></div>
-    <button type="button" class="add-disc" id="tdmais" style="align-self:flex-start">+ Outro documento</button>
-    <div class="field"><span class="lb">Sugestões</span><div class="chips" id="tdsug"></div></div>
+    <button type="button" class="add-disc add-largo" id="tdmais">+ Outro documento</button>
+    <div class="field"><span class="lb">Sugestões</span><div class="opcoes" id="tdsug"></div></div>
     <div class="err" id="tderr" role="alert"></div>
     <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="tdok">Salvar</button></div>`, () => {
     if (volta) SHEET_VOLTAR = volta;
@@ -3520,7 +3520,7 @@ function sheetJuntarDocs(op = {}) {
   sheet(`<h3>Juntar documentos</h3>
     <div class="sub">Um PDF só, com os documentos dos alunos marcados, para mandar à competição pelo WhatsApp ou e-mail.</div>
     <div class="field"><label for="jdtit">Para qual competição?</label><input id="jdtit" maxlength="80" value="${esc(op.titulo || '')}" placeholder="Ex.: Copa Recife Sub-11"></div>
-    <div class="field"><span class="lb">Quais documentos?</span><div class="chips" id="jdtipos">${tipos.map(t => `<button type="button" class="pick" data-jt="${esc(t)}" aria-pressed="${selT.has(t)}">${esc(tipoDoc(t).nome)}</button>`).join('')}</div></div>
+    <div class="field"><span class="lb">Quais documentos?</span><div class="opcoes" id="jdtipos">${tipos.map(t => `<button type="button" class="pick" data-jt="${esc(t)}" aria-pressed="${selT.has(t)}">${esc(tipoDoc(t).nome)}</button>`).join('')}</div></div>
     <div class="field"><span class="lb">Quais alunos? Toque num quadro para escolher</span><div id="jdquadros"></div></div>
     <div id="jdresumo"></div>
     <div class="field"><span class="lb">Como enviar?</span><div class="insc-ops" id="jdmodo">${[['um', 'Um PDF só', 'Todos os documentos juntos, num arquivo.'], ['sep', 'Um arquivo para cada documento', 'Cada documento num PDF com o nome do aluno. Vão todos de uma vez.']].map(([k, n, d]) => `<button type="button" class="insc-op" data-jm="${k}" aria-pressed="${k === 'um'}"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${d}</span></span></button>`).join('')}</div></div>
