@@ -742,9 +742,38 @@ nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:up
 .filha-cam{position:absolute;right:-3px;bottom:-3px;width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--surface);display:grid;place-items:center;border:2px solid var(--surface)}
 .filha-cam svg{width:12px;height:12px}
 
-img.dot.foto-dot{object-fit:cover;height:42px;background:var(--surface2)}
-.dot.dot-mini{width:34px;height:34px;font-size:.8rem}
+img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
+.dot.dot-al{width:58px;height:58px;font-size:1.15rem;clip-path:polygon(8px 0,100% 0,calc(100% - 8px) 100%,0 100%)}
+.dot.dot-al.dot-mini{width:40px;height:40px;font-size:.85rem;clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%)}
 .turma>.dot{margin-right:10px}
+
+/* enquadrar a foto da criança */
+.enq-area{flex:1;min-height:0;display:grid;place-items:center}
+.enq-palco{position:relative;overflow:hidden;border-radius:12px;touch-action:none;cursor:grab;background:#000}
+.enq-palco canvas{display:block}
+.enq-mascara{position:absolute;inset:6%;border-radius:50%;box-shadow:0 0 0 999px rgba(0,0,0,.55);border:2px solid rgba(255,255,255,.9);pointer-events:none}
+.enq-baixo{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px 20px 18px}
+.enq-dica{font-size:.82rem;opacity:.75;text-align:center}
+.enq-zoom{display:flex;align-items:center;gap:12px;width:min(100%,340px)}
+.enq-zoom span{font-size:1.3rem;font-weight:700;opacity:.8;width:16px;text-align:center}
+.enq-zoom input{flex:1;accent-color:#fff}
+
+/* quadro do responsável na lista: uma linha só, mais baixo */
+.list li.resp-cab{background:var(--surface2);padding-top:8px;padding-bottom:8px;min-height:0;gap:10px}
+.resp-cab .label{font-size:.66rem;margin-bottom:1px}
+.resp-l1{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 6px;min-width:0}
+.resp-l1 .t{font-size:1rem}
+.resp-fone{font-size:.88rem;color:var(--muted);white-space:nowrap}
+.resp-cod{letter-spacing:.12em;font-size:.68rem;padding:3px 8px}
+
+/* botões das janelas: menores, do tamanho do texto (não precisam encher a tela) */
+.sheet .btn{font-size:.88rem;padding:9px 18px;line-height:1.15;white-space:nowrap}
+.sheet .btn.btn-mini{font-size:.82rem;padding:6px 12px}
+.sheet .actions{justify-content:flex-end;align-items:center}
+.sheet .actions>.btn{flex:0 0 auto;min-width:112px}
+.sheet>.btn,.sheet>section>.btn{align-self:center;min-width:150px}
+.sheet .btn-ico svg{width:16px;height:16px}
+.sheet .hero .actions{justify-content:flex-start}
 </style>
 </head>
 <body>

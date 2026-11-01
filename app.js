@@ -876,6 +876,8 @@ function sheetFaixa() {
     ${lista.map(m => cartaoFaixa(m)).join('')}
     <button class="btn ghost" data-fechar>Fechar</button>`, s => ligarFaixa(s, () => sheetFaixa()));
 }
+// (81) 99934-0203
+const foneBR = t => { const d = C.soDigitos(t).replace(/^55(?=\d{10,11}$)/, ''); return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : String(t || '').trim(); };
 const respDe = alid => S.resps[(S.alunas[alid] || {}).responsavelId] || {};
 const ROT = { pago: 'Pago', vencido: 'Vencido', aberto: 'Em aberto' };
 const tipoItem = i => i.tipo === 'm' ? 'Mensalidade' : i.tipo === 'a' ? 'Acordo' : (C.TIPOS_EXTRA[i.tipoExtra] || 'Extra');
@@ -1919,7 +1921,7 @@ function tAlunas(v) {
     ${reps.map(x => `<div class="banner"><span><b>${esc(S.resps[x.a].nome)}</b> (${esc(alunasDoResp(x.a).map(([, a]) => primeiro(a.nome)).join(', ') || 'sem alunos')}) e <b>${esc(S.resps[x.b].nome)}</b> (${esc(alunasDoResp(x.b).map(([, a]) => primeiro(a.nome)).join(', ') || 'sem alunos')}) têm o mesmo ${x.por}. É a mesma pessoa?</span><span class="actions"><button data-junta="${esc(x.par)}">Agrupar</button><button data-nao="${esc(x.par)}" style="color:var(--muted)">Não é</button></span></div>`).join('')}
     <div class="field"><input id="abusca" type="search" placeholder="Buscar aluno(a), responsável ou telefone" value="${esc(S.busca || '')}" aria-label="Buscar"></div>
     ${vis.length ? vis.map(({ rid, r, al }) => `<ul class="list">
-        <li class="${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''} style="background:var(--surface2)"><div class="grow"><div class="label">Responsável</div><div class="t">${esc(r.nome)}</div>${rid ? linhas(`<span class="num">${esc(r.telefone || 'Sem telefone')}</span>`, r.cpf ? `<span class="num">CPF ${esc(r.cpf)}</span>` : '') : ''}</div>${rid && r.codigo ? `<span class="chip" style="letter-spacing:.12em">${esc(r.codigo)}</span>` : ''}</li>
+        <li class="resp-cab ${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''}><div class="grow"><div class="label">Responsável</div><div class="resp-l1"><span class="t">${esc(r.nome)}</span>${rid ? `<span class="resp-fone num">– ${esc(foneBR(r.telefone) || 'sem telefone')}</span>` : ''}</div></div>${rid && r.codigo ? `<span class="chip resp-cod">${esc(r.codigo)}</span>` : ''}</li>
         ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].join(''))}</li>`; }).join('')}
         ${rid ? `<li class="tap" data-nova="${esc(rid)}" style="min-height:44px"><span class="sub">+ Outro(a) aluno(a) com ${esc(primeiro(r.nome))}</span></li>` : ''}
       </ul>`).join('') : `<div class="empty">${q ? 'Nada encontrado.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre cada aluno(a) com a turma e o responsável. Se o telefone ou o CPF do responsável já existir, o app sugere agrupar os irmãos.</span>'}</div>`}`;
@@ -2029,7 +2031,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     let novaFoto = null;
     const verFoto = f => { if (!$('afotobox')) return; $('afotobox').firstElementChild.outerHTML = f ? `<img src="${f}" alt="">` : `<span>${a ? esc(iniciais(a.nome)) : ICO_CAM}</span>`; $('afotobt').textContent = f ? 'Trocar foto' : 'Adicionar foto'; };
     if (alid && FOTOS[alid] === undefined) fotoAluno(alid).then(f => { if (f && !novaFoto) verFoto(f); });
-    $('afoto').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq) return; try { novaFoto = await fotoQuadrada(arq); verFoto(novaFoto); } catch (er) { $('aerr').textContent = er.message; } };
+    $('afoto').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq) return; try { const f = await fotoQuadrada(arq); if (!f) return; novaFoto = f; verFoto(novaFoto); } catch (er) { $('aerr').textContent = er.message; } };
     if (adm) { $('aaj').value = modo0; $('aajn').value = modo0 === 'pct' ? String(Math.round(Number(d0.pct) * 100)) : modo0 === 'valor' ? fmtValor(d0.v) : modo0 === 'menos' ? fmtValor(d0.menos) : ''; }
     const marcaFaixa = () => { const id = C.idadeNoAno($('anasc').value, anoRef()); s.querySelectorAll('[data-fx]').forEach(el => { const t = S.turmas[el.dataset.fx]; el.textContent = id != null && !C.cabe(t, id) ? `Fora da faixa: faz ${id} anos em ${anoRef()}` : ''; }); };
     s.querySelectorAll('[data-gr]').forEach(b => b.onclick = () => { const g = b.dataset.gr; meusG.has(g) ? meusG.delete(g) : meusG.add(g); b.setAttribute('aria-pressed', meusG.has(g)); });
@@ -2184,7 +2186,7 @@ function sheetPerfilAluno(alid, volta) {
       e => { if ($('pnotas')) $('pnotas').innerHTML = `<div class="sub">Não deu para carregar as notas. ${esc(msgErroTexto(e))}</div>`; }, ['alid', alid]);
     $('pnova').onclick = () => abrirDe(eu, () => sheetNota(alid, null, eu));
     if ($('pfotoarq')) $('pfotoarq').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq) return;
-      try { const f = await fotoQuadrada(arq); await B.set(`escolas/${S.eid}/fotosAlunos/${alid}`, { foto: f, responsavelId: a.responsavelId || null, em: Date.now() }); FOTOS[alid] = f; $('pfoto').firstElementChild.outerHTML = fotoHTML(f); aviso('Foto salva'); agendar(); }
+      try { const f = await fotoQuadrada(arq); if (!f) return; await B.set(`escolas/${S.eid}/fotosAlunos/${alid}`, { foto: f, responsavelId: a.responsavelId || null, em: Date.now() }); FOTOS[alid] = f; $('pfoto').firstElementChild.outerHTML = fotoHTML(f); aviso('Foto salva'); agendar(); }
       catch (er) { aviso(msgErro(er)); } };
     if ($('pedit')) $('pedit').onclick = () => abrirDe(eu, () => sheetAluna(alid));
     if ($('pcob')) $('pcob').onclick = () => abrirDe(eu, () => sheetCobrancaAluna(alid));
@@ -2225,12 +2227,47 @@ async function fotoAluno(alid) {
   if (S.prof) return (FOTOS[alid] = ((S.pp || {}).fotos || {})[alid] || null);
   const d = await B.get(`escolas/${S.eid}/fotosAlunos/${alid}`).catch(() => null); return (FOTOS[alid] = (d && d.foto) || null);
 }
+// foto da criança: abre para enquadrar (arrastar e aumentar/diminuir dentro do círculo) e devolve 360x360, ou null se cancelar
 async function fotoQuadrada(arq) {
-  const im = await abrirImagem(arq, 900), lado = Math.min(im.width, im.height), c = document.createElement('canvas'); c.width = c.height = 360;
-  c.getContext('2d').drawImage(im, (im.width - lado) / 2, (im.height - lado) / 2, lado, lado, 0, 0, 360, 360);
-  return c.toDataURL('image/jpeg', 0.78);
+  const img = await abrirImagem(arq, 1600), W = img.width, H = img.height;
+  return new Promise(ok => {
+    const el = document.createElement('div'); el.className = 'scan enq'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Enquadrar a foto');
+    el.innerHTML = `<div class="scan-topo"><button type="button" class="scan-bt" data-e="cancela">Cancelar</button><span class="scan-tit">Enquadre a criança</span><button type="button" class="scan-bt forte" data-e="ok">Pronto</button></div>
+      <div class="enq-area"><div class="enq-palco"><canvas></canvas><div class="enq-mascara" aria-hidden="true"></div></div></div>
+      <div class="enq-baixo"><span class="enq-dica">Arraste para posicionar · use dois dedos ou a barra para aproximar</span>
+        <div class="enq-zoom"><span aria-hidden="true">−</span><input type="range" min="1" max="4" step="0.01" value="1" aria-label="Aproximar"><span aria-hidden="true">+</span></div></div>`;
+    document.body.appendChild(el);
+    const palco = el.querySelector('.enq-palco'), cv = el.querySelector('canvas'), zr = el.querySelector('input[type=range]');
+    let S = 300, z = 1, ox = 0, oy = 0;
+    const base = () => Math.max(S / W, S / H), esc = () => base() * z;
+    const prender = () => { const w = W * esc(), h = H * esc(); ox = Math.min(0, Math.max(S - w, ox)); oy = Math.min(0, Math.max(S - h, oy)); };
+    const desenhar = () => { const dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = Math.round(S * dpr); cv.height = Math.round(S * dpr); cv.style.width = cv.style.height = S + 'px';
+      const g = cv.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, ox * dpr, oy * dpr, W * esc() * dpr, H * esc() * dpr); };
+    const medir = () => { const a = el.querySelector('.enq-area'); const novo = Math.max(160, Math.floor(Math.min(a.clientWidth - 32, a.clientHeight - 16)));
+      if (novo !== S) { const f = novo / S; ox *= f; oy *= f; S = novo; } palco.style.width = palco.style.height = S + 'px'; prender(); desenhar(); };
+    // começa mostrando a foto inteira na largura, um pouco para cima (onde costuma estar o rosto)
+    S = Math.max(160, Math.floor(Math.min(window.innerWidth - 32, window.innerHeight * 0.6)));
+    ox = (S - W * esc()) / 2; oy = (S - H * esc()) * 0.3; medir();
+    const aoGirar = () => medir(); window.addEventListener('resize', aoGirar);
+    // aproximar mantendo fixo o ponto (px, py) do quadro
+    const zoom = (nz, px = S / 2, py = S / 2) => { nz = Math.max(1, Math.min(4, nz)); const k = nz / z; ox = px - (px - ox) * k; oy = py - (py - oy) * k; z = nz; zr.value = String(z); prender(); desenhar(); };
+    zr.addEventListener('input', () => zoom(Number(zr.value)));
+    const dedos = new Map(); let ini = null;
+    const estado = () => { const p = [...dedos.values()]; if (p.length >= 2) { const r = palco.getBoundingClientRect(); return { d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y), mx: (p[0].x + p[1].x) / 2 - r.left, my: (p[0].y + p[1].y) / 2 - r.top, z }; } return null; };
+    palco.addEventListener('pointerdown', e => { palco.setPointerCapture(e.pointerId); dedos.set(e.pointerId, { x: e.clientX, y: e.clientY }); ini = estado(); e.preventDefault(); });
+    palco.addEventListener('pointermove', e => { const a = dedos.get(e.pointerId); if (!a) return;
+      if (dedos.size === 1) { ox += e.clientX - a.x; oy += e.clientY - a.y; dedos.set(e.pointerId, { x: e.clientX, y: e.clientY }); prender(); desenhar(); return; }
+      dedos.set(e.pointerId, { x: e.clientX, y: e.clientY }); const agora = estado(); if (ini && agora) zoom(ini.z * agora.d / ini.d, agora.mx, agora.my); });
+    const solta = e => { dedos.delete(e.pointerId); ini = estado(); };
+    palco.addEventListener('pointerup', solta); palco.addEventListener('pointercancel', solta);
+    palco.addEventListener('wheel', e => { e.preventDefault(); const r = palco.getBoundingClientRect(); zoom(z * (e.deltaY < 0 ? 1.08 : 0.93), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+    const fechar = v => { window.removeEventListener('resize', aoGirar); el.remove(); ok(v); };
+    el.querySelector('[data-e="cancela"]').onclick = () => fechar(null);
+    el.querySelector('[data-e="ok"]').onclick = () => { const o = document.createElement('canvas'), k = 360 / S; o.width = o.height = 360;
+      const g = o.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 360, 360); g.imageSmoothingQuality = 'high'; g.drawImage(img, ox * k, oy * k, W * esc() * k, H * esc() * k); fechar(o.toDataURL('image/jpeg', 0.82)); };
+  });
 }
-const avatarAluno = (alid, nome, cls = '') => { const f = FOTOS[alid] || (((S && S.pp) || {}).fotos || {})[alid]; return f ? `<img class="dot foto-dot ${cls}" src="${f}" alt="">` : `<div class="dot ${cls}" ${FOTOS[alid] === undefined && !(S && S.prof) ? `data-fav="${esc(alid)}"` : ''}>${esc(iniciais(nome))}</div>`; };
+const avatarAluno = (alid, nome, cls = '') => { const f = FOTOS[alid] || (((S && S.pp) || {}).fotos || {})[alid]; return f ? `<img class="dot dot-al foto-dot ${cls}" src="${f}" alt="">` : `<div class="dot dot-al ${cls}" ${FOTOS[alid] === undefined && !(S && S.prof) ? `data-fav="${esc(alid)}"` : ''}>${esc(iniciais(nome))}</div>`; };
 // fotos das listas: busca as que aparecem na tela (uma vez cada) e redesenha quando chegam
 const FOTOS_PEDIDAS = new Set();
 function pedirFotos() {
@@ -2936,7 +2973,7 @@ function tFilhas(v) {
   // fotos dos filhos: busca uma vez; a família adiciona ou troca
   al.forEach(([id]) => { if (FOTOS[id] === undefined) fotoAluno(id).then(f => { if (f) agendar(); }); });
   v.querySelectorAll('[data-ffoto]').forEach(inp => inp.onchange = async e => { const id = inp.dataset.ffoto, arq = e.target.files[0]; e.target.value = ''; if (!arq) return;
-    try { const f = await fotoQuadrada(arq); await B.set(`escolas/${S.eid}/fotosAlunos/${id}`, { foto: f, responsavelId: (S.alunas[id] || {}).responsavelId || null, em: Date.now(), por: 'familia' }); FOTOS[id] = f; render(); aviso('Foto salva'); }
+    try { const f = await fotoQuadrada(arq); if (!f) return; await B.set(`escolas/${S.eid}/fotosAlunos/${id}`, { foto: f, responsavelId: (S.alunas[id] || {}).responsavelId || null, em: Date.now(), por: 'familia' }); FOTOS[id] = f; render(); aviso('Foto salva'); }
     catch (er) { aviso(msgErro(er)); } });
   if ($('fcal')) $('fcal').onclick = () => sheetCalendario();
   ligarFotos(v);
