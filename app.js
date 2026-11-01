@@ -1464,6 +1464,20 @@ const pagouEvento = (x, id) => { const k = xidDe(x); return !!(k && C.stPag(((S.
 const ST_PART = { interesse: 'Quer ir', nao: 'Não vai', inscrito: 'Inscrito(a)' };
 // quem faz a inscrição: a escola (paga ao organizador), a própria família (e confirma no app) ou pelo app (Pix da escola)
 // duas formas de inscrição: direto com a organização (a família confirma no app) ou na escola (Pix no app, confirma sozinho)
+// localização e links do evento, para mostrar às famílias e à escola
+const ehUrl = v => /^(https?:\/\/|www\.)/i.test(String(v || '').trim());
+const urlDe = v => { const t = String(v).trim(); return /^www\./i.test(t) ? 'https://' + t : t; };
+const ehTel = v => { const d = String(v || '').replace(/\D/g, ''); return !ehUrl(v) && /^[\d\s()+.\-]+$/.test(String(v).trim()) && d.length >= 10 && d.length <= 13; };
+function mapaDe(x) { const e = String(x.endereco || '').trim(); if (!e) return ''; return ehUrl(e) ? urlDe(e) : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(e); }
+function localEventoHTML(x) {
+  const e = String(x.endereco || '').trim(), m = mapaDe(x), links = x.links || [];
+  if (!e && !links.length) return '';
+  const item = l => { const v = String(l.v || '').trim();
+    if (ehUrl(v)) return `<a class="ev-link" href="${esc(urlDe(v))}" target="_blank" rel="noopener"><span class="grow"><b>${esc(l.d)}</b><span class="s">${esc(v.replace(/^https?:\/\//, '').slice(0, 60))}</span></span><span aria-hidden="true">↗</span></a>`;
+    if (ehTel(v)) { const wa = waLink(v, ''); return `<div class="ev-link"><span class="grow"><b>${esc(l.d)}</b><a class="s num" href="tel:${esc(v.replace(/[^\d+]/g, ''))}">${esc(v)}</a></span>${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(l.d)}">${ICO_WA}</a>` : ''}</div>`; }
+    return `<div class="ev-link"><span class="grow"><b>${esc(l.d)}</b><span class="s">${esc(v)}</span></span></div>`; };
+  return `<div class="ev-local">${e ? `<a class="ev-link" href="${esc(m)}" target="_blank" rel="noopener"><span class="grow"><b>Como chegar</b><span class="s">${esc(ehUrl(e) ? 'Abrir no mapa' : e)}</span></span><span aria-hidden="true">📍</span></a>` : ''}${links.map(item).join('')}</div>`;
+}
 // fotos de evento: reduzidas no celular (até 1400 px, ~250 KB cada), no máximo 3 por evento
 const FOTOS_EV_MAX = 3, FOTO_EV_BYTES = 260000, MIDIA_EV = {};
 async function fotoReduzida(arquivo) {
@@ -1617,8 +1631,12 @@ function sheetEvento(xid) {
     <div class="field"><label for="enome">Nome do evento</label><input id="enome" maxlength="60" value="${esc(x ? x.nome : '')}" placeholder="Ex.: Copa Nordeste, Festival de fim de ano"></div>
     <div class="two"><div class="field"><label for="edata">Começa em</label><input id="edata" type="date" value="${esc((x && x.data) || '')}"></div>
     <div class="field"><label for="edfim">Termina em</label><input id="edfim" type="date" value="${esc((x && (x.dataFim || x.data)) || '')}"></div></div>
-    <div class="two"><div class="field"><label for="elocal">Local</label><input id="elocal" maxlength="60" value="${esc((x && x.local) || '')}" placeholder="Ex.: Recife"></div>
+    <div class="two"><div class="field"><label for="elocal">Local</label><input id="elocal" maxlength="60" value="${esc((x && x.local) || '')}" placeholder="Ex.: Ginásio do Sesc"></div>
     <div class="field"><label for="eorg">Quem organiza</label><input id="eorg" maxlength="60" value="${esc((x && x.organizador) || '')}" placeholder="Ex.: Clube Náutico"></div></div>
+    <div class="field"><label for="eend">Localização</label><input id="eend" maxlength="300" value="${esc((x && x.endereco) || '')}" placeholder="Endereço ou link do Google Maps">
+      <span class="sub">As famílias tocam em "Como chegar" e o mapa abre no celular.</span></div>
+    <div class="field"><span class="lb">Links e contatos</span><span class="sub">Regulamento, site da inscrição, telefone de quem organiza… Cada um com uma descrição curta.</span>
+      <div class="ev-links" id="elinks"></div><button type="button" class="add-disc" id="elinkadd" style="align-self:flex-start">+ Link ou contato</button></div>
     <div class="field"><span class="lb">Onde é a inscrição?</span><div class="insc-ops" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" class="insc-op" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${k === 'app' ? 'A família paga a inscrição por Pix no app. Pagou, fica inscrita sozinha.' : 'A família se inscreve e paga direto com quem organiza. Depois confirma no app.'}</span></span></button>`).join('')}</div>
       ${temPagEv ? '<div class="note">Já há inscrições pagas pelo app, então o valor e a forma de pagar não mudam mais.</div>' : ''}</div>
     <div class="grade2">
@@ -1650,6 +1668,15 @@ function sheetEvento(xid) {
       if ($('efadd')) $('efadd').onclick = () => $('efoto').click(); };
     verFotos();
     if (xid && x.fotos) B.get(`escolas/${S.eid}/midiaEventos/${xid}`).then(d => { if (d && d.fotos && !fotosMudou) { fotos = d.fotos.slice(0, FOTOS_EV_MAX); verFotos(); } }).catch(() => { });
+    // links e contatos: descrição curta + link, telefone ou outra informação
+    let links = ((x && x.links) || []).map(l => ({ ...l }));
+    const verLinks = () => { $('elinks').innerHTML = links.map((l, i) => `<div class="ev-link-ed"><input data-ld="${i}" maxlength="40" value="${esc(l.d || '')}" placeholder="Descrição (ex.: Regulamento)" aria-label="Descrição"><input data-lv="${i}" maxlength="300" value="${esc(l.v || '')}" placeholder="Link, telefone ou informação" aria-label="Link, telefone ou informação"><button type="button" class="ev-foto-x" data-lx="${i}" aria-label="Tirar">×</button></div>`).join('');
+      $('elinks').querySelectorAll('[data-ld]').forEach(e => e.oninput = () => { links[Number(e.dataset.ld)].d = e.value; });
+      $('elinks').querySelectorAll('[data-lv]').forEach(e => e.oninput = () => { links[Number(e.dataset.lv)].v = e.value; });
+      $('elinks').querySelectorAll('[data-lx]').forEach(b => b.onclick = () => { links.splice(Number(b.dataset.lx), 1); verLinks(); });
+      $('elinkadd').hidden = links.length >= 8; };
+    verLinks();
+    $('elinkadd').onclick = () => { links.push({ d: '', v: '' }); verLinks(); const ult = $('elinks').querySelector(`[data-ld="${links.length - 1}"]`); if (ult) ult.focus(); };
     $('efoto').onchange = async () => { const f = $('efoto').files[0]; $('efoto').value = ''; $('eferr').textContent = ''; if (!f) return;
       try { fotos.push({ src: await fotoReduzida(f), em: Date.now() }); fotosMudou = true; verFotos(); } catch (e) { $('eferr').textContent = msgErro(e); } };
     // quanto a família paga e a escola recebe pela inscrição, conforme a caixa da taxa (só quando a inscrição é paga pelo app)
@@ -1668,8 +1695,11 @@ function sheetEvento(xid) {
       $('eok').disabled = true;
       const part = { ...((x && x.part) || {}) }; sai.forEach(id => delete part[id]);
       const app = cob === 'app', cobrados = app ? ids.filter(id => ['interesse', 'inscrito'].includes((part[id] || {}).st) || (x && pagouEvento(x, id))) : [];
+      const linksOk = links.map(l => ({ d: String(l.d || '').trim(), v: String(l.v || '').trim() })).filter(l => l.d || l.v);
+      if (linksOk.some(l => !l.v)) { $('eok').disabled = false; return err('Falta o link, telefone ou informação de um dos itens em "Links e contatos".'); }
+      if (linksOk.some(l => !l.d)) { $('eok').disabled = false; return err('Dê uma descrição curta para cada item em "Links e contatos".'); }
       const id = xid || novoId();
-      try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', fotos: fotos.length, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
+      try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', fotos: fotos.length, endereco: $('eend').value.trim() || null, links: linksOk, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
           valorInscricao: !app && insc > 0 ? C.r2(insc) : null, prazo: $('eprazo').value || null, convidados: ids, origem: sel.origem(), part,
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         if (fotosMudou && (fotos.length || (x && x.fotos))) { // sem foto nenhuma, antes e agora: nada a guardar
@@ -1705,6 +1735,7 @@ function sheetVerEvento(xid) {
   const sec = (tit, ids, acoes, vazio) => `<section><h2>${tit} <span class="sub num">${ids.length}</span></h2>${ids.length ? `<ul class="list">${ids.map(id => lin(id, acoes(id))).join('')}</ul>` : `<div class="note">${vazio}</div>`}</section>`;
   sheet(`<h3>${esc(x.nome)}</h3>
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', app ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo caixa da escola · vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
+    ${localEventoHTML(x)}
     ${fotosHTML(xid, fotosDoEvento(xid, x, () => { if ($('evmsg')) sheetVerEvento(xid); }))}
     <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : fam ? 'Falta confirmar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
     <button type="button" class="btn ghost btn-ico" id="evmsg">${ICO_WA}<span>Mensagem para o grupo</span></button>
@@ -1736,7 +1767,8 @@ function textoGrupoEvento(xid, ate) {
   const nm = id => { const p = String(S.alunas[id].nome || '').trim().split(/\s+/); return p.length > 1 ? `${p[0]} ${p[p.length - 1]}` : p[0]; };
   const lista = (tit, ids) => ids.length ? `${tit.replace(/^(\S+) (.*)$/, '$1 *$2')} (${ids.length})*\n${ids.map(id => `• ${nm(id)}`).join('\n')}` : '';
   const vao = g.inscrito.length + g.interesse.length;
-  const L = [`🏆 *${x.nome}*`, [`📅 ${periodoTxt(x)}`, x.local ? `📍 ${x.local}` : ''].filter(Boolean).join('\n')];
+  const L = [`🏆 *${x.nome}*`, [`📅 ${periodoTxt(x)}`, x.local ? `📍 ${x.local}` : '', x.endereco ? `🗺️ Como chegar: ${mapaDe(x)}` : ''].filter(Boolean).join('\n')];
+  if ((x.links || []).length) L.push(x.links.map(l => `🔗 ${l.d}: ${l.v}`).join('\n'));
   L.push(`Até agora: *${vao}* vão, *${g.nao.length}* não vão e *${g.sem.length}* ainda não responderam.`);
   if (app) {
     L.push(lista('✅ Vão · inscrição paga', g.inscrito), lista('⏳ Vão · falta pagar a inscrição', g.interesse));
@@ -1799,6 +1831,7 @@ function blocoEventosFamilia() {
   if (!L.length) return '';
   return `<section><h2>Eventos</h2>${L.map(({ xid, x, ids }) => `<div class="filha ev-fam"><div class="t" style="font-size:1.05rem">${esc(x.nome)}</div>
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', pelaEscola(x) ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo app, vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
+    ${localEventoHTML(x)}
     ${fotosHTML(xid, fotosDoEvento(xid, x, agendar))}
     ${ids.map(id => respFamilia(xid, x, id)).join('')}</div>`).join('')}</section>`;
 }
