@@ -1252,7 +1252,8 @@ function sheetCobrancaAluna(alid) {
       if ($('facordo')) $('facordo').onclick = () => abrirDe(() => sheetCobrancaAluna(alid), () => sheetAcordo(alid));
       s.querySelectorAll('[data-cancac]').forEach(b => b.onclick = () => confirmar('Cancelar acordo?', 'As cobranças antigas voltam para a lista de atraso, com os valores originais.', 'Cancelar acordo', async () => { await cancelarAcordo(b.dataset.cancac); setTimeout(() => sheetCobrancaAluna(alid), 80); }));
       if ($('fqr')) $('fqr').onclick = () => sheetPix(marcados().map(i => i.k), () => sheetCobrancaAluna(alid));
-      if ($('fdin')) $('fdin').onclick = async () => {
+      if ($('fdin')) $('fdin').onclick = () => duploToque($('fdin'), receberDinheiro, 'Toque de novo');
+      const receberDinheiro = async () => {
         $('fdin').disabled = true;
         const val = i => ({ s: 'pago', d: hoje(), v: i.v, via: 'dinheiro', obs: 'Marcado pela administração', por: EU.uid, ...(i.enc ? { enc: { base: i.enc.base, multa: i.enc.multa || 0, juros: i.enc.juros || 0 } } : {}) });
         const up = { mens: {}, extras: {}, acordos: {} };
@@ -1785,12 +1786,11 @@ function sheetVerEvento(xid) {
     <button type="button" class="btn ghost btn-ico" id="evmsg">${ICO_WA}<span>Mensagem para o grupo</span></button>
     <button type="button" class="btn ghost" id="evdocs">Juntar documentos dos atletas (PDF)</button>
     ${app ? sec('Vão · aguardando pagamento', g.interesse, id => ({ valor: valorCol(brl(C.valorExtra(x, id)), '<span class="chip aberto">A pagar</span>'), acoes: vaiNao(id) }), 'Ninguém com inscrição a pagar.')
-      : fam ? sec('Vão · falta confirmar a inscrição', g.interesse, id => { const wa = waLink(respDe(id).telefone, `Olá, ${primeiro(respDe(id).nome) || 'tudo bem'}! Aqui é da ${S.escola.nome || 'escola'}. Lembrete: a inscrição de ${primeiro(S.alunas[id].nome)} em ${x.nome} é feita direto com ${x.organizador || 'quem organiza'}. Depois de fazer, toque em "Já fiz a inscrição" no app: ${LINK_APP}`);
-          return { valor: x.valorInscricao > 0 ? valorCol(brl(x.valorInscricao)) : '', acoes: `${vaiNao(id)}${bt(id, 'inscrito', 'Inscrever')}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Lembrar pelo WhatsApp">${ICO_WA}</a>` : ''}` }; }, 'Todos que vão já confirmaram a inscrição.')
-      : sec('Querem ir', g.interesse, id => ({ valor: x.valorInscricao > 0 ? valorCol(brl(x.valorInscricao)) : '', acoes: `${vaiNao(id)}${bt(id, 'inscrito', 'Inscrever', '')}` }), 'Ninguém aguardando inscrição.')}
+      : fam ? sec('Vão · falta confirmar a inscrição', g.interesse, id => ({ valor: x.valorInscricao > 0 ? valorCol(brl(x.valorInscricao)) : '', acoes: `${vaiNao(id)}${bt(id, 'inscrito', 'Já inscrito', 'ghost ev-insc')}` }), 'Todos que vão já confirmaram a inscrição.')
+      : sec('Querem ir', g.interesse, id => ({ valor: x.valorInscricao > 0 ? valorCol(brl(x.valorInscricao)) : '', acoes: `${vaiNao(id)}${bt(id, 'inscrito', 'Inscrever', 'ev-insc')}` }), 'Ninguém aguardando inscrição.')}
     ${app ? sec('Inscritos · pagos', g.inscrito, () => '<span class="chip pago">Pago</span>', 'Quem pagar a inscrição pelo app aparece aqui.')
       : sec(fam ? 'Inscrição confirmada' : 'Inscritos', g.inscrito, id => `<span class="chip pago">${fam && ((x.part || {})[id] || {}).quem === 'familia' ? 'Família confirmou' : 'Inscrito(a)'}</span>${bt(id, 'interesse', 'Desfazer')}`, fam ? 'Quando a família fizer a inscrição e confirmar no app, aparece aqui.' : 'Quando a inscrição for paga ao organizador, toque em "Inscrever".')}
-    ${sec('Sem resposta', g.sem, id => { const wa = waEvento(xid, id); return `${vaiNao(id)}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Perguntar pelo WhatsApp">${ICO_WA}</a>` : ''}`; }, 'Todos responderam.')}
+    ${sec('Sem resposta', g.sem, id => vaiNao(id), 'Todos responderam.')}
     ${sec('Não vão', g.nao, id => vaiNao(id), 'Ninguém respondeu que não vai.')}
     ${taxas.length ? `<section><h2>Taxas deste evento</h2><ul class="list">${taxas.map(([tid, t]) => { const al = [...C.alvoExtra(t, S.alunas, S.grupos)]; return `<li class="tap" data-tx="${esc(tid)}"><div class="grow"><div class="t">${esc(t.nome)}</div>${linhas(`<span class="num">${al.length} aluno${al.length === 1 ? '' : 's'} · vence ${dataBR(t.venc)}</span>`)}</div>${valorCol(brl(C.r2(al.reduce((s, id) => s + C.valorExtra(t, id), 0))))}</li>`; }).join('')}</ul></section>` : ''}
     <button type="button" class="btn" id="evtaxa" ${g.inscrito.length + g.interesse.length ? '' : 'disabled'}>Lançar taxa deste evento</button>
@@ -1800,7 +1800,9 @@ function sheetVerEvento(xid) {
     $('evdocs').onclick = () => { const cv = convidadosDe(x), vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)));
       abrirDe(volta, () => sheetJuntarDocs({ titulo: x.nome, evento: xid, pre: vao, volta })); };
     ligarFotos(sh);
-    sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = async () => { b.disabled = true; await marcarPart(xid, b.dataset.pid, b.dataset.pst); if (b.dataset.pst === 'inscrito') aviso(`${primeiro(S.alunas[b.dataset.pid].nome)} inscrito(a)`); setTimeout(volta, 60); });
+    const fazPart = async b => { b.disabled = true; await marcarPart(xid, b.dataset.pid, b.dataset.pst); if (b.dataset.pst === 'inscrito') aviso(`${primeiro(S.alunas[b.dataset.pid].nome)} inscrito(a)`); setTimeout(volta, 60); };
+    // inscrever pede toque duplo (evita marcar sem querer); "Vai" e "Não vai" são um toque só
+    sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = () => b.dataset.pst === 'inscrito' ? duploToque(b, () => fazPart(b), 'Confirmar?') : fazPart(b));
     sh.querySelectorAll('[data-tx]').forEach(li => li.onclick = () => abrirDe(volta, () => sheetExtra(li.dataset.tx)));
     $('evedit').onclick = () => abrirDe(volta, () => sheetEvento(xid));
     $('evtaxa').onclick = () => abrirDe(volta, () => sheetExtra(null, { tipo: 'taxa', pre: { ids: g.inscrito.length ? g.inscrito : g.interesse, evento: xid, quadro: (g.inscrito.length ? 'ei:' : 'ev:') + xid } }));
@@ -4108,6 +4110,30 @@ function sheetJuntarDocs(op = {}) {
   });
 }
 let PDFLIB = null;
+// toque duplo: o 1º toque pede confirmação no próprio botão ("Toque de novo"); o 2º, em até 4 s, faz a ação
+function duploToque(b, acao, txt = 'Confirmar?') {
+  if (b.dataset.armado === '1') { clearTimeout(b._t); b.dataset.armado = ''; b.classList.remove('armado'); b.textContent = b._orig; return acao(); }
+  b._orig = b.textContent; b.dataset.armado = '1'; b.classList.add('armado'); b.textContent = txt;
+  b._t = setTimeout(() => { b.dataset.armado = ''; b.classList.remove('armado'); b.textContent = b._orig; }, 4000);
+}
+// estados e municípios (IBGE), carregados só quando precisa (br.js, o mesmo do Pelota FC)
+let BRP = null;
+function carregarBR() {
+  if (window.BR) return Promise.resolve(window.BR);
+  return BRP || (BRP = new Promise((ok, falha) => { const s = document.createElement('script'); s.src = 'br.js?v=1';
+    s.onload = () => ok(window.BR); s.onerror = () => { BRP = null; falha(new Error('Sem internet para carregar as cidades.')); }; document.head.appendChild(s); }));
+}
+// liga um seletor de estado a um de cidade: escolheu o estado, aparecem os municípios dele
+function ligarEstadoCidade(selUf, selCid, atual) {
+  const encher = () => { const uf = $(selUf).value, el = $(selCid);
+    if (!uf) { el.innerHTML = '<option value="">Escolha o estado</option>'; el.disabled = true; return; }
+    el.disabled = true; el.innerHTML = '<option value="">Carregando…</option>';
+    carregarBR().then(BR => { const l = ((BR[uf] || {}).c || []), cur = $(selUf).value === uf ? atual : '';
+      el.innerHTML = `<option value="">Escolha a cidade</option>${cur && !l.includes(cur) ? `<option selected>${esc(cur)}</option>` : ''}${l.map(n => `<option ${n === cur ? 'selected' : ''}>${esc(n)}</option>`).join('')}`; el.disabled = false; })
+      .catch(e => { el.innerHTML = `<option value="">${esc(e.message)}</option>`; }); };
+  $(selUf).addEventListener('change', () => { atual = ''; encher(); });
+  if ($(selUf).value) encher();
+}
 function carregarPdfLib() {
   if (window.PDFLib) return Promise.resolve(window.PDFLib);
   return PDFLIB || (PDFLIB = new Promise((ok, falha) => { const s = document.createElement('script'); s.src = 'pdf-lib.min.js';
@@ -4565,8 +4591,8 @@ function sheetAjustes() {
     </section>
     <section><h2>Mensalidade</h2>
       <div class="field"><label for="jnome">Nome da escola</label><input id="jnome" maxlength="60" value="${esc(S.escola.nome || '')}"></div>
-      <div class="two"><div class="field"><label for="jcid">Cidade</label><input id="jcid" maxlength="60" value="${esc(c.cidade || '')}" placeholder="Ex.: Recife" autocomplete="address-level2"></div>
-      <div class="field"><label for="juf">Estado</label><select id="juf"><option value="">Escolha</option>${UFS.map(u => `<option ${c.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
+      <div class="two"><div class="field"><label for="juf">Estado</label><select id="juf"><option value="">Escolha</option>${UFS.map(u => `<option ${c.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+      <div class="field"><label for="jcid">Cidade</label><select id="jcid" ${c.uf ? '' : 'disabled'}>${c.cidade ? `<option selected>${esc(c.cidade)}</option>` : `<option value="">${c.uf ? 'Carregando…' : 'Escolha o estado'}</option>`}</select></div></div>
       <div class="two"><div class="field"><label for="jvenc">Vencimento (dia)</label><input id="jvenc" type="number" min="1" max="28" value="${esc(c.vencDia || 10)}"></div><div></div></div>
       <div class="two"><div class="field"><label for="jirm">Desconto de irmãos (%)</label><input id="jirm" type="number" min="0" max="100" value="${esc(Math.round((Number(c.descIrmas) || 0) * 100))}"></div>
       <div class="field"><label for="jmul">Mais de uma atividade (%)</label><input id="jmul" type="number" min="0" max="100" value="${esc(Math.round((Number(c.descMulti) || 0) * 100))}"></div></div>
@@ -4600,6 +4626,7 @@ function sheetAjustes() {
       <div class="actions"><button class="btn ghost" id="jtroca">Minhas escolas</button><button class="btn ghost" id="jsair">Sair da conta</button></div></section>`, () => {
     if ($('jsimv')) { const verJ = ligarSimTaxa('jsim', () => $('jrep').checked); $('jrep').addEventListener('change', verJ); }
     const err = m => $('jerr').textContent = m;
+    if ($('juf')) ligarEstadoCidade('juf', 'jcid', S.cfg.cidade || '');
     if ($('jnotas')) $('jnotas').onclick = () => abrirDe(sheetAjustes, sheetNotasEscola);
     if ($('jnf')) $('jnf').onclick = () => abrirDe(sheetAjustes, () => sheetNotaFiscal());
     $('jdocs').onclick = () => abrirDe(sheetAjustes, () => sheetTiposDoc(sheetAjustes));
