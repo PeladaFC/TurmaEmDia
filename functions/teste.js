@@ -20,10 +20,12 @@ function bancoFalso() {
     update: async d => { if (!store.has(p)) throw new Error('não existe ' + p); const a = JSON.parse(JSON.stringify(store.get(p))); aplica(a, d); store.set(p, a); },
     delete: async () => { store.delete(p); } });
   const col = (c, filtros = []) => ({
-    where: (f, op, v) => col(c, [...filtros, [f, v]]),
-    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v]) => (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
+    where: (f, op, v) => col(c, [...filtros, [f, v, op]]),
+    doc: id => doc(c + '/' + id),
+    add: async d => { const id = 'n' + Math.random().toString(36).slice(2, 10); store.set(c + '/' + id, JSON.parse(JSON.stringify(d))); return { id }; },
+    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
   const runTransaction = async fn => fn({ get: r => r.get(), set: (r, d, o) => r.set(d, o), update: (r, d) => r.update(d) });
-  return { store, doc, collection: col, runTransaction };
+  return { store, doc, collection: col, runTransaction, getAll: async (...refs) => Promise.all(refs.map(r => r.get())) };
 }
 /* ---------- firebase-functions e firebase-admin de mentira ---------- */
 const original = Module._load;
@@ -320,6 +322,50 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     const pb = r.body.cidades.find(c => c.nome === 'João Pessoa · PB');
     assert.deepStrictEqual([pb.escolas, pb.ativas, pb.alunos, pb.contas, pb.pagantes], [1, 1, 1, 2, 1]);
     assert.strictEqual(r.body.contas.total, 2); assert.ok(r.body.regioes.some(x => x.nome === 'Nordeste'));
+  });
+  await t('área do professor: só com o e-mail cadastrado e confirmado; vê só os alunos das turmas dele, sem dados da família; notas dele', async () => {
+    const PR = require('./professor')(db), E = require('./espelho')(db), mes = H.slice(0, 7), set7 = (k, v) => S.set('escolas/e7/' + k, v);
+    S.set('escolas/e7', { nome: 'Escola Sete', dono: 'dono7', admins: ['dono7'] }); set7('config/geral', { vencDia: 10 });
+    set7('turmas/t1', { nome: 'Sub-11', professoraId: 'p1', recebedor: 'p1', preco: 200 }); set7('turmas/t2', { nome: 'Ballet', professoraId: 'p2', preco: 100 });
+    set7('alunas/a1', { nome: 'Ana', turmas: ['t1'], responsavelId: 'r1', nascimento: '2016-03-01', inicio: '2026-01' });
+    set7('alunas/a2', { nome: 'Bia', turmas: ['t2'], responsavelId: 'r2', inicio: '2026-01' });
+    set7('alunas/a3', { nome: 'Caio', turmas: ['t1', 't2'], responsavelId: 'r3', inicio: '2026-01' });
+    set7('responsaveis/r1', { nome: 'Mãe da Ana', telefone: '81999990001', cpf: '12345678901' });
+    set7('pagamentos/a1', { mens: { [mes]: { s: 'pago', v: 200, via: 'pix', d: H } } });
+    // a escola coloca o e-mail no cadastro do professor: o servidor guarda o caminho
+    const P1 = { nome: 'Camila', emailApp: 'cam@x.com' }; set7('professoras/p1', P1);
+    await E.espelharProf({ params: { eid: 'e7', pid: 'p1' }, data: { before: { exists: false }, after: { exists: true, data: () => P1 } } });
+    assert.ok(S.get('convitesProf/cam_at_x_com')['e7_p1']);
+    let r = resp(); await PR.professor(req({ acao: 'vincular' }, 'ok:cam'), r);
+    assert.strictEqual(r.body.confirmar, true); assert.ok(!S.has('escolas/e7/equipe/cam'));
+    r = resp(); await PR.professor(req({ acao: 'vincular' }, 'ok:outro:v'), r); assert.deepStrictEqual(r.body.escolas, []);
+    r = resp(); await PR.professor(req({ acao: 'vincular' }, 'ok:cam:v'), r);
+    assert.deepStrictEqual(r.body.escolas.map(e => e.eid), ['e7']); assert.strictEqual(S.get('escolas/e7/equipe/cam').pid, 'p1'); assert.strictEqual(S.get('users/cam').escolas.e7.papel, 'professora');
+    // painel: Ana e Caio (turma dele); Bia não; nada da família
+    r = resp(); await PR.professor(req({ acao: 'painel', eid: 'e7', mes }, 'ok:cam:v'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.deepStrictEqual(r.body.alunos.map(a => a.id), ['a1', 'a3']);
+    const txt = JSON.stringify(r.body); assert.ok(!/r1|9999|12345678901|responsavel/.test(txt), 'vazou dado da família');
+    const ana = r.body.alunos[0], caio = r.body.alunos[1];
+    assert.deepStrictEqual([ana.mensal.st, ana.mensal.v], ['pago', 200]); assert.strictEqual(r.body.totais.recebido, 200);
+    assert.strictEqual(caio.mensal.st, 'atrasado'); assert.ok(caio.mensal.v > 0 && caio.mensal.v < 300, 'parte do Caio: ' + caio.mensal.v);
+    assert.deepStrictEqual(caio.turmas, ['t1']);
+    // quem não é professor da escola não entra
+    r = resp(); await PR.professor(req({ acao: 'painel', eid: 'e7' }, 'ok:outro:v'), r); assert.strictEqual(r.code, 403);
+    // notas: só dos alunos das turmas dele; edita e apaga só as dele
+    r = resp(); await PR.professor(req({ acao: 'nota', eid: 'e7', alid: 'a2', texto: 'x' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await PR.professor(req({ acao: 'nota', eid: 'e7', alid: 'a1', texto: 'Ótimo chute', tag: 'desempenho' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 200);
+    const nid = r.body.id; assert.strictEqual(S.get('escolas/e7/notasAlunos/' + nid).autorNome, 'Camila');
+    set7('notasAlunos/adm1', { alid: 'a1', texto: 'Nota da escola', autorUid: 'dono7', autorNome: 'Dona', em: 1 });
+    r = resp(); await PR.professor(req({ acao: 'notas', eid: 'e7', alid: 'a1' }, 'ok:cam:v'), r); assert.strictEqual(r.body.notas.length, 2);
+    r = resp(); await PR.professor(req({ acao: 'nota', eid: 'e7', alid: 'a1', id: 'adm1', texto: 'mudei' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await PR.professor(req({ acao: 'apagarNota', eid: 'e7', alid: 'a1', id: 'adm1' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await PR.professor(req({ acao: 'nota', eid: 'e7', alid: 'a1', id: nid, texto: 'Ótimo chute de esquerda' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 200);
+    assert.ok(S.get('escolas/e7/notasAlunos/' + nid).editadoEm);
+    // a escola troca o e-mail: o acesso antigo acaba
+    const P1b = { nome: 'Camila', emailApp: 'novo@x.com' }; set7('professoras/p1', { ...P1b, appUid: 'cam' });
+    await E.espelharProf({ params: { eid: 'e7', pid: 'p1' }, data: { before: { exists: true, data: () => P1 }, after: { exists: true, data: () => P1b } } });
+    assert.ok(!S.has('escolas/e7/equipe/cam')); assert.ok(!(S.get('users/cam').escolas || {}).e7); assert.ok(!(S.get('convitesProf/cam_at_x_com') || {})['e7_p1']);
+    r = resp(); await PR.professor(req({ acao: 'painel', eid: 'e7' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 403);
   });
   Date.now = realNow;
   console.log(`\n${n} testes passaram.`);

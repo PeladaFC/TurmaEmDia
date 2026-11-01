@@ -459,22 +459,6 @@ details.doc-tipo summary{display:flex;align-items:center;gap:10px;padding:12px 1
 details.doc-tipo summary::-webkit-details-marker{display:none}
 details.doc-tipo summary .s{display:block;font-size:.82rem;color:var(--muted)}
 details.doc-tipo[open] summary .seta{transform:rotate(180deg)}
-.perfil{display:flex;flex-direction:column;gap:14px;margin:-4px -4px 0;padding:18px 16px;border-radius:6px;background:linear-gradient(135deg,var(--pc) 0%,color-mix(in srgb,var(--pc) 55%,#111) 100%);color:#fff}
-.perfil-topo{display:flex;align-items:center;gap:14px}
-.perfil-ini{width:64px;height:64px;flex:none;display:grid;place-items:center;background:rgba(255,255,255,.16);border:2px solid rgba(255,255,255,.5);clip-path:polygon(12% 0,100% 0,88% 100%,0 100%);font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.6rem}
-.perfil-nome{font-family:var(--f-display);font-style:italic;font-weight:800;text-transform:uppercase;font-size:1.6rem;line-height:1.02;overflow-wrap:anywhere}
-.perfil-sub{opacity:.85;font-size:.92rem;margin-top:4px}
-.perfil-dl{display:grid;grid-template-columns:auto 1fr;gap:10px 14px;margin:0;padding-top:12px;border-top:1px solid rgba(255,255,255,.22)}
-.perfil-dl dt{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;opacity:.75;padding-top:3px}
-.perfil-dl dd{margin:0;display:flex;flex-direction:column;gap:6px;min-width:0}
-.perfil-turma{display:flex;flex-direction:column}
-.perfil-turma span{font-size:.82rem;opacity:.8}
-.perfil-resp{flex-direction:row!important;align-items:center;gap:10px}
-.perfil-resp .grow{display:flex;flex-direction:column;min-width:0}
-.perfil-resp .s{font-size:.82rem;opacity:.85;color:inherit}
-.perfil .s,.perfil .num{color:inherit}
-.perfil-chips{display:flex;flex-wrap:wrap;gap:6px;flex-direction:row!important}
-.perfil .chip:not(.vencido):not(.pago):not(.aberto){background:rgba(255,255,255,.18);color:#fff}
 .perfil-botoes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .perfil-botoes:empty{display:none}
 .nota{border:1px solid var(--line);border-left:5px solid var(--tc);border-radius:5px;background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
@@ -677,6 +661,40 @@ nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:up
 .add-largo{width:100%;align-self:stretch;min-height:46px}
 .opcoes.c3{--cols:3}
 .busca-filtros select,.busca-campo input{width:100%;box-sizing:border-box;min-height:46px}
+
+/* cartão do aluno: foto, nome e o resumo, discreto */
+.pcard{position:relative;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
+.pcard::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:var(--pc)}
+.pcard-topo{display:flex;gap:14px;align-items:center}
+.pfoto{position:relative;flex:none;width:76px;height:76px;border-radius:50%;padding:3px;background:conic-gradient(var(--pc),color-mix(in srgb,var(--pc) 45%,#fff),var(--pc));display:grid;place-items:center;margin:0}
+.pfoto img,.pfoto .pfoto-ini{width:100%;height:100%;border-radius:50%;border:3px solid var(--surface);object-fit:cover;display:grid;place-items:center;background:color-mix(in srgb,var(--pc) 12%,var(--surface));color:var(--pc);font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.5rem}
+.pfoto.pode{cursor:pointer}
+.pfoto-cam{position:absolute;right:-2px;bottom:-2px;width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--surface);display:grid;place-items:center;border:2px solid var(--surface)}
+.pfoto-cam svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
+.pcard-id{min-width:0;display:flex;flex-direction:column;gap:3px}
+.pcard-nome{font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.35rem;line-height:1.05;text-transform:uppercase;overflow-wrap:anywhere}
+.pcard-meta{font-size:.86rem;color:var(--muted)}
+.pcard-status{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.pcard-status .chip{font-size:.62rem;padding:2px 7px}
+.pcard-info{display:flex;flex-direction:column;gap:7px;padding-top:12px;border-top:1px solid var(--line)}
+.pcard-linha{display:flex;align-items:center;gap:9px;font-size:.88rem;color:var(--ink);min-width:0}
+.pcard-ic{flex:none;width:18px;height:18px;color:var(--muted);display:grid;place-items:center}
+.pcard-ic svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.pcard-tags{display:flex;flex-wrap:wrap;gap:5px}
+.pcard-tags span{font-size:.75rem;font-weight:600;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--pc) 10%,var(--surface));color:color-mix(in srgb,var(--pc) 80%,var(--ink))}
+.pcard-wa{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#1FA855;color:#fff}
+.pcard-wa svg{width:16px;height:16px}
+.foto-dot{object-fit:cover;padding:0}
+/* área do professor */
+.pt-turma{display:flex;flex-direction:column;gap:8px}
+.pt-cab{display:flex;flex-direction:column;gap:2px}
+.pt-cab b{font-family:var(--f-display);font-style:italic;font-weight:800;text-transform:uppercase;font-size:1.1rem}
+.pt-cab .sub{font-size:.84rem}
+.pf-resumo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pf-resumo div{display:flex;flex-direction:column;gap:4px;padding:12px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);min-width:0}
+.pf-resumo span{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.pf-resumo b{font-size:1.02rem;overflow-wrap:anywhere}
+.pf-resumo .ruim b{color:var(--out)}
 </style>
 </head>
 <body>

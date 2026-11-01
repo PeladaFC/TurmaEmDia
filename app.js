@@ -27,6 +27,7 @@ async function backendReal() {
       try { return await A.signInWithPopup(auth, p); } catch (e) { if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request'].includes(e.code)) return A.signInWithRedirect(auth, p); erro(e); } },
     reset: e => A.sendPasswordResetEmail(auth, e).catch(erro),
     verificarEmail: () => auth.currentUser ? A.sendEmailVerification(auth.currentUser).catch(erro) : null,
+    recarregar: async () => { if (auth.currentUser) { await auth.currentUser.reload(); await auth.currentUser.getIdToken(true); } },
     sair: () => A.signOut(auth),
     token: async () => auth.currentUser ? auth.currentUser.getIdToken() : null,
     get: async p => { const s = await F.getDoc(ref(p)).catch(erro); return s.exists() ? s.data() : null; },
@@ -60,7 +61,7 @@ function backendMock() {
     login: async (e, s) => { const u = users.get(e); if (!u || u.s !== s) throw Object.assign(new Error('x'), { code: 'invalid-credential' }); setA(u.user); },
     cadastrar: async (nome, e, s) => { if (users.has(e)) throw Object.assign(new Error('x'), { code: 'email-already-in-use' }); const user = { uid: 'u' + (users.size + 1), nome, email: e }; users.set(e, { s, user }); setA(user); },
     google: async () => api.cadastrar('Teste Google', 'g' + Date.now() + '@gmail.com', 'x'),
-    reset: async () => { }, sair: async () => setA(null), token: async () => cur ? 'mock' : null,
+    reset: async () => { }, sair: async () => setA(null), token: async () => cur ? 'mock' : null, verificarEmail: async () => { }, recarregar: async () => { },
     get: async p => clone(store.get(p)) ?? null,
     set: async (p, d, o) => { aninhada(d, p); store.set(p, o && o.merge ? merge(store.get(p), clone(d)) : clone(d)); fire(p); },
     tirar: async (p, campo) => { const d = clone(store.get(p)) || {}; const ks = campo.split('.'); let o = d; for (const k of ks.slice(0, -1)) o = o[k] || {}; delete o[ks.at(-1)]; store.set(p, d); fire(p); },
@@ -487,6 +488,9 @@ function telaInicio() {
   const lista = Object.entries(MINHAS), volta = VOLTA_ESCOLA && MINHAS[VOLTA_ESCOLA] ? VOLTA_ESCOLA : null;
   RAIZ().innerHTML = `<div class="wrap" style="padding-top:20px">
     <div class="brand"><span class="marca-mini">${MARCA_SVG}</span><h1><small>Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}</small>${esc(NOME_APP())}</h1><div class="acts">${volta ? `<button class="icon-btn" id="ivolta" aria-label="Voltar para ${esc(MINHAS[volta].nome || 'a escola')}">${ICO.voltar}</button>` : ''}</div></div>
+    ${PROF_PEND.length ? `<div class="hero consent"><div class="label">Professor(a)</div><b>A ${esc(PROF_PEND.join(', '))} cadastrou você como professor(a)</b>
+      <span class="sub">Para entrar, confirme o seu e-mail ${esc(EU.email || '')}: toque em "Mandar o link", abra o e-mail e toque no link. Depois volte aqui e toque em "Já confirmei".</span>
+      <div class="actions"><button class="btn ghost" id="ipconf">Mandar o link</button><button class="btn" id="ipja">Já confirmei</button></div></div>` : ''}
     ${CONVITES.map(c => `<div class="hero consent"><div class="label">Convite</div><b>${esc(c.porNome || 'A escola')} convidou você para a administração da ${esc(c.escola || 'escola')}</b>
       <span class="sub">Você vai ver e cuidar das turmas, alunos e cobranças da escola. O convite vale até ${new Date(c.expira).toLocaleDateString('pt-BR')}.</span>
       <div class="actions"><button class="btn ghost" data-recusa-conv="${esc(c.eid)}">Recusar</button><button class="btn" data-aceita-conv="${esc(c.eid)}">Aceitar</button></div></div>`).join('')}
@@ -508,6 +512,8 @@ function telaInicio() {
     <button class="btn ghost" id="isair" style="margin-top:8px">Sair da conta</button>
   </div>`;
   RAIZ().querySelectorAll('[data-e]').forEach(li => li.onclick = () => abrirComCartas(li.dataset.e)); // trocar de escola: passa o carteado
+  if ($('ipconf')) $('ipconf').onclick = async () => { await B.verificarEmail(); aviso('Link enviado para ' + (EU.email || 'o seu e-mail')); };
+  if ($('ipja')) $('ipja').onclick = async () => { $('ipja').disabled = true; await B.recarregar().catch(() => { }); const r = await vincularProf(); if (r && (r.escolas || []).length) { aviso('Pronto! Agora você entra como professor(a).'); telaInicio(); } else { $('ipja').disabled = false; aviso(PROF_PEND.length ? 'O e-mail ainda não foi confirmado. Abra o link que enviamos.' : 'Não encontramos o cadastro. Fale com a escola.'); } };
   RAIZ().querySelectorAll('[data-aceita-conv],[data-recusa-conv]').forEach(b => b.onclick = async () => { const eid = b.dataset.aceitaConv || b.dataset.recusaConv, c = CONVITES.find(x => x.eid === eid); if (!c) return; b.disabled = true;
     try { await responderConvite(c, !!b.dataset.aceitaConv); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
   if ($('ivolta')) $('ivolta').onclick = () => abrirEscola(volta);
@@ -664,7 +670,9 @@ async function abrirEscola(eid, tab) {
   if (!escola) { aviso('Você não tem mais acesso a essa escola.'); delete MINHAS[eid]; return telaInicio(); }
   const admin = (escola.admins || []).includes(EU.uid);
   let prof = null;
-  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['turmas', 'lancar'], f: ['pagar', 'filhas'] }[papel];
+  // professor(a) com acesso ao app: o servidor criou escolas/{eid}/equipe/{uid} quando ele(a) entrou com o e-mail cadastrado
+  if (!admin) { const eq = await B.get(`escolas/${eid}/equipe/${EU.uid}`).catch(() => null); if (eq && eq.pid) prof = eq.pid; }
+  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['pturmas', 'pfin'], f: ['pagar', 'filhas'] }[papel];
   ls.set('escolinha.ultima', eid);
   S = { eid, admin, prof, papel, escola, mes: mesHoje(), tab: tab || ls.get('escolinha.tab.' + papel) || ABAS_OK[0],
     cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, docs: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
@@ -673,8 +681,12 @@ async function abrirEscola(eid, tab) {
   const col = (nome, chave, onde) => B.ouvirCol(`${p}/${nome}`, docs => { S[chave] = Object.fromEntries(docs.map(d => [d.id, d.data])); S.carregado.add(chave); agendar(); }, e => console.warn(nome, e), onde);
   OUV.push(B.ouvirDoc(p, d => { if (d) { S.escola = d; agendar(); } }));
   OUV.push(B.ouvirDoc(`${p}/config/geral`, d => { S.cfg = d || {}; S.cfgOk = true; agendar(); }));
-  ['locais', 'turmas', 'grupos', 'extras'].forEach(n => OUV.push(col(n, n)));
-  if (admin || prof) {
+  (prof && !admin ? ['locais', 'turmas'] : ['locais', 'turmas', 'grupos', 'extras']).forEach(n => OUV.push(col(n, n)));
+  if (prof && !admin) {
+    // o professor não lê alunos, famílias nem pagamentos: o servidor manda só o que ele pode ver
+    OUV.push(col(MOCK ? 'professoras' : 'profsPublico', 'profs'));
+    carregarPainelProf();
+  } else if (admin) {
     OUV.push(col('acordos', 'acordos'));
     OUV.push(col('professoras', 'profs')); OUV.push(col('responsaveis', 'resps')); OUV.push(col('alunas', 'alunas')); OUV.push(col('pagamentos', 'pags'));
     if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
@@ -980,9 +992,9 @@ function render() {
   if (!S) return;
   const adm = S.admin, abas = {
     a: [['cobr', 'Cobranças', 'cobr'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
-    p: [['turmas', 'Minhas turmas', 'escola'], ['lancar', 'Eventos e taxas', 'cobr']],
+    p: [['pturmas', 'Minhas turmas', 'escola'], ['pfin', 'Financeiro', 'caixa']],
     f: [['pagar', 'Pagar', 'cobr'], ['filhas', 'Meus filhos', 'filhas']] }[S.papel];
-  const comMes = adm && ['cobr', 'fin'].includes(S.tab);
+  const comMes = (adm && ['cobr', 'fin'].includes(S.tab)) || (S.papel === 'p' && S.tab === 'pfin');
   const titulo = adm ? 'Administração' : S.prof ? 'Professor(a) ' + ((S.profs[S.prof] || {}).nome || '') : (Object.values(S.resps)[0] || {}).nome || 'Responsável';
   const foco = document.activeElement && document.activeElement.id, selS = foco && document.activeElement.selectionStart;
   RAIZ().innerHTML = `<div class="wrap">
@@ -1001,16 +1013,16 @@ function render() {
   $('hcfg').onclick = () => sheetAjustes();
   if ($('hbusca')) $('hbusca').onclick = () => sheetBusca();
   if ($('htroca')) $('htroca').onclick = () => trocarEscola();
-  if (comMes) { $('mprev').onclick = () => { S.mes = mesMais(S.mes, -1); render(); }; $('mnext').onclick = () => { S.mes = mesMais(S.mes, 1); render(); }; }
+  if (comMes) { const muda = n => { S.mes = mesMais(S.mes, n); render(); if (S.papel === 'p') carregarPainelProf(); }; $('mprev').onclick = () => muda(-1); $('mnext').onclick = () => muda(1); }
   faixa();
   const v = $('tela');
   if (S.papel === 'f' && S.eu && !S.eu.consentimento) return telaConsentimento(v);
-  ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar })[S.tab](v);
+  ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar, pturmas: tPTurmas, pfin: tPFin })[S.tab](v);
   if (foco && $(foco) && $(foco).tagName === 'INPUT' && $(foco).type !== 'checkbox') { $(foco).focus(); try { $(foco).setSelectionRange(selS, selS); } catch (e) { } }
 }
 function irPara(tab, extra) { if (S.tab !== tab) { S.hist = (S.hist || []).concat(S.tab).slice(-20); } S.tab = tab; Object.assign(S, extra || {}); ls.set('escolinha.tab.' + S.papel, tab); render(); scrollTo(0, 0); }
 function faixa() {
-  const PAP = { a: ['administração', 'admin@teste.com'], f: ['responsável', 'familia@teste.com'] };
+  const PAP = { a: ['administração', 'admin@teste.com'], p: ['professor(a)', 'professor@teste.com'], f: ['responsável', 'familia@teste.com'] };
   const f = $('faixa'); let h = MOCK ? `<div class="banner" style="margin-bottom:8px"><span>Modo de teste, com dados de exemplo. Você está como <b>${PAP[S.papel][0]}</b>.</span><span class="actions">${Object.entries(PAP).filter(([k]) => k !== S.papel).map(([k, [n, e]]) => `<button data-ver="${e}">Ver como ${n}</button>`).join('')}${S.admin ? `<button id="mano">${S.anoRef ? 'Voltar para hoje' : 'Simular janeiro de ' + (Number(hoje().slice(0, 4)) + 1)}</button>` : ''}</span></div>` : '';
   if (S.admin) {
     if (!S.cfg.mpConectadoEm) h += `<div class="banner"><span>O <b>Pix automático</b> ainda não está ligado. Conecte a conta do Mercado Pago da escola para os responsáveis pagarem pelo app.</span><button id="fpix">Ligar Pix</button></div>`;
@@ -2099,17 +2111,21 @@ const categoriaTxt = a => a && /^\d{4}/.test(a.nascimento || '') ? `Categoria ${
 
 function sheetPerfilAluno(alid, volta) {
   const a = S.alunas[alid]; if (!a) return;
-  const eu = () => sheetPerfilAluno(alid, volta), adm = !!S.admin, r = respDe(alid), P = pendenciasAluno(alid);
-  const ts = (a.turmas || []).map(t => S.turmas[t]).filter(Boolean), gs = porNome(S.grupos).filter(([, G]) => (G.alunas || []).includes(alid)).map(([, G]) => G.nome);
-  const wa = r.telefone ? waLink(r.telefone, `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
+  const eu = () => sheetPerfilAluno(alid, volta), adm = !!S.admin, prof = !!S.prof && !adm;
+  const A = prof ? ((S.pp || {}).alunos || []).find(x => x.id === alid) || {} : null;
+  const r = adm ? respDe(alid) : {}, P = adm ? pendenciasAluno(alid) : null;
+  const ts = (prof ? A.turmas || [] : a.turmas || []).map(t => S.turmas[t]).filter(Boolean);
+  const gs = prof ? A.grupos || [] : porNome(S.grupos).filter(([, G]) => (G.alunas || []).includes(alid)).map(([, G]) => G.nome);
+  const wa = adm && r.telefone ? waLink(r.telefone, `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
   const cor = hexOk(S.cfg.cor) ? S.cfg.cor : COR_PADRAO;
   let filtro = '', notas = null, parar = null;
-  const status = [
+  // situação, em poucas palavras (só o que importa agora)
+  const status = (prof ? [chipMensal(A.mensal)] : [
     !P.ativo ? '<span class="chip">Inativo(a)</span>' : '',
-    adm && P.nAtraso ? `<span class="chip vencido">Em atraso ${brl(P.atraso)}</span>` : adm && P.ativo ? '<span class="chip pago">Mensalidade em dia</span>' : '',
+    P.nAtraso ? `<span class="chip vencido">Em atraso ${brl(P.atraso)}</span>` : P.ativo ? '<span class="chip pago">Em dia</span>' : '',
     P.termo ? '<span class="chip aberto">Sem termo</span>' : '',
-    adm && P.docRuim ? '<span class="chip vencido">Documento vencendo</span>' : '',
-    P.aniver ? `<span class="chip">🎂 Aniversário dia ${esc(a.nascimento.slice(8, 10))}</span>` : ''].filter(Boolean).join('');
+    P.docRuim ? '<span class="chip vencido">Documento vencendo</span>' : P.docFalta ? '<span class="chip aberto">Falta documento</span>' : '']).filter(Boolean).join('');
+  const aniver = a.nascimento && a.nascimento.slice(5, 7) === mesHoje().slice(5, 7) ? ` · 🎂 dia ${Number(a.nascimento.slice(8, 10))}` : '';
   const desenharNotas = () => {
     if (!$('pnotas')) return;
     if (!notas) { $('pnotas').innerHTML = '<div class="sub">Carregando…</div>'; return; }
@@ -2121,23 +2137,27 @@ function sheetPerfilAluno(alid, volta) {
       return `<article class="nota" style="--tc:${T ? T[2] : 'var(--line)'}">
         <div class="nota-cab">${T ? `<span class="nota-tag">${esc(T[1])}</span>` : ''}<span class="s">${esc(dataHoraTxt(n.em))}${n.editadoEm ? ' · editada' : ''}</span></div>
         <div class="nota-txt" data-nx>${esc(n.texto)}</div>
-        <div class="nota-pe"><span class="nota-autor">${esc(n.autorNome || 'Equipe')}</span>${meu || adm ? `<span class="nota-acoes">${meu ? `<button type="button" class="link" data-ned="${esc(n.id)}">Editar</button>` : ''}<button type="button" class="link" data-ndel="${esc(n.id)}" style="color:var(--out)">Apagar</button></span>` : ''}</div></article>`; }).join('')
-      : `<div class="empty"><b>${filtro ? 'Nenhuma nota com essa etiqueta.' : 'Nenhuma nota ainda.'}</b>${filtro ? '' : '<span>Anote o que a equipe precisa saber: evolução, comportamento, cuidados, conversas com a família. Só a equipe da escola vê.</span>'}</div>`;
+        <div class="nota-pe"><span class="nota-autor">${esc(n.autorNome || 'Equipe')}${n.papel === 'professor' ? ' · professor(a)' : ''}</span>${meu || adm ? `<span class="nota-acoes">${meu ? `<button type="button" class="link" data-ned="${esc(n.id)}">Editar</button>` : ''}<button type="button" class="link" data-ndel="${esc(n.id)}" style="color:var(--out)">Apagar</button></span>` : ''}</div></article>`; }).join('')
+      : `<div class="empty"><b>${filtro ? 'Nenhuma nota com essa etiqueta.' : 'Nenhuma nota ainda.'}</b>${filtro ? '' : '<span>Anote o que a equipe precisa saber: evolução, comportamento, cuidados, conversas com a família. A família não vê.</span>'}</div>`;
     $('pnotas').querySelectorAll('[data-nx]').forEach(el => { if (el.scrollHeight > el.clientHeight + 4) { el.classList.add('corta'); el.onclick = () => el.classList.toggle('aberta'); } });
     $('pnotas').querySelectorAll('[data-ned]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetNota(alid, notas.find(n => n.id === b.dataset.ned), eu)));
-    $('pnotas').querySelectorAll('[data-ndel]').forEach(b => b.onclick = () => confirmar('Apagar esta nota?', 'Ela sai do perfil para toda a equipe.', 'Apagar', async () => { await B.del(`escolas/${S.eid}/notasAlunos/${b.dataset.ndel}`); setTimeout(eu, 60); }));
+    $('pnotas').querySelectorAll('[data-ndel]').forEach(b => b.onclick = () => confirmar('Apagar esta nota?', 'Ela sai do perfil para toda a equipe.', 'Apagar', async () => {
+      if (prof) await profServidor('apagarNota', { alid, id: b.dataset.ndel }); else await B.del(`escolas/${S.eid}/notasAlunos/${b.dataset.ndel}`); setTimeout(eu, 60); }));
   };
-  sheet(`<div class="perfil" style="--pc:${esc(cor)}">
-      <div class="perfil-topo"><div class="perfil-ini" aria-hidden="true">${esc(iniciais(a.nome))}</div>
-        <div class="grow"><div class="perfil-nome">${esc(a.nome)}</div><div class="perfil-sub num">${esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · '))}</div></div></div>
-      <dl class="perfil-dl">
-        <dt>Turmas</dt><dd>${ts.length ? ts.map(t => `<span class="perfil-turma"><b>${esc(t.nome)}</b>${t.horario ? `<span>${esc(t.horario)}</span>` : ''}</span>`).join('') : '<span class="sub">Sem turma</span>'}</dd>
-        ${gs.length ? `<dt>Grupos</dt><dd class="perfil-chips">${gs.map(g => `<span class="chip">${esc(g)}</span>`).join('')}</dd>` : ''}
-        <dt>Responsável</dt><dd class="perfil-resp"><span class="grow"><b>${esc(r.nome || '—')}</b>${r.telefone ? `<span class="s num">${esc(r.telefone)}</span>` : ''}</span>${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome || 'responsável')}">${ICO_WA}</a>` : ''}</dd>
-      </dl>
-      ${status ? `<div class="perfil-chips">${status}</div>` : ''}
+  const fotoHTML = f => f ? `<img src="${f}" alt="Foto de ${esc(a.nome)}">` : `<span class="pfoto-ini">${esc(iniciais(a.nome))}</span>`;
+  sheet(`<div class="pcard" style="--pc:${esc(cor)}">
+      <div class="pcard-topo">
+        <${adm ? 'label' : 'div'} class="pfoto ${adm ? 'pode' : ''}" id="pfoto" ${adm ? 'aria-label="Trocar a foto"' : ''}>${fotoHTML(FOTOS[alid])}${adm ? `<span class="pfoto-cam" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><input type="file" id="pfotoarq" accept="image/*" hidden>` : ''}</${adm ? 'label' : 'div'}>
+        <div class="pcard-id"><div class="pcard-nome">${esc(a.nome)}</div><div class="pcard-meta num">${esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · '))}${aniver}</div>
+          ${status ? `<div class="pcard-status">${status}</div>` : ''}</div>
+      </div>
+      <div class="pcard-info">
+        ${ts.length ? `<div class="pcard-linha"><span class="pcard-ic" aria-hidden="true">${ICO.escola}</span><span>${ts.map(t => esc(t.nome)).join(' · ')}</span></div>` : '<div class="pcard-linha sub">Sem turma</div>'}
+        ${gs.length ? `<div class="pcard-linha"><span class="pcard-ic" aria-hidden="true">${ICO.filhas}</span><span class="pcard-tags">${gs.map(g => `<span>${esc(g)}</span>`).join('')}</span></div>` : ''}
+        ${adm && r.nome ? `<div class="pcard-linha"><span class="pcard-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span><span class="grow">${esc(r.nome)}${r.telefone ? ` <span class="num sub">${esc(r.telefone)}</span>` : ''}</span>${wa ? `<a class="pcard-wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome)}">${ICO_WA}</a>` : ''}</div>` : ''}
+      </div>
     </div>
-    <div class="perfil-botoes">${adm ? '<button type="button" class="btn ghost" id="pedit">Editar cadastro</button><button type="button" class="btn ghost" id="pcob">Cobranças</button>' : ''}</div>
+    ${adm ? '<div class="perfil-botoes"><button type="button" class="btn ghost" id="pedit">Editar cadastro</button><button type="button" class="btn ghost" id="pcob">Cobranças</button></div>' : ''}
     ${adm ? `<section><h2>Documentos</h2><div class="docs-al">${tiposDoc().map(T => { const d = docDe(alid, T.id);
       return `<button type="button" class="linha-botao" data-adoc="${esc(T.id)}"><span class="grow"><b>${esc(T.nome)}</b><span class="s">${d ? `${d.familia ? 'Enviado pela família' : 'Guardado pela escola'} em ${dataCurta(d.em)}` : T.familia !== false ? 'A família pode enviar pelo app' : 'Toque para guardar'}</span></span>${chipDoc(d)}<span aria-hidden="true">›</span></button>`; }).join('') || '<div class="sub">Nenhum tipo de documento. Escolha em Ajustes.</div>'}</div></section>` : ''}
     <section><div class="headrow"><h2>Notas da equipe</h2><button type="button" class="add" id="pnova">+ Nota</button></div>
@@ -2146,9 +2166,14 @@ function sheetPerfilAluno(alid, volta) {
     <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
     if (volta) SHEET_VOLTAR = volta;
     desenharNotas();
-    parar = B.ouvirCol(`escolas/${S.eid}/notasAlunos`, docs => { notas = docs.map(d => ({ id: d.id, ...d.data })).sort((x, y) => (y.em || 0) - (x.em || 0)); desenharNotas(); },
+    if (FOTOS[alid] === undefined) fotoAluno(alid).then(f => { if (f && $('pfoto')) $('pfoto').firstElementChild.outerHTML = fotoHTML(f); });
+    if (prof) profServidor('notas', { alid }).then(x => { notas = x.notas || []; desenharNotas(); }).catch(e => { if ($('pnotas')) $('pnotas').innerHTML = `<div class="sub">Não deu para carregar as notas. ${esc(msgErroTexto(e))}</div>`; });
+    else parar = B.ouvirCol(`escolas/${S.eid}/notasAlunos`, docs => { notas = docs.map(d => ({ id: d.id, ...d.data })).sort((x, y) => (y.em || 0) - (x.em || 0)); desenharNotas(); },
       e => { if ($('pnotas')) $('pnotas').innerHTML = `<div class="sub">Não deu para carregar as notas. ${esc(msgErroTexto(e))}</div>`; }, ['alid', alid]);
     $('pnova').onclick = () => abrirDe(eu, () => sheetNota(alid, null, eu));
+    if ($('pfotoarq')) $('pfotoarq').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq) return;
+      try { const f = await fotoQuadrada(arq); await B.set(`escolas/${S.eid}/fotosAlunos/${alid}`, { foto: f, responsavelId: a.responsavelId || null, em: Date.now() }); FOTOS[alid] = f; $('pfoto').firstElementChild.outerHTML = fotoHTML(f); aviso('Foto salva'); }
+      catch (er) { aviso(msgErro(er)); } };
     if ($('pedit')) $('pedit').onclick = () => abrirDe(eu, () => sheetAluna(alid));
     if ($('pcob')) $('pcob').onclick = () => abrirDe(eu, () => sheetCobrancaAluna(alid));
     sh.querySelectorAll('[data-adoc]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetDocAluno(alid, b.dataset.adoc, eu)));
@@ -2171,12 +2196,118 @@ function sheetNota(alid, n, volta) {
       const texto = $('ntxt').value.trim(); if (!texto) return $('nerr').textContent = 'Escreva a nota.';
       $('nok').disabled = true;
       try {
-        if (n) await B.set(`escolas/${S.eid}/notasAlunos/${n.id}`, { texto, tag: tag || null, editadoEm: Date.now() }, { merge: true });
+        if (S.prof && !S.admin) await profServidor('nota', { alid, id: n ? n.id : null, texto, tag: tag || null });
+        else if (n) await B.set(`escolas/${S.eid}/notasAlunos/${n.id}`, { texto, tag: tag || null, editadoEm: Date.now() }, { merge: true });
         else await B.set(`escolas/${S.eid}/notasAlunos/${novoId()}`, { alid, texto, tag: tag || null, autorUid: EU.uid, autorNome: meuNome(), em: Date.now() });
         fecharSheet(); aviso(n ? 'Nota atualizada' : 'Nota salva'); if (volta) setTimeout(volta, 60);
       } catch (e) { $('nerr').textContent = msgErro(e); $('nok').disabled = false; }
     };
   });
+}
+
+// foto do aluno: pequena (até 360 px, ~20 KB), em escolas/{eid}/fotosAlunos/{alid}; a administração tira ou troca
+const FOTOS = {};
+async function fotoAluno(alid) {
+  if (FOTOS[alid] !== undefined) return FOTOS[alid];
+  if (S.prof) return (FOTOS[alid] = ((S.pp || {}).fotos || {})[alid] || null);
+  const d = await B.get(`escolas/${S.eid}/fotosAlunos/${alid}`).catch(() => null); return (FOTOS[alid] = (d && d.foto) || null);
+}
+async function fotoQuadrada(arq) {
+  const im = await abrirImagem(arq, 900), lado = Math.min(im.width, im.height), c = document.createElement('canvas'); c.width = c.height = 360;
+  c.getContext('2d').drawImage(im, (im.width - lado) / 2, (im.height - lado) / 2, lado, lado, 0, 0, 360, 360);
+  return c.toDataURL('image/jpeg', 0.78);
+}
+const avatarAluno = (alid, nome, cls = '') => { const f = FOTOS[alid] || (((S && S.pp) || {}).fotos || {})[alid]; return f ? `<img class="dot foto-dot ${cls}" src="${f}" alt="">` : `<div class="dot ${cls}">${esc(iniciais(nome))}</div>`; };
+const chipMensal = m => !m ? '' : m.st === 'pago' ? '<span class="chip pago">Pago</span>' : m.st === 'atrasado' ? '<span class="chip vencido">Atrasado</span>' : m.st === 'acordo' ? '<span class="chip">Em acordo</span>' : `<span class="chip aberto">Vence ${esc(dataBR(m.venc))}</span>`;
+
+/* ---- Área do professor: o servidor monta só o que ele pode ver ---- */
+async function profServidor(acao, d = {}) {
+  if (!MOCK) return servidor('professor', { acao, eid: S && S.eid, ...d });
+  return profMock(acao, d);
+}
+// no modo de teste não há servidor: faz o mesmo aqui, com os dados de exemplo
+const colMock = p => new Promise(ok => { let feito = false, u = null; u = B.ouvirCol(p, docs => { if (feito) return; feito = true; ok(Object.fromEntries(docs.map(x => [x.id, x.data]))); setTimeout(() => u && u(), 0); }, () => ok({})); });
+async function profMock(acao, d) {
+  if (acao === 'vincular') {
+    const m = (await B.get('convitesProf/' + chaveEmail(EU.email))) || {}, out = [];
+    for (const c of Object.values(m)) { if (!c) continue; const P = await B.get(`escolas/${c.eid}/professoras/${c.pid}`), E = await B.get('escolas/' + c.eid);
+      if (!P || !E || String(P.emailApp || '').toLowerCase() !== String(EU.email || '').toLowerCase()) continue;
+      await B.set(`escolas/${c.eid}/equipe/${EU.uid}`, { pid: c.pid, email: EU.email, nome: P.nome || '', em: Date.now() });
+      await B.set('users/' + EU.uid, { escolas: { [c.eid]: { nome: E.nome || 'Escola', papel: 'professora', prof: P.nome || '' } } }, { merge: true });
+      out.push({ eid: c.eid, nome: E.nome || 'Escola', prof: P.nome || '' }); }
+    return { escolas: out };
+  }
+  const p = `escolas/${S.eid}`, eq = await B.get(`${p}/equipe/${EU.uid}`); if (!eq) throw new Error('Você não é professor(a) desta escola.');
+  const pid = eq.pid, P = (await B.get(`${p}/professoras/${pid}`)) || {};
+  const turmas = await colMock(`${p}/turmas`), minhas = Object.keys(turmas).filter(t => turmas[t].professoraId === pid);
+  const alunas = Object.fromEntries(Object.entries(await colMock(`${p}/alunas`)).filter(([, a]) => (a.turmas || []).some(t => minhas.includes(t))));
+  if (acao === 'painel') {
+    const pags = {}; for (const id of Object.keys(alunas)) pags[id] = (await B.get(`${p}/pagamentos/${id}`)) || {};
+    const [extras, grupos, acordos, cfg] = await Promise.all([colMock(`${p}/extras`), colMock(`${p}/grupos`), colMock(`${p}/acordos`), B.get(`${p}/config/geral`)]);
+    const mes = d.mes || mesHoje(), r = C.painelProfessor({ alunas, turmas, extras, grupos, acordos, cfg: cfg || {}, pags }, pid, mes, hoje()), fotos = {};
+    for (const a of r.alunos) { const f = await B.get(`${p}/fotosAlunos/${a.id}`); if (f && f.foto) fotos[a.id] = f.foto; }
+    return { pid, nome: P.nome || '', mes, ...r, fotos };
+  }
+  if (!alunas[d.alid]) throw new Error('Este aluno não está nas suas turmas.');
+  if (acao === 'notas') return { notas: Object.entries(await colMock(`${p}/notasAlunos`)).filter(([, n]) => n.alid === d.alid).map(([id, n]) => ({ id, ...n })).sort((x, y) => (y.em || 0) - (x.em || 0)) };
+  if (acao === 'apagarNota') { const n = await B.get(`${p}/notasAlunos/${d.id}`); if (!n || n.autorUid !== EU.uid) throw new Error('Você só pode apagar as suas notas.'); await B.del(`${p}/notasAlunos/${d.id}`); return { ok: true }; }
+  if (d.id) { const n = await B.get(`${p}/notasAlunos/${d.id}`); if (!n || n.autorUid !== EU.uid) throw new Error('Você só pode editar as suas notas.'); await B.set(`${p}/notasAlunos/${d.id}`, { texto: d.texto, tag: d.tag || null, editadoEm: Date.now() }, { merge: true }); return { ok: true }; }
+  const id = novoId(); await B.set(`${p}/notasAlunos/${id}`, { alid: d.alid, texto: d.texto, tag: d.tag || null, autorUid: EU.uid, autorNome: P.nome || EU.nome || 'Professor(a)', papel: 'professor', em: Date.now() }); return { ok: true, id };
+}
+// ao entrar: se o e-mail da conta foi cadastrado por alguma escola como professor, a escola aparece em "Minhas escolas"
+let PROF_PEND = [];
+async function vincularProf() {
+  if (!EU || !EU.email) return null;
+  try { const r = await profServidor('vincular'); for (const e of r.escolas || []) MINHAS[e.eid] = { nome: e.nome, papel: 'professora', prof: e.prof }; PROF_PEND = r.confirmar ? r.pendentes || [] : []; return r; }
+  catch (e) { return null; }
+}
+async function carregarPainelProf() {
+  const eid = S.eid, mes = S.mes;
+  try {
+    const r = await profServidor('painel', { mes });
+    if (!S || S.eid !== eid) return;
+    S.pp = r; S.ppErro = null; S.alunas = Object.fromEntries(r.alunos.map(a => [a.id, { nome: a.nome, nascimento: a.nascimento, turmas: a.turmas, grupos: a.grupos }]));
+    Object.assign(FOTOS, r.fotos || {});
+  } catch (e) { if (!S || S.eid !== eid) return; S.ppErro = msgErroTexto(e); if (e.code === 'sem-acesso') delete MINHAS[eid]; }
+  agendar();
+}
+function ppCarregando(v) {
+  if (S.pp && S.pp.mes === S.mes) return false;
+  v.innerHTML = S.ppErro ? `<div class="empty"><b>Não deu para abrir.</b><span>${esc(S.ppErro)}</span><button class="btn" id="pptenta">Tentar de novo</button></div>` : '<div class="empty">Carregando…</div>';
+  if ($('pptenta')) $('pptenta').onclick = () => { S.ppErro = null; render(); carregarPainelProf(); };
+  return true;
+}
+function tPTurmas(v) {
+  if (ppCarregando(v)) return;
+  const pp = S.pp, q = semAcento((S.busca || '').trim()), ts = ordenar(S.turmas).filter(([t]) => pp.turmas.includes(t));
+  const ativos = pp.alunos.filter(a => a.ativo);
+  v.innerHTML = `<div class="headrow"><h2>Minhas turmas</h2></div>
+    <div class="sub num">${ativos.length} aluno${ativos.length === 1 ? '' : 's'} · ${ts.length} turma${ts.length === 1 ? '' : 's'}</div>
+    <div class="field"><input id="ppbusca" type="search" placeholder="Buscar aluno" aria-label="Buscar aluno" value="${esc(S.busca || '')}"></div>
+    ${ts.map(([tid, t]) => { const al = ativos.filter(a => a.turmas.includes(tid) && (!q || semAcento(a.nome).includes(q)));
+      if (q && !al.length) return '';
+      return `<section class="pt-turma"><div class="pt-cab"><b>${esc(t.nome)}</b><span class="sub">${esc([t.horario, localDe(t), `${al.length} aluno${al.length === 1 ? '' : 's'}`].filter(Boolean).join(' · '))}</span></div>
+        <ul class="list">${al.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div>${chipMensal(a.mensal)}</li>`).join('') || '<li><span class="sub">Nenhum aluno nesta turma.</span></li>'}</ul></section>`; }).join('') || '<div class="empty"><b>Nenhuma turma com você ainda.</b><span>A escola escolhe o(a) professor(a) de cada turma.</span></div>'}
+    <div class="note">Você vê os alunos das suas turmas e escreve notas sobre eles. Os contatos e os documentos das famílias ficam com a escola.</div>`;
+  $('ppbusca').oninput = e => { S.busca = e.target.value; render(); };
+  v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));
+}
+function tPFin(v) {
+  if (ppCarregando(v)) return;
+  const pp = S.pp, T = pp.totais, f = S.pfFiltro || 'todos', ativos = pp.alunos.filter(a => a.mensal);
+  const lista = ativos.filter(a => f === 'todos' || (f === 'pagos' ? a.mensal.st === 'pago' : a.mensal.st !== 'pago'));
+  const nPag = ativos.filter(a => a.mensal.st === 'pago').length, nomeT = id => (S.turmas[id] || {}).nome || '';
+  v.innerHTML = `<div class="headrow"><h2>Financeiro</h2></div>
+    <div class="sub">A parte que cabe a você nas suas turmas. Quem cobra as famílias é a escola.</div>
+    <div class="pf-resumo"><div><span>Recebido</span><b class="num">${brl(T.recebido)}</b></div><div><span>A receber</span><b class="num">${brl(T.aVencer)}</b></div><div class="${T.atrasado ? 'ruim' : ''}"><span>Atrasado</span><b class="num">${brl(T.atrasado)}</b></div></div>
+    <section><h2>Mensalidades de ${esc(C.nomeMes(S.mes))}</h2>
+      <div class="opcoes c3" id="pfiltro">${[['todos', `Todos (${ativos.length})`], ['pagos', `Pagaram (${nPag})`], ['faltam', `Faltam (${ativos.length - nPag})`]].map(([k, n]) => `<button type="button" class="pick" data-pff="${k}" aria-pressed="${f === k}">${n}</button>`).join('')}</div>
+      <ul class="list" style="margin-top:10px">${lista.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(a.turmas.map(nomeT).join(' · ')), a.mensal.st === 'pago' && a.mensal.d ? `Pago em ${esc(dataBR(String(a.mensal.d).slice(0, 10)))}` : '')}</div>${valorCol(a.mensal.v > 0 ? brl(a.mensal.v) : '—', chipMensal(a.mensal))}</li>`).join('') || '<li><span class="sub">Ninguém aqui.</span></li>'}</ul></section>
+    ${pp.atr.length ? `<section><h2>Atrasados</h2><ul class="list">${pp.atr.map(x => `<li><div class="grow"><div class="t">${esc(x.aluno)}</div>${linhas(esc(x.cobranca), `Venceu ${esc(dataBR(x.venc))}`)}</div>${valorCol(brl(x.v), '', 'out')}</li>`).join('')}</ul></section>` : ''}
+    ${pp.rec.length ? `<section><h2>Recebido em ${esc(C.nomeMes(S.mes))}</h2><ul class="list">${pp.rec.map(x => `<li><div class="grow"><div class="t">${esc(x.aluno)}</div>${linhas(esc(x.cobranca), `${esc(dataBR(String(x.d).slice(0, 10)))}${x.via ? ' · ' + esc(NOME_VIA[x.via] || x.via) : ''}`)}</div>${valorCol(brl(x.v))}</li>`).join('')}</ul></section>` : ''}
+    <div class="note">Os valores são a sua parte: o que cai para você nas turmas em que você recebe. Se a turma recebe pela escola, aparece só se a família pagou.</div>`;
+  v.querySelectorAll('[data-pff]').forEach(b => b.onclick = () => { S.pfFiltro = b.dataset.pff; render(); });
+  v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));
 }
 
 // busca de aluno e responsável, com filtros
@@ -2328,14 +2459,30 @@ function sheetLocal(lid) {
     salvar: async () => { const nome = $('lnome2').value.trim(); if (!nome) return 'Digite o nome do local.'; await B.set(`escolas/${S.eid}/locais/${lid || novoId()}`, { nome, endereco: $('lend').value.trim(), ordem: l ? l.ordem ?? 0 : Object.keys(S.locais).length + 1 }); },
     excluir: lid && (() => B.del(`escolas/${S.eid}/locais/${lid}`)), bloqueio: n ? `${n} turma${n > 1 ? 's usam' : ' usa'} este local. Troque o local dessas turmas antes.` : null });
 }
+// no modo de teste não há servidor: faz o que o servidor faz quando a escola muda o e-mail do professor
+async function espelhoProfMock(pid, antes, depois) {
+  const k = `${S.eid}_${pid}`;
+  if (antes) { await B.set('convitesProf/' + chaveEmail(antes), { [k]: null }, { merge: true });
+    for (const uid of await B.meus(`escolas/${S.eid}/equipe`, 'pid', pid).catch(() => [])) { await B.del(`escolas/${S.eid}/equipe/${uid}`); await B.set('users/' + uid, { escolas: { [S.eid]: null } }, { merge: true }); } }
+  if (depois) await B.set('convitesProf/' + chaveEmail(depois), { [k]: { eid: S.eid, pid, em: Date.now() } }, { merge: true });
+}
 function sheetProf(pid) {
   const P = pid ? S.profs[pid] : null, n = pid ? Object.values(S.turmas).filter(t => t.professoraId === pid).length : 0;
   sheetSimples({ titulo: P ? 'Editar professor(a)' : 'Novo(a) professor(a)',
     campos: `<div class="field"><label for="pnome">Nome</label><input id="pnome" maxlength="60" value="${esc(P ? P.nome : '')}"></div>
       <div class="field"><label for="ptel">WhatsApp</label><input id="ptel" inputmode="tel" maxlength="20" value="${esc(P ? P.telefone || '' : '')}" placeholder="(81) 99999-9999"></div>
+      <div class="field"><label for="pemail">E-mail para entrar no app</label><input id="pemail" type="email" inputmode="email" autocomplete="off" autocapitalize="none" maxlength="120" value="${esc(P ? P.emailApp || '' : '')}" placeholder="email@exemplo.com">
+        ${P && P.emailApp ? `<span class="sub">${P.appEm ? `Já entrou no app em ${esc(dataCurta(P.appEm))}.` : 'Ainda não entrou no app.'}</span>` : ''}
+        <span class="sub">Com o e-mail, ele(a) entra no app e vê só as turmas dele(a): escreve notas sobre os alunos e acompanha os pagamentos que cabem a ele(a). Não vê telefone, CPF nem documentos das famílias, e não cobra ninguém. Para tirar o acesso, apague o e-mail.</span>
+        ${P && P.emailApp && P.telefone && !P.appEm ? `<a class="btn ghost btn-ico" style="margin-top:8px" target="_blank" rel="noopener" href="${esc(waLink(P.telefone, `Olá, ${primeiro(P.nome)}! Cadastrei você no app Turma em Dia da ${S.escola.nome || 'escola'}. Abra ${LINK_APP} e entre com o e-mail ${P.emailApp}. Lá você vê as suas turmas, escreve notas sobre os alunos e acompanha os pagamentos.`))}">${ICO_WA}<span>Avisar pelo WhatsApp</span></a>` : ''}</div>
       ${P ? `<div class="field"><span class="lb">Conta que recebe o Pix</span>${blocoConta(pid, P)}</div>` : '<div class="note">Depois de salvar, você adiciona a conta que recebe o Pix.</div>'}`,
     montar: () => { document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid))); },
-    salvar: async () => { const nome = $('pnome').value.trim(); if (!nome) return 'Digite o nome do(a) professor(a).'; await B.set(`escolas/${S.eid}/professoras/${pid || novoId()}`, { nome, telefone: $('ptel').value.trim() }, { merge: true }); },
+    salvar: async () => { const nome = $('pnome').value.trim(); if (!nome) return 'Digite o nome do(a) professor(a).';
+      const email = $('pemail').value.trim().toLowerCase(); if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return 'Confira o e-mail.';
+      const outro = Object.entries(S.profs).find(([id, x]) => id !== pid && email && String(x.emailApp || '').toLowerCase() === email); if (outro) return `Este e-mail já está com ${outro[1].nome}.`;
+      const id = pid || novoId(), antes = String((P && P.emailApp) || '').toLowerCase();
+      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, telefone: $('ptel').value.trim(), emailApp: email || null, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
+      if (MOCK && email !== antes) await espelhoProfMock(id, antes, email); },
     excluir: pid && (() => B.del(`escolas/${S.eid}/professoras/${pid}`)), bloqueio: n ? 'Este(a) professor(a) tem turmas. Troque o(a) professor(a) dessas turmas antes.' : null });
 }
 // adicionar, trocar ou tirar a conta que recebe o Pix do(a) professor(a)
@@ -3348,7 +3495,8 @@ function atestadoMeta(alid) {
   return em && !(at.recusa && at.recusa.em > (at.enviadoEm || 0)) ? { em, validade: isoDe(new Date(em + ANO_MS)), formato: null } : null;
 }
 // apagar os documentos de um aluno (exclusão ou LGPD)
-const opsApagarDocs = alid => S.docs[alid] ? [...Object.keys(S.docs[alid].docs || {}).map(t => ({ op: 'del', p: `escolas/${S.eid}/documentos/${alid}__${t}` })), { op: 'del', p: `escolas/${S.eid}/docsAlunos/${alid}` }] : [];
+const opsApagarDocs = alid => [{ op: 'del', p: `escolas/${S.eid}/fotosAlunos/${alid}` }, ...opsApagarDocs0(alid)];
+const opsApagarDocs0 = alid => S.docs[alid] ? [...Object.keys(S.docs[alid].docs || {}).map(t => ({ op: 'del', p: `escolas/${S.eid}/documentos/${alid}__${t}` })), { op: 'del', p: `escolas/${S.eid}/docsAlunos/${alid}` }] : [];
 const metaJunta = (alid, tid) => tid === '_atest' ? atestadoMeta(alid) : docDe(alid, tid);
 async function arquivosDoc(alid, tid) {
   if (tid === '_atest') { const f = await carregarAtestado(alid); return f && f.arquivo ? { formato: f.tipo === 'pdf' ? 'pdf' : 'img', arquivos: [f.arquivo] } : null; }
@@ -4169,6 +4317,7 @@ function sheetAparencia() {
 /* ================= Dados de exemplo (só no modo de teste) ================= */
 async function semearMock() {
   await B.cadastrar('Patrícia Lins', 'familia@teste.com', '123456'); const uF = window.__mock.cur().uid; await B.sair();
+  await B.cadastrar('Juliana Costa', 'professor@teste.com', '123456'); const uP = window.__mock.cur().uid; await B.sair();
   await B.cadastrar('Paula Diretora', 'admin@teste.com', '123456'); const uA = window.__mock.cur().uid;
   const eid = 'esc1', p = `escolas/${eid}`, m = mesHoje(), m1 = mesMais(m, -1), m2 = mesMais(m, -2), set = (q, d) => B.set(q, d);
   const cfg = { atraso: { ativo: true, multa: 2, juros: 1 }, vencDia: 10, pixRepassa: false, descIrmas: 0.1, descMulti: 0.15, mpConectadoEm: Date.now(), mpTaxaApp: 0.01, pixChave: '12.345.678/0001-90' };
@@ -4178,7 +4327,10 @@ async function semearMock() {
   await set(`${p}/config/geral`, cfg);
   await set(`${p}/config/mp`, { conta: { nome: 'Paula Diretora Souza', doc: '***.456.789-**' }, confirmada: true });
   await set(`${p}/locais/l1`, { nome: 'Unidade Centro', ordem: 1 }); await set(`${p}/locais/l2`, { nome: 'Unidade Praia', ordem: 2 });
-  await set(`${p}/professoras/p1`, { nome: 'Juliana Costa', telefone: '(81) 95555-1111', mpConectadoEm: Date.now(), mpConta: 'Juliana Costa', mpContaInfo: 'juliana.costa@email.com', pixChave: '(81) 95555-1111' });
+  await set(`${p}/equipe/${uP}`, { pid: 'p1', email: 'professor@teste.com', nome: 'Juliana Costa', em: Date.now() - 3 * 864e5 });
+  await set('convitesProf/' + chaveEmail('professor@teste.com'), { [`${eid}_p1`]: { eid, pid: 'p1', em: Date.now() } });
+  await set('users/' + uP, { escolas: { [eid]: { nome: 'Escolinha Movimento', papel: 'professora', prof: 'Juliana Costa' } } });
+  await set(`${p}/professoras/p1`, { emailApp: 'professor@teste.com', appEm: Date.now() - 3 * 864e5, appUid: uP, nome: 'Juliana Costa', telefone: '(81) 95555-1111', mpConectadoEm: Date.now(), mpConta: 'Juliana Costa', mpContaInfo: 'juliana.costa@email.com', pixChave: '(81) 95555-1111' });
   await set(`${p}/professoras/p2`, { nome: 'Camila Ribeiro', telefone: '(81) 95555-2222', mpConectadoEm: Date.now(), mpConta: 'Camila Ribeiro', mpContaInfo: 'camila.ribeiro@email.com', pixChave: 'camila.ribeiro@email.com' });
   await set(`${p}/professoras/p3`, { nome: 'Rafael Souza', telefone: '(81) 95555-3333' });
   await set(`${p}/professoras/p4`, { nome: 'Beatriz Nunes', telefone: '(81) 95555-4444' });
@@ -4268,8 +4420,9 @@ async function semearMock() {
     if (!u) { S = null; INTRO_VISTA = false; sairAbertura(); return telaLogin(); }
     const perfil = await B.get('users/' + u.uid).catch(() => null);
     if (minha !== vez) return;
-    MINHAS = (perfil && perfil.escolas) || {};
+    MINHAS = Object.fromEntries(Object.entries((perfil && perfil.escolas) || {}).filter(([, e]) => e));
     // convite para a administração: procura sem atrasar a abertura da escola
+    vincularProf().then(r => { if (minha !== vez || !r) return; if (((r.escolas || []).length || PROF_PEND.length) && !S) telaInicio(); });
     convitesPara(u).then(c => { CONVITES = c || []; if (minha !== vez || !CONVITES.length) return; if (!S) telaInicio(); else aviso('Você tem um convite para a administração de outra escola. Veja em Ajustes → Minhas escolas.'); }).catch(() => { });
     if (MP_VOLTA && ls.get('escolinha.mpVolta') && MINHAS[ls.get('escolinha.mpVolta')]) { sairAbertura(); return abrirEscola(ls.get('escolinha.mpVolta')); }
     // uma escola: as cartas viram direto para ela; mais de uma: escolhe na própria abertura

@@ -28,6 +28,10 @@ exports.eventoResposta = A.eventoResposta;
 const E = require('./espelho')(db);
 exports.espelharProf = E.espelharProf;
 
+// área do professor: alunos das turmas dele, a parte dele nos pagamentos e as notas dele
+const PR = require('./professor')(db);
+exports.professor = PR.professor;
+
 /* Notas fiscais da comissão: relatório da empresa, emissão automática no Emissor Nacional e PDF para a escola */
 const N = require('./nfse')(db, P.interno);
 exports.notasPlataforma = N.notasPlataforma;

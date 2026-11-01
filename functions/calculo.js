@@ -193,5 +193,58 @@
   const todasIdades = t => !t || t.todasIdades || (t.idadeMin == null && t.idadeMax == null);
   const cabe = (t, idade) => todasIdades(t) || idade == null || ((t.idadeMin == null || idade >= t.idadeMin) && (t.idadeMax == null || idade <= t.idadeMax));
   const faixaTxt = t => todasIdades(t) ? 'Todas as idades' : t.idadeMin != null && t.idadeMax != null ? `${t.idadeMin} a ${t.idadeMax} anos` : t.idadeMin != null ? `a partir de ${t.idadeMin} anos` : `até ${t.idadeMax} anos`;
-  return { repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens };
+  /* Área do professor: o que ele vê dos alunos das turmas dele, sem dados da família (nada de telefone, CPF ou saúde).
+     d = { alunas, turmas, extras, grupos, acordos, cfg, pags: { alid: pagamentos } }, pid, mes 'AAAA-MM', hoje 'AAAA-MM-DD'.
+     Os valores são a parte dele: o que cai para ele nas turmas, cobranças e acordos em que ele é o recebedor. */
+  function painelProfessor(d, pid, mes, hoje) {
+    const turmas = d.turmas || {}, minhas = Object.keys(turmas).filter(t => turmas[t] && turmas[t].professoraId === pid), set = new Set(minhas);
+    const alunos = [], rec = [], atr = [], ven = [];
+    const parteMesPaga = (a, pag, mm) => {
+      const pp = stPag(((pag.mensPartes || {})[mm] || {})[pid]); if (pp) return pp;
+      const pt = stPag((pag.mens || {})[mm]); if (pt && !(pag.mensPartes || {})[mm]) { const v = partesMens(a, turmas, pt.v)[pid] || 0; return v > 0 ? { ...pt, v } : null; }
+      return null;
+    };
+    for (const [alid, a] of Object.entries(d.alunas || {})) {
+      if (!a || a.anonimizadoEm) continue;
+      const ts = (a.turmas || []).filter(t => set.has(t)); if (!ts.length) continue;
+      const pag = (d.pags || {})[alid] || {}, dd = { ...d, pag }, nome = a.nome || 'Aluno(a)';
+      let recebeu = false;
+      // recebidos no mês: mensalidades (a parte dele), cobranças extras dele e parcelas de acordo
+      for (const mm of new Set([...Object.keys(pag.mens || {}), ...Object.keys(pag.mensPartes || {})])) {
+        const p = parteMesPaga(a, pag, mm); if (p && p.v > 0 && String(p.d).slice(0, 7) === mes) { rec.push({ d: p.d, alid, aluno: nome, cobranca: `Mensalidade de ${nomeMes(mm)}`, via: p.via || null, v: r2(p.v) }); recebeu = true; }
+      }
+      for (const [xid, x] of Object.entries(pag.extras || {})) {
+        const p = stPag(x), X = (d.extras || {})[xid]; if (!p || !X || recDe(X) !== pid || String(p.d).slice(0, 7) !== mes) continue;
+        rec.push({ d: p.d, alid, aluno: nome, cobranca: X.nome || 'Cobrança', via: p.via || null, v: r2(p.v) }); recebeu = true;
+      }
+      for (const [aid, ps] of Object.entries(pag.acordos || {})) for (const [n, x] of Object.entries(ps || {})) {
+        const p = stPag(x), A = (d.acordos || {})[aid]; if (!p || !A || String(p.d).slice(0, 7) !== mes) continue;
+        const v = partesAcordo(A, p.v)[pid] || 0; if (v > 0) { rec.push({ d: p.d, alid, aluno: nome, cobranca: `Acordo · parcela ${n}`, via: p.via || null, v }); recebeu = true; }
+      }
+      // em aberto: a parte dele, atrasada ou vencendo no mês
+      let atraso = 0;
+      for (const i of itensComEncargos(dd, alid, hoje)) {
+        if (i.pago || !i.partes || !(i.partes[pid] > 0)) continue; const v = r2(i.partes[pid]);
+        if (i.venc < hoje) { atr.push({ venc: i.venc, alid, aluno: nome, cobranca: i.desc, v }); atraso = r2(atraso + v); }
+        else if (String(i.venc).slice(0, 7) === mes) ven.push({ venc: i.venc, alid, aluno: nome, cobranca: i.desc, v });
+      }
+      // a mensalidade do mês, do ponto de vista dele
+      const ativo = ativaNoMes(a, mes); let mensal = null;
+      if (ativo) {
+        const pg = parteMesPaga(a, pag, mes), pm = (pag.mens || {})[mes];
+        if (pg) mensal = { st: 'pago', v: r2(pg.v), d: pg.d || null };
+        else {
+          const m = mensalidade(d.alunas, alid, mes, turmas, d.cfg || {}), venc = vencMens(mes, d.cfg);
+          if (m) mensal = { st: stPag(pm) ? 'pago' : pm && pm.s === 'acordo' ? 'acordo' : venc < hoje ? 'atrasado' : 'aberto', v: r2(partesMens(a, turmas, m.v)[pid] || 0), venc };
+        }
+      }
+      if (!ativo && !atraso && !recebeu) continue;
+      const grupos = Object.values(d.grupos || {}).filter(g => g && (g.alunas || []).includes(alid)).map(g => g.nome || '').filter(Boolean);
+      alunos.push({ id: alid, nome, nascimento: a.nascimento || null, turmas: ts, grupos, ativo, mensal, atraso });
+    }
+    const soma = l => r2(l.reduce((s, x) => s + x.v, 0)), ord = (x, y) => String(x.d || x.venc).localeCompare(String(y.d || y.venc)) || String(x.aluno).localeCompare(String(y.aluno), 'pt-BR');
+    alunos.sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
+    return { turmas: minhas, alunos, rec: rec.sort(ord), atr: atr.sort(ord), ven: ven.sort(ord), totais: { recebido: soma(rec), atrasado: soma(atr), aVencer: soma(ven) } };
+  }
+  return { repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
 });

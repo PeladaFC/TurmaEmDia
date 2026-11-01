@@ -13,6 +13,8 @@ service cloud.firestore {
     function admin(eid) { return logado() && exists(base(eid)) && eu() in escola(eid).admins; }
     function adminDepois(eid) { return logado() && eu() in escolaDepois(eid).admins; }
     function membro(eid) { return logado() && exists(/databases/$(database)/documents/escolas/$(eid)/membros/$(eu())); }
+    // professor com acesso ao app (o servidor cria, quando ele entra com o e-mail cadastrado pela escola)
+    function equipe(eid) { return logado() && exists(/databases/$(database)/documents/escolas/$(eid)/equipe/$(eu())); }
     // o cadastro de responsável rid está ligado à conta de quem pede?
     function meu(eid, rid) { return logado() && rid is string && exists(/databases/$(database)/documents/escolas/$(eid)/membros/$(eu())/vinculos/$(rid)); }
     function ridDaAluna(eid, alid) { return get(/databases/$(database)/documents/escolas/$(eid)/alunas/$(alid)).data.responsavelId; }
@@ -26,6 +28,7 @@ service cloud.firestore {
     // Credenciais da plataforma e convites de administração: só o servidor.
     match /servidor/{doc=**} { allow read, write: if false; }
     match /convitesAdm/{doc} { allow read, write: if false; }
+    match /convitesProf/{doc} { allow read, write: if false; }
 
     // Registro técnico de erros do app: quem está logado só cria (o próprio, sem dados pessoais, com tamanho limitado);
     // só o dono da plataforma (e-mails em servidor/plataforma, com e-mail confirmado) lê e apaga. Os admins das escolas não.
@@ -58,7 +61,7 @@ service cloud.firestore {
     }
 
     match /escolas/{eid} {
-      allow read: if admin(eid) || membro(eid);
+      allow read: if admin(eid) || membro(eid) || equipe(eid);
       allow create: if logado()
         && request.resource.data.dono == eu()
         && request.resource.data.admins == [eu()];
@@ -120,14 +123,14 @@ service cloud.firestore {
         allow update: if admin(eid) && soMuda(['confirmada']);
       }
       match /config/geral {
-        allow read: if admin(eid) || membro(eid);
+        allow read: if admin(eid) || membro(eid) || equipe(eid);
         allow write: if adminDepois(eid);
       }
 
       // Turmas, locais, grupos, eventos e taxas: quem paga lê; a administração escreve.
       // A resposta "vai / não vai" da família passa pelo servidor (eventoResposta).
-      match /turmas/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
-      match /locais/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
+      match /turmas/{doc} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if adminDepois(eid); }
+      match /locais/{doc} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if adminDepois(eid); }
       match /grupos/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
       match /extras/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
       // Fotos de cada evento (cartaz, regulamento): quem é da escola vê; a administração põe e tira (até 3, já reduzidas)
@@ -136,7 +139,7 @@ service cloud.firestore {
       // Professores: telefone, chave Pix e conta ficam só com a administração.
       // As famílias leem só o nome, na cópia profsPublico que o servidor mantém.
       match /professoras/{pid} { allow read, write: if admin(eid); }
-      match /profsPublico/{pid} { allow read: if admin(eid) || membro(eid); allow write: if false; }
+      match /profsPublico/{pid} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if false; }
 
       // Caixa (entradas e saídas avulsas): só administração.
       match /lancamentos/{doc} { allow read, write: if admin(eid); }
@@ -178,6 +181,18 @@ service cloud.firestore {
         allow update: if admin(eid) && resource.data.autorUid == eu() && soMuda(['texto', 'tag', 'editadoEm'])
           && request.resource.data.texto is string && request.resource.data.texto.size() <= 2000;
         allow delete: if admin(eid);
+      }
+      // Quem é professor no app: só o servidor cria (confere o e-mail); a pessoa lê o dela; a escola vê e pode tirar.
+      // O professor não lê alunos, responsáveis, pagamentos, saúde nem documentos: o servidor monta o que ele pode ver.
+      match /equipe/{uid} {
+        allow read: if admin(eid) || (logado() && eu() == uid);
+        allow create, update: if false;
+        allow delete: if admin(eid);
+      }
+      // Foto do aluno (pequena): a administração e a família do aluno. O professor recebe pelo servidor.
+      match /fotosAlunos/{alid} {
+        allow read: if admin(eid) || minhaAluna(eid, alid);
+        allow write: if admin(eid);
       }
       match /docsAlunos/{alid} {
         allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
