@@ -795,7 +795,7 @@ function itensDoMes(alid, mes) {
   const a = S.alunas[alid], pag = S.pags[alid] || {}, out = []; if (!a) return out;
   const neg = ((pag.mens || {})[mes] || {}).s === 'acordo';
   const p = C.stPag((pag.mens || {})[mes]), m = p || neg ? null : C.mensalidade(S.alunas, alid, mes, S.turmas, S.cfg);
-  if (!neg && (p || (m && m.v > 0))) out.push({ k: `m:${mes}:${alid}`, tipo: 'm', alid, mes, v: p ? C.r2(p.v) : m.v, venc: C.vencMens(mes, S.cfg), pago: p, tipoExtra: null });
+  if (!neg && (p || (m && m.v > 0))) out.push({ k: `m:${mes}:${alid}`, tipo: 'm', alid, mes, v: p ? C.r2(p.v) : m.v, venc: C.vencAluna(S.alunas[alid], mes, S.cfg), pago: p, tipoExtra: null });
   for (const [xid, x] of Object.entries(S.extras)) {
     if (String(x.venc || '').slice(0, 7) !== mes) continue;
     if (((pag.extras || {})[xid] || {}).s === 'acordo') continue;
@@ -1064,6 +1064,7 @@ function contaMensalidade(m, a, titulo) {
   return `<div class="conta">${titulo ? `<div class="label">${esc(titulo)}</div>` : ''}${m.turmasObj.map(t => contaL(esc(t.nome), brl(t.preco))).join('')}
     ${m.dMulti > 0 ? contaL(`Desconto mais de uma atividade (${pct(S.cfg.descMulti)})`, '− ' + brl(m.dMulti), 'desc') : ''}
     ${m.dIrma > 0 ? contaL(`Desconto de irmão(ã) (${pct(S.cfg.descIrmas)})`, '− ' + brl(m.dIrma), 'desc') : ''}
+    ${m.dPrimeiro > 0 ? contaL(`Primeiro mês${m.primeiro && m.primeiro.tipo === 'prop' ? ` (${m.primeiro.dias} de ${m.primeiro.de} dias)` : m.primeiro && m.primeiro.tipo === 'metade' ? ' (metade)' : ''}`, '− ' + brl(m.dPrimeiro), 'desc') : ''}
     ${m.dAjuste > 0 ? contaL((a && a.desc && a.desc.isenta ? 'Bolsa' : a && a.desc && a.desc.pct ? `Desconto (${Math.round(a.desc.pct * 100)}%)` : a && a.desc && a.desc.menos ? 'Desconto em R$' : 'Desconto combinado com a escola') + (a && a.desc && a.desc.motivo ? `<span class="s" style="display:block">${esc(a.desc.motivo)}</span>` : ''), '− ' + brl(m.dAjuste), 'desc') : m.dAjuste < 0 ? contaL('Valor combinado com a escola' + (a && a.desc && a.desc.motivo ? `<span class="s" style="display:block">${esc(a.desc.motivo)}</span>` : ''), '+ ' + brl(-m.dAjuste)) : ''}
     ${contaL('<b>Total por mês</b>', `<b>${brl(m.v)}</b>`, 'total')}</div>`;
 }
@@ -2092,6 +2093,11 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     <div class="filha" style="padding:12px" id="aconta"></div>` : `<div class="note">Desconto e valor da mensalidade ficam com a administração.</div>`}
     <div class="two"><div class="field"><label for="aini">Cobrar a partir de</label><input id="aini" type="month" value="${esc(a ? a.inicio || mes : mes)}"></div>
     <div class="field" id="afimw"><label for="afim">Último mês cobrado</label><input id="afim" type="month" value="${esc(a && a.fim ? a.fim : mesMais(mes, -1))}"></div></div>
+    ${adm ? `<div class="field"><label for="apm">Desconto no primeiro mês</label>
+      <div class="banner" id="apmaviso" hidden style="margin-bottom:8px"><span>A matrícula é depois do dia 15. Quer dar desconto no primeiro mês?</span></div>
+      <select id="apm">${[['inteiro', 'Sem desconto: cobrar o mês inteiro'], ['metade', 'Metade do mês (50%)'], ['prop', 'Proporcional aos dias que faltam'], ['isento', 'Não cobrar o primeiro mês'], ['valor', 'Outro valor']].map(([k, n]) => `<option value="${k}" ${((a && a.primeiroMes && a.primeiroMes.tipo) || 'inteiro') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <input id="apmv" inputmode="decimal" placeholder="Valor do primeiro mês (R$)" value="${esc(a && a.primeiroMes && a.primeiroMes.tipo === 'valor' ? fmtValor(a.primeiroMes.v) : '')}" style="margin-top:8px" hidden>
+      <div class="note" id="apmnota"></div></div>` : ''}
     ${ed ? `<label class="check"><input type="checkbox" id="aativa" ${ativa ? 'checked' : ''}> Aluno(a) ativo(a)</label>` : ''}
     ${!ed && adm && ((S.cfg.matricula || {}).valor > 0) ? `<label class="check" style="font-weight:500"><input type="checkbox" id="amat" checked> Cobrar a taxa de matrícula (${brl(S.cfg.matricula.valor)})</label>` : ''}
     <div class="err" id="aerr" role="alert"></div>
@@ -2119,8 +2125,20 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       $('rsim').onclick = () => { rid = mid; $('rnome').value = m.nome || ''; $('rend').value = m.endereco || ''; $('rtel').value = m.telefone || ''; $('rcpf').value = m.cpf || ''; sugerir(); prev(); aviso('Agrupada com ' + primeiro(m.nome)); };
       $('rnao').onclick = () => { recusado.add(mid); sugerir(); };
     };
+    // primeiro mês: dias que faltam no mês de início (contando hoje, se começa neste mês)
+    const primeiroMes = () => { if (!$('apm')) return undefined; const t = $('apm').value, ini = $('aini').value || mes;
+      if (t === 'inteiro') return null;
+      const [y, m] = ini.split('-').map(Number), dias = new Date(y, m, 0).getDate(), hj = new Date(), dia = ini === mesHoje() ? hj.getDate() : 1, restam = dias - dia + 1;
+      if (t === 'metade') return { mes: ini, tipo: 'metade', fator: 0.5 };
+      if (t === 'isento') return { mes: ini, tipo: 'isento', fator: 0 };
+      if (t === 'prop') return { mes: ini, tipo: 'prop', fator: Math.round(restam / dias * 1000) / 1000, dias: restam, de: dias };
+      return { mes: ini, tipo: 'valor', v: parseValor($('apmv').value) || 0 }; };
+    const verPrimeiro = () => { if (!$('apm')) return; const ini = $('aini').value || mes, t = $('apm').value, pm = primeiroMes();
+      $('apmaviso').hidden = !(ini === mesHoje() && new Date().getDate() > 15); $('apmv').hidden = t !== 'valor';
+      $('apmnota').textContent = !pm ? `${C.nomeMes(ini)[0].toUpperCase() + C.nomeMes(ini).slice(1)} é cobrado inteiro.` : pm.tipo === 'prop' ? `Cobra ${pm.dias} de ${pm.de} dias de ${C.nomeMes(ini)} (${Math.round(pm.fator * 100)}% da mensalidade). Depois, valor cheio.`
+        : pm.tipo === 'isento' ? `${C.nomeMes(ini)[0].toUpperCase() + C.nomeMes(ini).slice(1)} não é cobrado. Depois, valor cheio.` : pm.tipo === 'metade' ? `${C.nomeMes(ini)[0].toUpperCase() + C.nomeMes(ini).slice(1)} sai pela metade. Depois, valor cheio.` : `Só em ${C.nomeMes(ini)}. Depois, valor cheio.`; };
     const prev = () => {
-      $('afimw').hidden = $('aativa') ? $('aativa').checked : true; marcaFaixa();
+      $('afimw').hidden = $('aativa') ? $('aativa').checked : true; marcaFaixa(); verPrimeiro();
       if (!adm) return;
       const m = $('aaj').value; $('aajbox').hidden = m === 'nenhum'; $('aajv').hidden = m === 'nenhum' || m === 'isenta'; $('bqpct').hidden = m !== 'pct'; $('aajl').textContent = m === 'pct' ? 'Desconto (%)' : m === 'menos' ? 'Abater da mensalidade (R$)' : 'Valor combinado por mês (R$)';
       s.querySelectorAll('[data-aj]').forEach(b => b.setAttribute('aria-pressed', b.dataset.aj === m));
@@ -2168,7 +2186,9 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         const id = alid || novoId(), ops = []; let r = rid;
         if (r) ops.push({ op: 'merge', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim() } });
         else { r = novoId(); const cod = novoCodigo(); ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim(), codigo: cod, criadoEm: Date.now() } }, { op: 'set', p: 'codigos/' + cod, d: { eid: S.eid, rid: r } }); }
-        ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
+        ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ...(primeiroMes() !== undefined ? { primeiroMes: primeiroMes() } : {}),
+          // aluno novo depois do vencimento do mês: a primeira mensalidade vence em 7 dias, sem multa
+          ...(!ed && C.vencMens(ini, S.cfg) < hoje() ? { vencPrimeiro: new Date(Date.now() + 7 * 864e5 - 3 * 36e5).toISOString().slice(0, 10) } : {}), ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
         if (S.docs[id] && S.docs[id].responsavelId !== r) ops.push({ op: 'merge', p: `escolas/${S.eid}/docsAlunos/${id}`, d: { responsavelId: r } });
         for (const [g, G] of Object.entries(S.grupos)) { const tem = (G.alunas || []).includes(id); if (tem !== meusG.has(g)) ops.push({ op: 'merge', p: `escolas/${S.eid}/grupos/${g}`, d: { alunas: meusG.has(g) ? [...(G.alunas || []), id] : (G.alunas || []).filter(x => x !== id) } }); }
         if (novaFoto) ops.push({ op: 'set', p: `escolas/${S.eid}/fotosAlunos/${id}`, d: { foto: novaFoto, responsavelId: r, em: Date.now(), por: 'escola' } });

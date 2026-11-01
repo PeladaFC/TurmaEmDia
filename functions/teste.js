@@ -71,6 +71,16 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.strictEqual(C.mensalidade(alunas, 'a1', '2026-10', turmas, cfg).v, 240);
     const h = C.mensalidade(alunas, 'a2', '2026-10', turmas, cfg); assert.strictEqual(h.v, 108); assert.ok(h.irma);
   });
+  await t('primeiro mês com desconto (matrícula depois do dia 15): só no mês de início', () => {
+    const al = { ...alunas, a7: { ...alunas.a7, primeiroMes: { mes: '2026-10', tipo: 'metade', fator: 0.5 } } };
+    assert.strictEqual(C.mensalidade(al, 'a7', '2026-10', turmas, cfg).v, 75); assert.strictEqual(C.mensalidade(al, 'a7', '2026-11', turmas, cfg).v, 150);
+    const al2 = { ...alunas, a7: { ...alunas.a7, primeiroMes: { mes: '2026-10', tipo: 'valor', v: 40 } } };
+    assert.strictEqual(C.mensalidade(al2, 'a7', '2026-10', turmas, cfg).v, 40);
+    // entrou depois do vencimento: a primeira mensalidade vence depois da matrícula (sem multa), as outras no dia de sempre
+    const al3 = { ...alunas, a7: { ...alunas.a7, vencPrimeiro: '2026-10-22' } };
+    assert.strictEqual(C.itensAluna({ ...d(), alunas: al3 }, 'a7', H).find(i => i.k === 'm:2026-10:a7').venc, '2026-10-22');
+    assert.strictEqual(C.vencAluna(al3.a7, '2026-11', cfg), '2026-11-10');
+  });
   await t('nenhum desconto entra sozinho: sem a escola escolher, cobra cheio', () => {
     const sem = { ...alunas, a1: { ...alunas.a1, descMultiOk: false }, a2: { ...alunas.a2, descIrmaOk: false } };
     assert.strictEqual(C.mensalidade(sem, 'a1', '2026-10', turmas, cfg).v, 300);

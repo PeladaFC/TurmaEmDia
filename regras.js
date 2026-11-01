@@ -66,11 +66,16 @@
       .sort((x, y) => y.v - x.v || x.id.localeCompare(y.id));
     const eu = baseAluna(a, turmas || {}, cfg); if (!eu.turmas.length) return null;
     const dIrma = Number(cfg.descIrmas) || 0, podeIrma = irmas.some(x => x.id !== alid), podeMulti = eu.turmas.length >= 2;
-    const irma = dIrma > 0 && podeIrma && a.descIrmaOk === true, comIrma = irma ? r2(eu.v * (1 - dIrma)) : eu.v, v = aplicaAjuste(comIrma, a.desc);
-    return { v, soma: eu.soma, cheio: eu.v, irma, podeIrma, podeMulti, dMulti: r2(eu.soma - eu.v), dIrma: r2(eu.v - comIrma), dAjuste: r2(comIrma - v),
+    const irma = dIrma > 0 && podeIrma && a.descIrmaOk === true, comIrma = irma ? r2(eu.v * (1 - dIrma)) : eu.v, v0 = aplicaAjuste(comIrma, a.desc);
+    // primeiro mês com desconto (matrícula no meio do mês): metade, proporcional aos dias, isento ou outro valor
+    const pm = a.primeiroMes && a.primeiroMes.mes === mes ? a.primeiroMes : null;
+    const v = !pm ? v0 : pm.tipo === 'valor' ? r2(Math.max(0, Math.min(v0, Number(pm.v) || 0))) : r2(v0 * Math.max(0, Math.min(1, Number(pm.fator) || 0)));
+    return { v, soma: eu.soma, cheio: eu.v, irma, podeIrma, podeMulti, dMulti: r2(eu.soma - eu.v), dIrma: r2(eu.v - comIrma), dAjuste: r2(comIrma - v0), dPrimeiro: r2(v0 - v), primeiro: pm,
       irmas: irmas.filter(x => x.id !== alid).map(x => x.id), turmas: eu.turmas.map(t => t.nome), turmasObj: eu.turmas };
   }
   const vencMens = (mes, cfg) => `${mes}-${pad(Math.min(28, Math.max(1, Number((cfg || {}).vencDia) || 10)))}`;
+  // aluno que entra depois do vencimento do mês: o primeiro mês vence alguns dias depois da matrícula (vencPrimeiro), sem multa
+  const vencAluna = (a, mes, cfg) => { const v = vencMens(mes, cfg); return a && a.vencPrimeiro && a.inicio === mes && a.vencPrimeiro > v ? a.vencPrimeiro : v; };
   // valor de uma cobrança extra para um aluno: o valor padrão, ou o valor ajustado só para ele
   const valorExtra = (x, alid) => r2(x && x.valores && x.valores[alid] != null ? x.valores[alid] : (x || {}).v);
   // alunas que uma cobrança extra alcança: grupos + turmas + avulsas
@@ -123,7 +128,7 @@
       // partes já pagas a algum recebedor (pagamento em mais de um Pix) saem do que falta
       let partes = null, v = p ? r2(p.v) : m.v;
       if (!p) { const ja = ((pag.mensPartes || {})[mes]) || {}; partes = {}; for (const [rec, val] of Object.entries(partesMens(a, d.turmas, m.v))) if (!stPag(ja[rec])) partes[rec] = val; v = r2(Object.values(partes).reduce((s, x) => s + x, 0)); if (!(v > 0)) continue; }
-      itens.push({ k: `m:${mes}:${alid}`, tipo: 'm', alid, mes, desc: `Mensalidade de ${nomeMes(mes)}`, detalhe: m ? m.turmas.join(' + ') : 'Mensalidade', v, total: p ? r2(p.v) : m.v, partes, venc: vencMens(mes, cfg), pago: p });
+      itens.push({ k: `m:${mes}:${alid}`, tipo: 'm', alid, mes, desc: `Mensalidade de ${nomeMes(mes)}`, detalhe: m ? m.turmas.join(' + ') : 'Mensalidade', v, total: p ? r2(p.v) : m.v, partes, venc: vencAluna(a, mes, cfg), pago: p });
     }
     for (const [xid, x] of Object.entries(d.extras || {})) {
       if (!x) continue;
@@ -247,7 +252,7 @@
         const pg = parteMesPaga(a, pag, mes), pm = (pag.mens || {})[mes];
         if (pg) mensal = { st: 'pago', v: r2(pg.v), d: pg.d || null };
         else {
-          const m = mensalidade(d.alunas, alid, mes, turmas, d.cfg || {}), venc = vencMens(mes, d.cfg);
+          const m = mensalidade(d.alunas, alid, mes, turmas, d.cfg || {}), venc = vencAluna(a, mes, d.cfg);
           if (m) mensal = { st: stPag(pm) ? 'pago' : pm && pm.s === 'acordo' ? 'acordo' : venc < hoje ? 'atrasado' : 'aberto', v: r2(partesMens(a, turmas, m.v)[pid] || 0), venc };
         }
       }
@@ -259,5 +264,5 @@
     alunos.sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
     return { turmas: minhas, alunos, rec: rec.sort(ord), atr: atr.sort(ord), ven: ven.sort(ord), totais: { recebido: soma(rec), atrasado: soma(atr), aVencer: soma(ven) } };
   }
-  return { cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
+  return { vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
 });
