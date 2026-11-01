@@ -1029,6 +1029,7 @@ function render() {
   const v = $('tela');
   if (S.papel === 'f' && S.eu && !S.eu.consentimento) return telaConsentimento(v);
   ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar, pturmas: tPTurmas, pfin: tPFin })[S.tab](v);
+  pedirFotos();
   if (foco && $(foco) && $(foco).tagName === 'INPUT' && $(foco).type !== 'checkbox') { $(foco).focus(); try { $(foco).setSelectionRange(selS, selS); } catch (e) { } }
 }
 function irPara(tab, extra) { if (S.tab !== tab) { S.hist = (S.hist || []).concat(S.tab).slice(-20); } S.tab = tab; Object.assign(S, extra || {}); ls.set('escolinha.tab.' + S.papel, tab); render(); scrollTo(0, 0); }
@@ -1061,7 +1062,7 @@ function contaMensalidade(m, a, titulo) {
 }
 function linhaAluna(alid, valor, status, subs, depois) {
   const a = S.alunas[alid] || {};
-  return `<li class="tap" data-aluna="${esc(alid)}"><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t">${esc(a.nome || 'Aluno(a)')}</div>${linhas(subs || [esc(respDe(alid).nome || 'Sem responsável')])}</div>${valorCol(brl(valor), status ? `<span class="chip ${status}">${ROT[status]}</span>` : '')}${depois || ''}</li>`;
+  return `<li class="tap" data-aluna="${esc(alid)}">${avatarAluno(alid, a.nome)}<div class="grow"><div class="t">${esc(a.nome || 'Aluno(a)')}</div>${linhas(subs || [esc(respDe(alid).nome || 'Sem responsável')])}</div>${valorCol(brl(valor), status ? `<span class="chip ${status}">${ROT[status]}</span>` : '')}${depois || ''}</li>`;
 }
 const ligarAlunas = v => v.querySelectorAll('[data-aluna]').forEach(li => li.onclick = e => { if (e.target.closest('.wa')) return; sheetCobrancaAluna(li.dataset.aluna); });
 
@@ -1756,7 +1757,7 @@ function sheetVerEvento(xid) {
   const g = { inscrito: [], interesse: [], sem: [], nao: [] }; cv.forEach(id => g[partDe(x, id) || 'sem'].push(id));
   const taxas = Object.entries(S.extras).filter(([, t]) => t.evento === xid), app = pelaEscola(x), fam = modoInsc(x) === 'familia';
   const volta = () => sheetVerEvento(xid);
-  const lin = (id, acoes) => { const a = S.alunas[id], P = (x.part || {})[id] || {}; return `<li><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(respDe(id).nome || 'Sem responsável'), P.em ? `${P.quem === 'escola' ? 'Marcado pela escola' : 'Respondeu'} em ${dataCurta(P.em)}` : '')}</div><span class="ev-acoes">${acoes}</span></li>`; };
+  const lin = (id, acoes) => { const a = S.alunas[id], P = (x.part || {})[id] || {}; return `<li>${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(respDe(id).nome || 'Sem responsável'), P.em ? `${P.quem === 'escola' ? 'Marcado pela escola' : 'Respondeu'} em ${dataCurta(P.em)}` : '')}</div><span class="ev-acoes">${acoes}</span></li>`; };
   const bt = (id, st, txt, cls = 'ghost') => `<button type="button" class="btn ${cls} btn-mini" data-pst="${esc(st)}" data-pid="${esc(id)}">${txt}</button>`;
   const sec = (tit, ids, acoes, vazio) => `<section><h2>${tit} <span class="sub num">${ids.length}</span></h2>${ids.length ? `<ul class="list">${ids.map(id => lin(id, acoes(id))).join('')}</ul>` : `<div class="note">${vazio}</div>`}</section>`;
   sheet(`<h3>${esc(x.nome)}</h3>
@@ -1919,7 +1920,7 @@ function tAlunas(v) {
     <div class="field"><input id="abusca" type="search" placeholder="Buscar aluno(a), responsável ou telefone" value="${esc(S.busca || '')}" aria-label="Buscar"></div>
     ${vis.length ? vis.map(({ rid, r, al }) => `<ul class="list">
         <li class="${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''} style="background:var(--surface2)"><div class="grow"><div class="label">Responsável</div><div class="t">${esc(r.nome)}</div>${rid ? linhas(`<span class="num">${esc(r.telefone || 'Sem telefone')}</span>`, r.cpf ? `<span class="num">CPF ${esc(r.cpf)}</span>` : '') : ''}</div>${rid && r.codigo ? `<span class="chip" style="letter-spacing:.12em">${esc(r.codigo)}</span>` : ''}</li>
-        ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}"><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].join(''))}</li>`; }).join('')}
+        ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].join(''))}</li>`; }).join('')}
         ${rid ? `<li class="tap" data-nova="${esc(rid)}" style="min-height:44px"><span class="sub">+ Outro(a) aluno(a) com ${esc(primeiro(r.nome))}</span></li>` : ''}
       </ul>`).join('') : `<div class="empty">${q ? 'Nada encontrado.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre cada aluno(a) com a turma e o responsável. Se o telefone ou o CPF do responsável já existir, o app sugere agrupar os irmãos.</span>'}</div>`}`;
   $('abusca').oninput = e => { S.busca = e.target.value; render(); };
@@ -2183,7 +2184,7 @@ function sheetPerfilAluno(alid, volta) {
       e => { if ($('pnotas')) $('pnotas').innerHTML = `<div class="sub">Não deu para carregar as notas. ${esc(msgErroTexto(e))}</div>`; }, ['alid', alid]);
     $('pnova').onclick = () => abrirDe(eu, () => sheetNota(alid, null, eu));
     if ($('pfotoarq')) $('pfotoarq').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq) return;
-      try { const f = await fotoQuadrada(arq); await B.set(`escolas/${S.eid}/fotosAlunos/${alid}`, { foto: f, responsavelId: a.responsavelId || null, em: Date.now() }); FOTOS[alid] = f; $('pfoto').firstElementChild.outerHTML = fotoHTML(f); aviso('Foto salva'); }
+      try { const f = await fotoQuadrada(arq); await B.set(`escolas/${S.eid}/fotosAlunos/${alid}`, { foto: f, responsavelId: a.responsavelId || null, em: Date.now() }); FOTOS[alid] = f; $('pfoto').firstElementChild.outerHTML = fotoHTML(f); aviso('Foto salva'); agendar(); }
       catch (er) { aviso(msgErro(er)); } };
     if ($('pedit')) $('pedit').onclick = () => abrirDe(eu, () => sheetAluna(alid));
     if ($('pcob')) $('pcob').onclick = () => abrirDe(eu, () => sheetCobrancaAluna(alid));
@@ -2229,7 +2230,16 @@ async function fotoQuadrada(arq) {
   c.getContext('2d').drawImage(im, (im.width - lado) / 2, (im.height - lado) / 2, lado, lado, 0, 0, 360, 360);
   return c.toDataURL('image/jpeg', 0.78);
 }
-const avatarAluno = (alid, nome, cls = '') => { const f = FOTOS[alid] || (((S && S.pp) || {}).fotos || {})[alid]; return f ? `<img class="dot foto-dot ${cls}" src="${f}" alt="">` : `<div class="dot ${cls}">${esc(iniciais(nome))}</div>`; };
+const avatarAluno = (alid, nome, cls = '') => { const f = FOTOS[alid] || (((S && S.pp) || {}).fotos || {})[alid]; return f ? `<img class="dot foto-dot ${cls}" src="${f}" alt="">` : `<div class="dot ${cls}" ${FOTOS[alid] === undefined && !(S && S.prof) ? `data-fav="${esc(alid)}"` : ''}>${esc(iniciais(nome))}</div>`; };
+// fotos das listas: busca as que aparecem na tela (uma vez cada) e redesenha quando chegam
+const FOTOS_PEDIDAS = new Set();
+function pedirFotos() {
+  if (!S || !(S.admin || S.papel === 'f')) return;
+  const ids = [...document.querySelectorAll('[data-fav]')].map(e => e.dataset.fav).filter(id => !FOTOS_PEDIDAS.has(id) && FOTOS[id] === undefined);
+  if (!ids.length) return;
+  ids.forEach(id => FOTOS_PEDIDAS.add(id));
+  Promise.all(ids.map(id => fotoAluno(id).catch(() => null))).then(fs => { if (fs.some(Boolean)) agendar(); });
+}
 const chipMensal = m => !m ? '' : m.st === 'pago' ? '<span class="chip pago">Pago</span>' : m.st === 'atrasado' ? '<span class="chip vencido">Atrasado</span>' : m.st === 'acordo' ? '<span class="chip">Em acordo</span>' : `<span class="chip aberto">Vence ${esc(dataBR(m.venc))}</span>`;
 
 /* ---- Área do professor: o servidor monta só o que ele pode ver ---- */
@@ -2352,7 +2362,7 @@ function sheetBusca() {
       $('bconta').textContent = `${al.length} aluno${al.length === 1 ? '' : 's'}`;
       $('bres').innerHTML = al.length ? `<ul class="list">${al.slice(0, 200).map(([id, a]) => { const r = S.resps[a.responsavelId] || {}, P = BUSCA.pend ? pendenciasAluno(id) : null;
         const extra = !P ? '' : BUSCA.pend === 'atraso' ? `<span class="chip vencido">${brl(P.atraso)}</span>` : BUSCA.pend === 'aniver' ? `<span class="chip">Dia ${esc(a.nascimento.slice(8, 10))}</span>` : BUSCA.pend === 'docs' ? `<span class="chip vencido">${esc(P.docs.map(([T]) => T.nome).join(', '))}</span>` : '';
-        return `<li class="tap" data-pf="${esc(id)}"><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t">${marca(a.nome)}</div>${linhas(esc([idade(a.nascimento), turmasTxt(a) || 'Sem turma'].filter(Boolean).join(' · ')), `Resp.: ${marca(r.nome || '—')}${dig.length >= 3 && r.telefone ? ` · <span class="num">${esc(r.telefone)}</span>` : ''}`)}</div>${extra}</li>`; }).join('')}</ul>`
+        return `<li class="tap" data-pf="${esc(id)}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${marca(a.nome)}</div>${linhas(esc([idade(a.nascimento), turmasTxt(a) || 'Sem turma'].filter(Boolean).join(' · ')), `Resp.: ${marca(r.nome || '—')}${dig.length >= 3 && r.telefone ? ` · <span class="num">${esc(r.telefone)}</span>` : ''}`)}</div>${extra}</li>`; }).join('')}</ul>`
         : '<div class="empty"><b>Nenhum aluno encontrado.</b><span>Confira o nome ou tire algum filtro.</span></div>';
       $('bres').querySelectorAll('[data-pf]').forEach(li => li.onclick = () => abrirDe(sheetBusca, () => sheetPerfilAluno(li.dataset.pf, sheetBusca)));
     };
@@ -2375,7 +2385,7 @@ function cartaoTurma(tid, t) {
     <div class="turma-info">${ddl([S.admin && ['Valor', `<b class="num">${brl(t.preco)}</b> <span class="sub">por mês</span>`], ['Faixa etária', esc(C.faixaTxt(t))], ['Professor(a)', esc(profNome(t) || '—')], ['Local', esc(localDe(t) || '—')], ['Dias e horário', esc(t.horario || '—')], S.admin && ['Pix vai para', esc(nomeRec(C.recDe(t)))], ['Alunos', `<span class="num">${alunosTxt}</span>${nFora ? ` <span class="chip vencido">${nFora} faixa etária</span>` : ''}`]])}</div>
     <button class="mostrar" data-abre="${esc(tid)}" aria-expanded="${aberta}">${aberta ? 'Esconder alunos' : `Mostrar alunos${n ? ` (${n})` : ''}`}<span aria-hidden="true">${aberta ? '▴' : '▾'}</span></button>
     ${aberta ? `<div class="ativ">${al.map(x => { const [id, a] = x;
-      return `<div class="turma" data-al="${esc(id)}"><div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), respDe(id).nome ? 'Responsável: ' + esc(respDe(id).nome) : '')}</div>${fora(x) ? '<span class="chip vencido">Faixa etária</span>' : ''}</div>`; }).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}
+      return `<div class="turma" data-al="${esc(id)}">${avatarAluno(id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), respDe(id).nome ? 'Responsável: ' + esc(respDe(id).nome) : '')}</div>${fora(x) ? '<span class="chip vencido">Faixa etária</span>' : ''}</div>`; }).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}
       <button class="mini" data-nt="${esc(tid)}">+ Aluno(a) nesta turma</button></div>` : ''}</div>`;
 }
 /* ================= Aba Eventos (administração): calendário do mês, próximos eventos e o que já passou ================= */
