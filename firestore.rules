@@ -128,6 +128,23 @@ service cloud.firestore {
         allow read: if admin(eid) || membro(eid) || equipe(eid);
         allow write: if adminDepois(eid);
       }
+      // modelo do contrato: a família lê para assinar; só a escola escreve
+      match /config/contrato {
+        allow read: if admin(eid) || membro(eid);
+        allow write: if adminDepois(eid);
+      }
+      // contratos assinados (um por aluno e versão): a família assina uma vez e ninguém muda depois
+      match /contratos/{cid} {
+        allow read: if admin(eid) || minhaAluna(eid, resource.data.alid);
+        allow create: if minhaAluna(eid, request.resource.data.alid)
+          && cid == request.resource.data.alid + '_v' + string(request.resource.data.versao)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.em is int && math.abs(request.resource.data.em - request.time.toMillis()) < 600000
+          && request.resource.data.texto is string && request.resource.data.texto.size() < 40000
+          && request.resource.data.nome is string && request.resource.data.nome.size() < 100;
+        allow update: if false;
+        allow delete: if adminDepois(eid);
+      }
 
       // Turmas, locais, grupos, eventos e taxas: quem paga lê; a administração escreve.
       // A resposta "vai / não vai" da família passa pelo servidor (eventoResposta).

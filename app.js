@@ -692,13 +692,14 @@ async function abrirEscola(eid, tab) {
   const col = (nome, chave, onde) => B.ouvirCol(`${p}/${nome}`, docs => { S[chave] = Object.fromEntries(docs.map(d => [d.id, d.data])); S.carregado.add(chave); agendar(); }, e => console.warn(nome, e), onde);
   OUV.push(B.ouvirDoc(p, d => { if (d) { S.escola = d; agendar(); } }));
   OUV.push(B.ouvirDoc(`${p}/config/geral`, d => { S.cfg = d || {}; S.cfgOk = true; agendar(); }));
+  if (!prof || admin) OUV.push(B.ouvirDoc(`${p}/config/contrato`, d => { S.contratoCfg = d || {}; agendar(); }, () => { }));
   (prof && !admin ? ['locais', 'turmas'] : ['locais', 'turmas', 'grupos', 'extras']).forEach(n => OUV.push(col(n, n)));
   if (prof && !admin) {
     // o professor não lê alunos, famílias nem pagamentos: o servidor manda só o que ele pode ver
     OUV.push(col(MOCK ? 'professoras' : 'profsPublico', 'profs'));
     carregarPainelProf();
   } else if (admin) {
-    OUV.push(col('acordos', 'acordos'));
+    OUV.push(col('acordos', 'acordos')); OUV.push(col('contratos', 'contratos'));
     OUV.push(col('professoras', 'profs')); OUV.push(col('profsPublico', 'profsPub')); OUV.push(col('responsaveis', 'resps')); OUV.push(col('alunas', 'alunas')); OUV.push(col('pagamentos', 'pags'));
     if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
   } else {
@@ -710,7 +711,10 @@ async function abrirEscola(eid, tab) {
     const porRid = {}, porAluna = {}, alunasPorRid = {};
     const juntarAlunas = () => { S.alunas = Object.assign({}, ...Object.values(alunasPorRid)); S.carregado.add('alunas'); sincronizarFichas(); agendar(); };
     const sincronizarFichas = () => {
-      for (const alid of Object.keys(S.alunas)) if (!porAluna[alid]) porAluna[alid] = B.ouvirDoc(`${p}/pagamentos/${alid}`, d => { S.pags[alid] = d || {}; agendar(); }, () => { });
+      for (const alid of Object.keys(S.alunas)) if (!porAluna[alid]) { const u1 = B.ouvirDoc(`${p}/pagamentos/${alid}`, d => { S.pags[alid] = d || {}; agendar(); }, () => { });
+        // contratos assinados deste aluno (a família só lê os dos filhos dela)
+        const u2 = B.ouvirCol(`${p}/contratos`, docs => { S.contratos = { ...Object.fromEntries(Object.entries(S.contratos || {}).filter(([, c]) => c.alid !== alid)), ...Object.fromEntries(docs.map(x => [x.id, x.data])) }; agendar(); }, () => { }, ['alid', alid]);
+        porAluna[alid] = () => { u1(); u2(); }; }
       for (const alid of Object.keys(porAluna)) if (!S.alunas[alid]) { porAluna[alid](); delete porAluna[alid]; delete S.pags[alid]; }
     };
     OUV.push(B.ouvirCol(`${p}/membros/${EU.uid}/vinculos`, docs => {
@@ -2017,6 +2021,7 @@ function sheetResp(rid) {
     <div class="two"><div class="field"><label for="rtel">WhatsApp</label><input id="rtel" inputmode="tel" maxlength="20" value="${esc(r.telefone || '')}"></div>
     <div class="field"><label for="rcpf">CPF</label><input id="rcpf" inputmode="numeric" maxlength="14" value="${esc(fmtCpf(r.cpf))}" placeholder="000.000.000-00" required></div></div>
     <div class="field"><label for="rmail">E-mail</label><input id="rmail" type="email" maxlength="80" value="${esc(r.email || '')}"></div>
+    <div class="field"><label for="rend">Endereço</label><input id="rend" maxlength="160" value="${esc(r.endereco || '')}" placeholder="Rua, número, bairro, cidade/UF" autocomplete="street-address"></div>
     ${nfFamLigada() ? ligaNota('rnf', notaDaFamilia(r), nfModo() === 'pedido' ? 'Você escolheu emitir só para quem pede. Ligue se esta família pediu.' : 'Desligue se esta família disse que não precisa de nota.') : ''}
     <div class="hero" style="padding:14px;gap:8px"><div class="label">Código de acesso</div><div class="big num" style="font-size:1.8rem;letter-spacing:.18em;user-select:all">${esc(r.codigo || '')}</div>
       <div class="sub">${noApp ? `${noApp} pessoa${noApp > 1 ? 's' : ''} entrou no app com este código.` : 'Ninguém entrou no app com este código ainda.'}</div>
@@ -2029,7 +2034,7 @@ function sheetResp(rid) {
       const nome = $('rnome').value.trim(); if (!nome) return $('rerr').textContent = 'Digite o nome do responsável.';
       if (!C.soDigitos($('rcpf').value)) return $('rerr').textContent = 'Informe o CPF do responsável. Ele é obrigatório (vai na nota fiscal).';
       if (!C.cpfValido($('rcpf').value)) return $('rerr').textContent = 'Esse CPF não confere. Veja se algum número foi digitado errado.';
-      try { await B.set(`escolas/${S.eid}/responsaveis/${rid}`, { nome, telefone: $('rtel').value.trim(), cpf: $('rcpf').value.trim(), email: $('rmail').value.trim(), ...($('rnf') && $('rnf').checked !== notaDaFamilia(r) ? { nota: $('rnf').checked ? 'sim' : 'nao' } : {}) }, { merge: true }); fecharSheet(); aviso('Responsável atualizado'); }
+      try { await B.set(`escolas/${S.eid}/responsaveis/${rid}`, { nome, telefone: $('rtel').value.trim(), cpf: $('rcpf').value.trim(), email: $('rmail').value.trim(), endereco: $('rend').value.trim(), ...($('rnf') && $('rnf').checked !== notaDaFamilia(r) ? { nota: $('rnf').checked ? 'sim' : 'nao' } : {}) }, { merge: true }); fecharSheet(); aviso('Responsável atualizado'); }
       catch (e) { $('rerr').textContent = msgErro(e); }
     };
     $('rdel').onclick = () => al.length ? ($('rerr').textContent = 'Este responsável tem alunos. Troque o responsável deles antes.') : confirmar('Excluir responsável?', `${esc(r.nome)} e o código ${esc(r.codigo || '')} deixam de existir.`, 'Excluir', () => B.lote([{ op: 'del', p: `escolas/${S.eid}/responsaveis/${rid}` }, ...(r.codigo ? [{ op: 'del', p: 'codigos/' + r.codigo }] : [])]));
@@ -2068,6 +2073,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       <div class="field"><label for="rnome">Nome</label><input id="rnome" maxlength="60" value="${esc(r0.nome || '')}" placeholder="Quem paga"></div>
       <div class="two"><div class="field"><label for="rtel">WhatsApp</label><input id="rtel" inputmode="tel" maxlength="20" value="${esc(r0.telefone || '')}" placeholder="(81) 99999-9999"></div>
       <div class="field"><label for="rcpf">CPF</label><input id="rcpf" inputmode="numeric" maxlength="14" value="${esc(fmtCpf(r0.cpf))}" placeholder="000.000.000-00" required></div></div>
+      <div class="field"><label for="rend">Endereço</label><input id="rend" maxlength="160" value="${esc(r0.endereco || '')}" placeholder="Rua, número, bairro, cidade/UF" autocomplete="street-address"></div>
       <div id="rsug"></div>
       <div class="note" id="rinfo"></div></div>
     ${adm ? `<div class="field"><span class="lb">Descontos</span>
@@ -2108,7 +2114,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       if (!achado) { $('rsug').innerHTML = ''; return; }
       const [mid, m] = achado, irmas = alunasDoResp(mid).map(([, x]) => primeiro(x.nome));
       $('rsug').innerHTML = `<div class="banner"><span><b>${esc(m.nome)}</b> já está cadastrado(a) com esse ${mesmoContato({ telefone: atual.telefone }, m) ? 'telefone' : 'CPF'}${irmas.length ? `, responsável por ${esc(irmas.join(', '))}` : ''}. É a mesma pessoa?</span><span class="actions"><button type="button" id="rsim">Sim, agrupar</button><button type="button" id="rnao" style="color:var(--muted)">Não, é outra</button></span></div>`;
-      $('rsim').onclick = () => { rid = mid; $('rnome').value = m.nome || ''; $('rtel').value = m.telefone || ''; $('rcpf').value = m.cpf || ''; sugerir(); prev(); aviso('Agrupada com ' + primeiro(m.nome)); };
+      $('rsim').onclick = () => { rid = mid; $('rnome').value = m.nome || ''; $('rend').value = m.endereco || ''; $('rtel').value = m.telefone || ''; $('rcpf').value = m.cpf || ''; sugerir(); prev(); aviso('Agrupada com ' + primeiro(m.nome)); };
       $('rnao').onclick = () => { recusado.add(mid); sugerir(); };
     };
     const prev = () => {
@@ -2158,8 +2164,8 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       $('aok').disabled = true;
       try {
         const id = alid || novoId(), ops = []; let r = rid;
-        if (r) ops.push({ op: 'merge', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc } });
-        else { r = novoId(); const cod = novoCodigo(); ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, codigo: cod, criadoEm: Date.now() } }, { op: 'set', p: 'codigos/' + cod, d: { eid: S.eid, rid: r } }); }
+        if (r) ops.push({ op: 'merge', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim() } });
+        else { r = novoId(); const cod = novoCodigo(); ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim(), codigo: cod, criadoEm: Date.now() } }, { op: 'set', p: 'codigos/' + cod, d: { eid: S.eid, rid: r } }); }
         ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
         if (S.docs[id] && S.docs[id].responsavelId !== r) ops.push({ op: 'merge', p: `escolas/${S.eid}/docsAlunos/${id}`, d: { responsavelId: r } });
         for (const [g, G] of Object.entries(S.grupos)) { const tem = (G.alunas || []).includes(id); if (tem !== meusG.has(g)) ops.push({ op: 'merge', p: `escolas/${S.eid}/grupos/${g}`, d: { alunas: meusG.has(g) ? [...(G.alunas || []), id] : (G.alunas || []).filter(x => x !== id) } }); }
@@ -2235,7 +2241,8 @@ function sheetPerfilAluno(alid, volta) {
       </div>
     </div>
     ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
-    ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${docsDoAluno(alid).map(t => { const d = docDe(alid, t);
+    ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${(() => { const ok = ctAssinado(alid), ult = ok || ctUltimo(alid); if (!ult && !ctPede()) return '';
+      return `<button type="button" class="plinha" ${ult ? `data-pvct="${esc(alid)}"` : 'disabled'}><span class="grow">Contrato</span>${ok ? `<span class="chip pago">Assinado em ${dataBR(new Date(ok.em).toISOString().slice(0, 10))}</span>` : '<span class="chip vencido">Falta assinar</span>'}<span class="seta" aria-hidden="true">${ult ? '›' : ''}</span></button>`; })()}${docsDoAluno(alid).map(t => { const d = docDe(alid, t);
       return `<button type="button" class="plinha" data-adoc="${esc(t)}"><span class="grow">${esc(tipoDoc(t).nome)}</span>${chipDoc(d)}<span class="seta" aria-hidden="true">›</span></button>`; }).join('') || '<div class="plinha sub">Nenhum documento. Toque em "+ Documento".</div>'}</div></section>` : ''}
     <section class="psec"><div class="psec-cab"><h2>Notas da equipe</h2><button type="button" class="pacao pacao-forte" id="pnova">+ Nota</button></div>
       <div class="pfiltros" id="pfilt"></div>
@@ -2255,6 +2262,7 @@ function sheetPerfilAluno(alid, volta) {
     if ($('pcob')) $('pcob').onclick = () => abrirDe(eu, () => sheetCobrancaAluna(alid));
     sh.querySelectorAll('[data-adoc]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetDocAluno(alid, b.dataset.adoc, eu)));
     if ($('pnovodoc')) $('pnovodoc').onclick = () => abrirDe(eu, () => sheetDocAluno(alid, null, eu));
+    sh.querySelectorAll('[data-pvct]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetVerContrato(alid)));
   }, () => { if (parar) parar(); });
 }
 
@@ -2986,7 +2994,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoEventosFamilia()}${avisoTermos()}
+    ${avisoEventosFamilia()}${avisoTermos()}${avisoContratos()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
       ${totVenc > 0 ? `<div style="text-align:right"><div class="label">Vencido</div><div class="num" style="font-weight:800;font-size:1.15rem;color:var(--out)">${brl(totVenc)}</div></div>` : ''}</div>
@@ -3010,6 +3018,7 @@ function tPagar(v) {
   v.querySelectorAll('[data-recusa]').forEach(b => b.onclick = async () => { try { await vinculosServidor('recusar', b.dataset.recusa); } catch (e) { } S.sug = S.sug.filter(x => x.rid !== b.dataset.recusa); render(); });
   v.querySelectorAll('[data-termo]').forEach(b => b.onclick = () => sheetTermo(b.dataset.termo));
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
+  v.querySelectorAll('[data-ctass]').forEach(b => b.onclick = () => sheetAssinarContrato(b.dataset.ctass));
   v.querySelectorAll('[data-irfilhos]').forEach(b => b.onclick = () => irPara('filhas'));
   if ($('ppagar')) $('ppagar').onclick = () => (OUTRAS_FORMAS ? sheetFormas : sheetPix)(marcados.map(i => i.k));
   if ($('pvenc')) $('pvenc').onclick = () => { abertos.filter(i => i.venc < h).forEach(i => S.sel.add(i.k)); render(); };
@@ -3035,6 +3044,9 @@ function tFilhas(v) {
             return linha('Atestado', `<span class="dd-col">${rot}<button type="button" class="link" data-atest="${esc(id)}">${at.enviadoEm && x.as !== 'recusado' ? 'Ver atestado' : 'Enviar atestado'}</button></span>`); })()}
           ${[...tiposDoc(), ...avulsosDe(id).map(tipoDoc)].filter(T => T.familia !== false || docDe(id, T.id)).map(T => { const d = docDe(id, T.id), st = situacaoDoc(d).st;
             return linha(T.nome, `<span class="dd-col">${chipDoc(d)}<button type="button" class="link" data-fdoc="${esc(id)}" data-fdt="${esc(T.id)}">${!d ? 'Enviar' : st === 'ok' ? 'Ver ou trocar' : 'Enviar o novo'}</button></span>`); }).join('')}
+          ${(() => { const ct = ctAssinado(id) || ctUltimo(id); if (!ct && !ctPede()) return '';
+            return linha('Contrato', ctAssinado(id) ? `<span class="dd-col"><span class="chip pago">Assinado em ${dataBR(new Date(ct.em).toISOString().slice(0, 10))}</span><button type="button" class="link" data-vct="${esc(id)}">Ver contrato</button></span>`
+              : `<span class="dd-col"><span class="chip vencido">Falta assinar</span><button type="button" class="link" data-ctass="${esc(id)}">Assinar</button>${ct ? `<button type="button" class="link" data-vct="${esc(id)}">Ver o anterior</button>` : ''}</span>`); })()}
           ${linha('Grupos', gs.length ? gs.map(g => `<span class="chip">${esc(g)}</span>`).join(' ') : '')}
         </dl>
         ${ts.map(t => `<div class="filha-turma"><div class="label">Turma</div><div class="t">${esc(t.nome)}</div>
@@ -3045,6 +3057,8 @@ function tFilhas(v) {
   v.querySelectorAll('[data-termo]').forEach(b => b.onclick = () => sheetTermo(b.dataset.termo));
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-vtermo]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vtermo));
+  v.querySelectorAll('[data-ctass]').forEach(b => b.onclick = () => sheetAssinarContrato(b.dataset.ctass));
+  v.querySelectorAll('[data-vct]').forEach(b => b.onclick = () => sheetVerContrato(b.dataset.vct));
   v.querySelectorAll('[data-fdoc]').forEach(b => b.onclick = () => sheetDocAluno(b.dataset.fdoc, b.dataset.fdt));
   // fotos dos filhos: busca uma vez; a família adiciona ou troca
   al.forEach(([id]) => { if (FOTOS[id] === undefined) fotoAluno(id).then(f => { if (f) agendar(); }); });
@@ -3833,6 +3847,155 @@ porNome(S.alunas).map(([id, a]) => ({ id, a, x: termoDe(id) })).filter(r => r.x.
   }).join('');
 }
 // aviso para a família: termo a preencher
+/* ================= Contrato escola-família (um por aluno) =================
+   A escola escreve o modelo uma vez (config/contrato), com campos automáticos entre chaves. A família lê o contrato
+   já preenchido e aceita no app; fica guardada uma cópia exata do texto assinado, com nome, CPF, conta, data e hora
+   (contratos/{alid}_v{versão}). Sem assinar, a família usa o app normalmente: só aparece o aviso. */
+const CAMPOS_CONTRATO = [['escola', 'Nome da escola'], ['cnpj_escola', 'CNPJ da escola'], ['endereco_escola', 'Endereço da escola'], ['responsavel', 'Responsável'], ['cpf', 'CPF do responsável'],
+  ['endereco_responsavel', 'Endereço do responsável'], ['telefone', 'WhatsApp'], ['email', 'E-mail'], ['aluno', 'Aluno(a)'], ['nascimento', 'Nascimento'], ['turmas', 'Turmas'], ['horarios', 'Dias e horários'],
+  ['mensalidade', 'Mensalidade'], ['vencimento', 'Dia do vencimento'], ['multa', 'Multa por atraso'], ['juros', 'Juros ao mês'], ['cidade', 'Cidade'], ['data', 'Data de hoje']];
+const MODELO_CONTRATO = `CONTRATO DE PRESTAÇÃO DE SERVIÇOS ESPORTIVOS
+
+CONTRATADA: {escola}, CNPJ {cnpj_escola}, com endereço em {endereco_escola}.
+
+CONTRATANTE: {responsavel}, CPF {cpf}, residente em {endereco_responsavel}, WhatsApp {telefone}, responsável pelo(a) aluno(a) {aluno}, nascido(a) em {nascimento}.
+
+1. OBJETO. A CONTRATADA oferece ao(à) aluno(a) aulas de {turmas}, nos dias e horários {horarios}, conforme o calendário da escola.
+
+2. VALOR E PAGAMENTO. A mensalidade é de {mensalidade}, com vencimento todo dia {vencimento} de cada mês, paga pelo aplicativo Turma em Dia ou diretamente na escola.
+
+3. ATRASO. Em caso de atraso, incidem multa de {multa} e juros de {juros} ao mês.
+
+4. TAXAS E EVENTOS. Uniforme, inscrições em competições, eventos e outras taxas não estão incluídos na mensalidade e são informados com antecedência.
+
+5. CANCELAMENTO. O CONTRATANTE pode cancelar a matrícula a qualquer momento, avisando a escola com 30 dias de antecedência. As mensalidades já vencidas continuam devidas.
+
+6. FALTAS. Aulas perdidas pelo(a) aluno(a) não geram desconto. A reposição fica a critério da escola.
+
+7. SAÚDE. O CONTRATANTE declara que o(a) aluno(a) pode praticar atividade física e avisará a escola de qualquer mudança de saúde, conforme o termo de matrícula.
+
+8. DADOS PESSOAIS. Os dados são tratados conforme a Lei Geral de Proteção de Dados e a Política de Privacidade do aplicativo.
+
+9. VIGÊNCIA. Este contrato vale a partir da assinatura, por prazo indeterminado, até o cancelamento.
+
+10. FORO. Fica eleito o foro da comarca de {cidade} para resolver questões deste contrato.
+
+{cidade}, {data}.`;
+const ctCfg = () => S.contratoCfg || {};
+const ctId = (alid, v) => `${alid}_v${v || ctCfg().versao || 1}`;
+const ctAssinado = alid => (S.contratos || {})[ctId(alid)] || null;
+const ctUltimo = alid => Object.values(S.contratos || {}).filter(c => c.alid === alid).sort((a, b) => (b.em || 0) - (a.em || 0))[0] || null;
+const ctPede = () => !!(ctCfg().ativo && ctCfg().texto);
+// troca {campo} pelos dados do aluno, do responsável e da escola
+function preencherContrato(texto, alid) {
+  const a = S.alunas[alid] || {}, r = respDe(alid) || {}, c = ctCfg(), cfg = S.cfg || {}, at = cfg.atraso || {};
+  const ts = (a.turmas || []).map(t => S.turmas[t]).filter(Boolean), m = C.mensalidade(S.alunas, alid, mesHoje(), S.turmas, cfg);
+  const nasc = a.nascimento ? `${dataBR(a.nascimento)}/${a.nascimento.slice(0, 4)}` : '', d = new Date();
+  const v = { escola: c.razao || S.escola.nome || '', cnpj_escola: c.cnpj ? fmtCnpj(c.cnpj) : '', endereco_escola: c.endereco || '', responsavel: r.nome || '', cpf: r.cpf ? fmtCpf(r.cpf) : '',
+    endereco_responsavel: r.endereco || '', telefone: r.telefone ? foneBR(r.telefone) : '', email: r.email || '', aluno: a.nome || '', nascimento: nasc, turmas: ts.map(t => t.nome).join(', '),
+    horarios: ts.map(t => t.horario).filter(Boolean).join('; '), mensalidade: m ? brl(m.v) : '', vencimento: String(Number(cfg.vencDia) || 10),
+    multa: at.ativo ? `${String(Math.min(Number(at.multa) || 0, 2)).replace('.', ',')}%` : '0%', juros: at.ativo ? `${String(Math.min(Number(at.juros) || 0, 1)).replace('.', ',')}%` : '0%',
+    cidade: [cfg.cidade, cfg.uf].filter(Boolean).join('/'), data: `${d.getDate()} de ${C.MESES[d.getMonth()]} de ${d.getFullYear()}` };
+  return String(texto || '').replace(/\{([a-z_]+)\}/g, (x, k) => k in v ? (v[k] || '______') : x);
+}
+const textoContratoHTML = t => `<div class="ct-texto">${esc(t).replace(/\n/g, '<br>')}</div>`;
+
+// administração: o modelo, os dados da escola e quem já assinou
+let CT_RASC = null; // rascunho do modelo enquanto a escola olha "Ver como fica"
+function sheetContratoModelo(volta) {
+  const r0 = CT_RASC; CT_RASC = null;
+  const c = { ...ctCfg(), ...(r0 || {}) }, ver = c.versao || 1, al = porNome(S.alunas).filter(([, a]) => a.ativa !== false && !a.anonimizadoEm);
+  const ass = al.filter(([id]) => (S.contratos || {})[ctId(id, ver)]), falta = al.filter(([id]) => !(S.contratos || {})[ctId(id, ver)]);
+  sheet(`<h3>Contrato</h3>
+    <div class="sub">Um contrato por aluno. Escreva o modelo uma vez: o app troca os campos entre chaves pelos dados de cada aluno, e a família assina no app. Sem assinar, ela continua usando o app normalmente.</div>
+    <section><h2>Dados da escola no contrato</h2>
+      <div class="field"><label for="ctraz">Razão social</label><input id="ctraz" maxlength="120" value="${esc(c.razao || '')}" placeholder="${esc(S.escola.nome || 'Como está no CNPJ')}"></div>
+      <div class="two"><div class="field"><label for="ctcnpj">CNPJ</label><input id="ctcnpj" inputmode="numeric" maxlength="18" value="${esc(fmtCnpj(c.cnpj || ''))}" placeholder="00.000.000/0000-00"></div><div></div></div>
+      <div class="field"><label for="ctend">Endereço da escola</label><input id="ctend" maxlength="160" value="${esc(c.endereco || '')}" placeholder="Rua, número, bairro, cidade/UF"></div></section>
+    <section><h2>Modelo</h2>
+      <div class="note">Toque num campo para colocar no texto, onde está o cursor. Um advogado deve revisar o modelo uma vez.</div>
+      <div class="chips ct-campos">${CAMPOS_CONTRATO.map(([k, n]) => `<button type="button" class="pick" data-ctc="${k}">${esc(n)}</button>`).join('')}</div>
+      <textarea id="cttxt" rows="14" class="ct-edit">${esc(c.texto || MODELO_CONTRATO)}</textarea>
+      <div class="actions"><button type="button" class="btn ghost" id="ctver" ${al.length ? '' : 'disabled'}>Ver como fica</button><button type="button" class="btn ghost" id="ctpadrao">Voltar ao modelo pronto</button></div></section>
+    <label class="liga"><span class="grow"><b>Pedir a assinatura das famílias</b><span class="s">Ligado: aparece "Assinar o contrato" para cada família que ainda não assinou.</span></span><input type="checkbox" role="switch" id="ctativo" ${c.ativo ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+    ${c.texto ? `<section><h2>Assinaturas <span class="sub num">${ass.length} de ${al.length}</span></h2>
+      ${falta.length ? `<div class="note">Faltam: ${esc(falta.map(([, a]) => primeiro(a.nome)).join(', '))}.</div>` : '<div class="note">Todos assinaram.</div>'}
+      <button type="button" class="btn ghost" id="ctnova" style="width:100%">Pedir nova assinatura de todos</button>
+      <div class="note">Use quando mudar o contrato ou no começo do ano. Os contratos já assinados continuam guardados no perfil de cada aluno.</div></section>` : ''}
+    <div class="err" id="cterr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="ctok">Salvar</button></div>`, s => {
+    let cur = null; $('cttxt').addEventListener('blur', () => { cur = [$('cttxt').selectionStart, $('cttxt').selectionEnd]; });
+    s.querySelectorAll('[data-ctc]').forEach(b => b.onclick = () => { const t = $('cttxt'), [i, j] = cur || [t.value.length, t.value.length], ins = `{${b.dataset.ctc}}`;
+      t.value = t.value.slice(0, i) + ins + t.value.slice(j); t.focus(); t.selectionStart = t.selectionEnd = i + ins.length; cur = [i + ins.length, i + ins.length]; });
+    $('ctcnpj').oninput = () => { const v = fmtCnpj($('ctcnpj').value); if (v !== $('ctcnpj').value) $('ctcnpj').value = v; };
+    $('ctpadrao').onclick = () => confirmar('Voltar ao modelo pronto?', 'O texto que você escreveu é trocado pelo modelo do app.', 'Voltar', () => { $('cttxt').value = MODELO_CONTRATO; });
+    const dados = () => ({ razao: $('ctraz').value.trim(), cnpj: C.soDigitos($('ctcnpj').value), endereco: $('ctend').value.trim(), texto: $('cttxt').value.trim(), ativo: $('ctativo').checked });
+    $('ctver').onclick = () => { const d = dados(), salvo = S.contratoCfg; CT_RASC = d; S.contratoCfg = { ...c, ...d }; const t = preencherContrato(d.texto, al[0][0]); S.contratoCfg = salvo;
+      abrirDe(() => sheetContratoModelo(volta), () => sheet(`<h3>Como fica</h3><div class="sub">Com os dados de ${esc(al[0][1].nome)}. Os campos sem dado aparecem como ______.</div>${textoContratoHTML(t)}<button class="btn ghost" id="ctvolta" style="width:100%">Voltar ao modelo</button>`, () => { $('ctvolta').onclick = () => sheetContratoModelo(volta); })); };
+    const salvar = async extra => { const d = dados(); if (d.ativo && d.texto.length < 50) return $('cterr').textContent = 'Escreva o contrato antes de pedir a assinatura.';
+      if (d.cnpj && d.cnpj.length !== 14) return $('cterr').textContent = 'O CNPJ tem 14 números.';
+      await B.set(`escolas/${S.eid}/config/contrato`, { ...d, versao: ver, ...extra, atualizadoEm: Date.now(), atualizadoPor: EU.nome || EU.email || '' }, { merge: true }); };
+    $('ctok').onclick = async () => { $('ctok').disabled = true; try { if (await salvar({}) === undefined) { aviso('Contrato salvo'); volta ? volta() : fecharSheet(); } else $('ctok').disabled = false; } catch (e) { $('cterr').textContent = msgErro(e); $('ctok').disabled = false; } };
+    if ($('ctnova')) $('ctnova').onclick = () => confirmar('Pedir nova assinatura?', 'Todas as famílias vão ver "Assinar o contrato" de novo. Os contratos já assinados continuam guardados.', 'Pedir de novo', async () => {
+      try { await salvar({ versao: ver + 1, ativo: true }); aviso('Pronto: as famílias vão assinar a nova versão'); setTimeout(() => sheetContratoModelo(volta), 80); } catch (e) { aviso(msgErro(e)); } });
+  });
+}
+
+// família: ler e assinar
+function sheetAssinarContrato(alid) {
+  const a = S.alunas[alid], r = respDe(alid) || {}, c = ctCfg(), t = preencherContrato(c.texto, alid);
+  sheet(`<h3>Contrato de ${esc(primeiro(a.nome))}</h3>
+    <div class="sub">Leia com calma. Se algum dado estiver errado, fale com a escola antes de assinar.</div>
+    ${textoContratoHTML(t)}
+    <div class="field"><label for="casnome">Seu nome completo</label><input id="casnome" maxlength="80" value="${esc(r.nome || '')}" autocomplete="name"></div>
+    <label class="check aceite"><input type="checkbox" id="casok"><span>Li o contrato e aceito, como responsável por ${esc(a.nome)}.</span></label>
+    <div class="note">Fica registrado o seu nome, CPF ${r.cpf ? esc(fmtCpf(r.cpf)) : ''}, a sua conta do app, a data e a hora. Esta assinatura vale como assinatura eletrônica.</div>
+    <div class="err" id="caserr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Depois</button><button class="btn" id="casbtn">Assinar contrato</button></div>`, () => {
+    $('casbtn').onclick = () => {
+      const nome = $('casnome').value.trim(), err = m => $('caserr').textContent = m;
+      if (nome.split(/\s+/).length < 2) return err('Digite o seu nome completo.');
+      if (!$('casok').checked) return err('Marque que leu e aceita o contrato.');
+      duploToque($('casbtn'), async () => {
+        $('casbtn').disabled = true;
+        try { await B.set(`escolas/${S.eid}/contratos/${ctId(alid)}`, { alid, rid: a.responsavelId || null, versao: c.versao || 1, texto: t, nome, cpf: C.soDigitos(r.cpf), uid: EU.uid, email: EU.email || '', em: Date.now() });
+          aviso('Contrato assinado'); fecharSheet(); }
+        catch (e) { err(msgErro(e)); $('casbtn').disabled = false; }
+      }, 'Toque de novo para assinar');
+    };
+  });
+}
+// ver o contrato assinado (escola e família) e baixar o PDF
+function sheetVerContrato(alid, cid) {
+  const k = cid || Object.keys(S.contratos || {}).filter(x => (S.contratos[x] || {}).alid === alid).sort((x, y) => (S.contratos[y].em || 0) - (S.contratos[x].em || 0))[0], ct = (S.contratos || {})[k];
+  if (!ct) return;
+  const quando = new Date(ct.em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  sheet(`<h3>Contrato assinado</h3>
+    <div class="banner ok"><span>Assinado por <b>${esc(ct.nome)}</b>${ct.cpf ? `, CPF ${esc(fmtCpf(ct.cpf))}` : ''}, em ${esc(quando)}${ct.versao > 1 ? ` (versão ${ct.versao})` : ''}.</span></div>
+    ${textoContratoHTML(ct.texto)}
+    <div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="ctpdf">Baixar PDF</button></div>`, () => {
+    $('ctpdf').onclick = async () => { $('ctpdf').disabled = true; try { baixarPdf(await pdfContrato(ct)); } catch (e) { aviso(msgErro(e)); } $('ctpdf').disabled = false; };
+  });
+}
+async function pdfContrato(ct) {
+  const L = await carregarPdfLib(), doc = await L.PDFDocument.create(), f = await doc.embedFont(L.StandardFonts.Helvetica), fb = await doc.embedFont(L.StandardFonts.HelveticaBold);
+  const sem = t => String(t || '').replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[–—]/g, '-').replace(/[^\x0A\x20-\x7E\xA0-\xFF]/g, '');
+  let pg = doc.addPage([595, 842]), y = 790; const W = 495, tam = 10.5, lh = 15;
+  const linha = (t, fonte = f, s = tam) => { if (y < 60) { pg = doc.addPage([595, 842]); y = 790; } pg.drawText(t, { x: 50, y, size: s, font: fonte, color: L.rgb(0.1, 0.1, 0.1) }); y -= lh; };
+  for (const par of sem(ct.texto).split('\n')) {
+    if (!par.trim()) { y -= 6; continue; }
+    let atual = ''; for (const w of par.split(' ')) { const tent = atual ? atual + ' ' + w : w; if (f.widthOfTextAtSize(tent, tam) > W) { linha(atual); atual = w; } else atual = tent; } if (atual) linha(atual);
+  }
+  y -= 14; const quando = new Date(ct.em).toLocaleString('pt-BR');
+  linha('Assinatura eletronica', fb);
+  linha(sem(`${ct.nome}${ct.cpf ? ' - CPF ' + fmtCpf(ct.cpf) : ''}`)); linha(sem(`Aceito no app Turma em Dia em ${quando}, pela conta ${ct.email || ct.uid}.`)); linha(sem(`Versao do contrato: ${ct.versao || 1}`));
+  return { pdf: btoa(Array.from(await doc.save(), b => String.fromCharCode(b)).join('')), nome: sem(`contrato_${(S.alunas[ct.alid] || {}).nome || ''}.pdf`).replace(/\s+/g, '_') };
+}
+// aviso para a família: contratos a assinar
+function avisoContratos() {
+  if (!ctPede()) return '';
+  return porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && !ctAssinado(id)).map(([id, a]) => `<button class="faixa-resumo" data-ctass="${esc(id)}"><span class="grow"><b>Assinar o contrato de ${esc(primeiro(a.nome))}</b><span class="s">Leia e aceite pelo app, leva um minuto</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
+}
 function avisoTermos() {
   const pend = porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && termoDe(id).st !== 'ok');
   const atest = porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && termoDe(id).st === 'ok' && ['falta', 'recusado'].includes(termoDe(id).as));
@@ -4707,7 +4870,8 @@ function sheetAjustes() {
       <div class="note">Ligado: o responsável paga um pouco a mais e a escola recebe o valor cheio. Desligado: a taxa sai do valor recebido.</div>
       ${simTaxaHTML('jsim', 100)}
     </section>
-    <section><h2>Nota fiscal</h2>
+    <section><h2>Contrato e nota fiscal</h2>
+      <button type="button" class="linha-botao" id="jct" style="margin-bottom:10px"><span class="grow"><b>Contrato com as famílias</b><span class="s">${(S.contratoCfg || {}).ativo ? `Pedindo assinatura · ${Object.values(S.contratos || {}).filter(x => x.versao === ((S.contratoCfg || {}).versao || 1)).length} assinado(s)` : 'Modelo pronto para editar; a família assina no app'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>
       <button type="button" class="linha-botao" id="jnf"><span class="grow"><b>Nota fiscal para as famílias</b><span class="s">${(c.nfFam || {}).ligado ? 'Ligada: sai sozinha quando a família paga' : 'Desligada. Toque para configurar, com o passo a passo'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>
     </section>
     <section><h2>Mensalidade</h2>
@@ -4750,6 +4914,7 @@ function sheetAjustes() {
     if ($('juf')) ligarEstadoCidade('juf', 'jcid', S.cfg.cidade || '');
     if ($('jnotas')) $('jnotas').onclick = () => abrirDe(sheetAjustes, sheetNotasEscola);
     if ($('jnf')) $('jnf').onclick = () => abrirDe(sheetAjustes, () => sheetNotaFiscal());
+    if ($('jct')) $('jct').onclick = () => abrirDe(sheetAjustes, () => sheetContratoModelo());
     $('jdocs').onclick = () => abrirDe(sheetAjustes, () => sheetTiposDoc(sheetAjustes));
     ligarNotasPlataforma(sheetAjustes);
     $('japar').onclick = () => abrirDe(sheetAjustes, sheetAparencia);
