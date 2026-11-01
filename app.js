@@ -2143,8 +2143,8 @@ function sheetPerfilAluno(alid, volta) {
       <div class="pcard-id">
         <div class="pcard-nome">${esc(a.nome)}</div>
         ${idade(a.nascimento) ? `<div class="pcard-meta num">${esc(idade(a.nascimento))}</div>` : ''}
-        ${ts.length ? `<div class="pcard-turmas">${ts.map(t => esc(t.nome)).join(' · ')}</div>` : ''}
-        ${gs.length ? `<div class="pcard-tags">${gs.map(g => `<span>${esc(g)}</span>`).join('')}</div>` : ''}
+        ${ts.length ? `<div class="pcard-turmas">${ts.map(t => `<span>${esc(t.nome)}</span>`).join(' · ')}</div>` : ''}
+        ${gs.length ? `<div class="pcard-grupos">${gs.map(g => `<span>${esc(g)}</span>`).join(' · ')}</div>` : ''}
         ${adm && r.nome ? `<div class="pcard-resp"><span>${esc(r.nome)}</span>${wa ? `<a class="pcard-wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome)}">${ICO_WA}</a>` : ''}</div>` : ''}
       </div>
     </div>
