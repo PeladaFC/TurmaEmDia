@@ -1315,6 +1315,8 @@ function sheetAcordo(alid) {
     <div class="field" id="aqdvw" hidden><label for="aqdv" id="aqdl">Valor</label><input id="aqdv" inputmode="decimal"></div></div>
     <div class="two"><div class="field"><label for="aqn">Parcelas</label><select id="aqn">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => `<option value="${n}" ${n === 3 ? 'selected' : ''}>${n === 1 ? 'À vista' : n + 'x'}</option>`).join('')}</select></div>
     <div class="field"><label for="aqv">1º vencimento</label><input id="aqv" type="date" value="${prim}" min="${hoje()}"></div></div>
+    <div class="field"><label for="aqrec">As parcelas caem na conta de</label><select id="aqrec"><option value="" id="aqrec0">Conta original</option>${opcoesRec('__nenhum')}</select>
+      <div class="note" id="aqrecnota"></div></div>
     <div class="items" id="aqprev"></div>
     <div class="field"><label for="aqobs">Observação (opcional)</label><input id="aqobs" maxlength="120" placeholder="Ex.: combinado por telefone com o responsável"></div>
     <div class="err" id="aqerr" role="alert"></div>
@@ -1328,13 +1330,22 @@ function sheetAcordo(alid) {
       for (let k = 1; k <= n; k++) { const dt = new Date($('aqv').value + 'T12:00'); dt.setMonth(dt.getMonth() + k - 1); parcelas.push({ n: k, v: k === n ? C.r2(total - base * (n - 1)) : base, venc: `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}` }); }
       // quem recebe as parcelas: na mesma proporção das cobranças que entraram
       const porRec = {}; its.forEach(i => Object.entries(i.partes || { escola: i.v }).forEach(([rc, x]) => porRec[rc] = (porRec[rc] || 0) + x));
-      const fracoes = Object.fromEntries(Object.entries(porRec).map(([rc, x]) => [rc, bruto ? x / bruto : 1]));
+      const original = Object.fromEntries(Object.entries(porRec).map(([rc, x]) => [rc, bruto ? x / bruto : 1]));
+      // conta original (de quem recebia as cobranças) ou outra conta escolhida pela escola
+      const nomeRc = rc => rc === 'escola' ? `${S.escola.nome || 'Escola'} (escola)` : ((S.profs[rc] || {}).nome || 'Professor(a)');
+      const nomeC = rc => rc === 'escola' ? (S.escola.nome || 'Escola') : ((S.profs[rc] || {}).nome || 'Professor(a)');
+      const ks = Object.keys(original), txtOrig = ks.length > 1 ? ks.map(rc => `${nomeC(rc)} ${Math.round(original[rc] * 100)}%`).join(' · ') : nomeC(ks[0] || 'escola');
+      $('aqrec0').textContent = `Original: ${txtOrig}`;
+      // a conta original não se repete na lista das outras
+      $('aqrec').querySelectorAll('option[value]:not([value=""])').forEach(o => { const rep = ks.length === 1 && o.value === ks[0]; o.hidden = o.disabled = rep; if (rep && $('aqrec').value === o.value) $('aqrec').value = ''; });
+      const outra = $('aqrec').value, fracoes = outra ? { [outra]: 1 } : original;
+      $('aqrecnota').textContent = outra ? `Todas as parcelas vão para a conta de ${nomeRc(outra)}${recConectado(outra) ? '' : ', que ainda não ligou o Pix'}.` : ks.length > 1 ? 'Cada parcela é dividida entre essas contas, como as cobranças originais.' : 'A mesma conta que recebia essas cobranças.';
       plano = { its, bruto, desc, total, parcelas, fracoes };
       $('aqtot').textContent = brl(bruto);
       $('aqprev').innerHTML = its.length ? `${desc > 0 ? `<div class="item"><span>Desconto</span><b class="num" style="color:var(--in)">− ${brl(desc)}</b></div>` : ''}<div class="item"><span><b>Total do acordo</b></span><b class="num">${brl(total)}</b></div>${parcelas.map(q => `<div class="item sub"><span>${n === 1 ? 'À vista' : `Parcela ${q.n} de ${n}`} · vence ${dataBR(q.venc)}</span><span class="num">${brl(q.v)}</span></div>`).join('')}<div class="item sub"><span>Recebe: ${esc(Object.keys(fracoes).map(nomeRec).join(', '))}</span></div>` : '';
     };
     s.querySelectorAll('[data-ai]').forEach(c => c.onchange = () => { c.checked ? sel.add(c.dataset.ai) : sel.delete(c.dataset.ai); calc(); });
-    ['aqdt', 'aqdv', 'aqn', 'aqv'].forEach(id => $(id).addEventListener('input', calc)); calc();
+    ['aqdt', 'aqdv', 'aqn', 'aqv', 'aqrec'].forEach(id => $(id).addEventListener('input', calc)); $('aqrec').addEventListener('change', calc); calc();
     $('aqok').onclick = async () => {
       const err = m => $('aqerr').textContent = m;
       if (!plano.its.length) return err('Marque ao menos uma cobrança atrasada.');
