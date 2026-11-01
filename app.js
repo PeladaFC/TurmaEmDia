@@ -1988,6 +1988,9 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
   sheet(`<h3>${ed ? esc(a.nome) : 'Novo(a) aluno(a)'}</h3>
     ${ed && adm ? cartaoTermo(alid) : ''}
     ${mudA.map(m => cartaoFaixa(m, false)).join('')}
+    <div class="foto-campo"><label class="foto-av" id="afotobox" aria-label="Foto da criança">${FOTOS[alid] ? `<img src="${FOTOS[alid]}" alt="">` : `<span>${a ? esc(iniciais(a.nome)) : ICO_CAM}</span>`}<input type="file" id="afoto" accept="image/*" hidden></label>
+      <div class="grow"><b>Foto da criança</b><span class="sub">Tire uma foto ou escolha da galeria. A família também pode colocar pelo app.</span>
+        <label class="pacao foto-bt" for="afoto" id="afotobt">${FOTOS[alid] ? 'Trocar foto' : 'Adicionar foto'}</label></div></div>
     <div class="field"><label for="anome">Nome do(a) aluno(a)</label><input id="anome" maxlength="60" value="${esc(a ? a.nome : '')}"></div>
     <div class="two"><div class="field"><label for="anasc">Data de nascimento</label><input id="anasc" type="date" max="${hoje()}" value="${esc(a ? a.nascimento || '' : '')}"></div>
     <div class="field"><span class="lb">Idade</span><div id="aidade" class="num campo-fixo">${esc(idade(a && a.nascimento) || '—')}</div></div></div>
@@ -2021,6 +2024,11 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="aok">Salvar</button></div>
     ${ed && adm ? `<div class="actions"><button class="btn ghost" id="acob">Ver cobranças</button><button class="btn ghost" id="adel" style="color:var(--out)">Excluir aluno(a)</button></div>${a && !a.anonimizadoEm ? '<button class="btn ghost" id="aanon" style="color:var(--out)">Apagar dados pessoais (LGPD)</button>' : ''}` : ''}`, s => {
     ligarFaixa(s, () => sheetAluna(alid));
+    // foto: guardada junto com o cadastro (no aluno novo, só depois de salvar)
+    let novaFoto = null;
+    const verFoto = f => { if (!$('afotobox')) return; $('afotobox').firstElementChild.outerHTML = f ? `<img src="${f}" alt="">` : `<span>${a ? esc(iniciais(a.nome)) : ICO_CAM}</span>`; $('afotobt').textContent = f ? 'Trocar foto' : 'Adicionar foto'; };
+    if (alid && FOTOS[alid] === undefined) fotoAluno(alid).then(f => { if (f && !novaFoto) verFoto(f); });
+    $('afoto').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq) return; try { novaFoto = await fotoQuadrada(arq); verFoto(novaFoto); } catch (er) { $('aerr').textContent = er.message; } };
     if (adm) { $('aaj').value = modo0; $('aajn').value = modo0 === 'pct' ? String(Math.round(Number(d0.pct) * 100)) : modo0 === 'valor' ? fmtValor(d0.v) : modo0 === 'menos' ? fmtValor(d0.menos) : ''; }
     const marcaFaixa = () => { const id = C.idadeNoAno($('anasc').value, anoRef()); s.querySelectorAll('[data-fx]').forEach(el => { const t = S.turmas[el.dataset.fx]; el.textContent = id != null && !C.cabe(t, id) ? `Fora da faixa: faz ${id} anos em ${anoRef()}` : ''; }); };
     s.querySelectorAll('[data-gr]').forEach(b => b.onclick = () => { const g = b.dataset.gr; meusG.has(g) ? meusG.delete(g) : meusG.add(g); b.setAttribute('aria-pressed', meusG.has(g)); });
@@ -2089,7 +2097,8 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
         if (S.docs[id] && S.docs[id].responsavelId !== r) ops.push({ op: 'merge', p: `escolas/${S.eid}/docsAlunos/${id}`, d: { responsavelId: r } });
         for (const [g, G] of Object.entries(S.grupos)) { const tem = (G.alunas || []).includes(id); if (tem !== meusG.has(g)) ops.push({ op: 'merge', p: `escolas/${S.eid}/grupos/${g}`, d: { alunas: meusG.has(g) ? [...(G.alunas || []), id] : (G.alunas || []).filter(x => x !== id) } }); }
-        await B.lote(ops); fecharSheet(); aviso(ed ? 'Aluno(a) atualizado(a)' : 'Aluno(a) cadastrado(a)');
+        if (novaFoto) ops.push({ op: 'set', p: `escolas/${S.eid}/fotosAlunos/${id}`, d: { foto: novaFoto, responsavelId: r, em: Date.now(), por: 'escola' } });
+        await B.lote(ops); if (novaFoto) FOTOS[id] = novaFoto; fecharSheet(); aviso(ed ? 'Aluno(a) atualizado(a)' : 'Aluno(a) cadastrado(a)');
       } catch (e) { err(msgErro(e)); $('aok').disabled = false; }
     };
     if ($('aanon')) $('aanon').onclick = () => confirmarApagar([alid], null);
@@ -2209,7 +2218,7 @@ function sheetNota(alid, n, volta) {
 }
 
 // foto do aluno: pequena (até 360 px, ~20 KB), em escolas/{eid}/fotosAlunos/{alid}; a administração tira ou troca
-const FOTOS = {};
+const FOTOS = {}, ICO_CAM = '<svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 async function fotoAluno(alid) {
   if (FOTOS[alid] !== undefined) return FOTOS[alid];
   if (S.prof) return (FOTOS[alid] = ((S.pp || {}).fotos || {})[alid] || null);
@@ -2893,7 +2902,7 @@ function tFilhas(v) {
     ${evs.length ? `<button class="faixa-resumo neutra" id="fcal"><span class="grow"><b>Calendário de eventos</b><span class="s">${nComp ? `${nComp} com seus filhos` : 'Ver os eventos da escola'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : ''}
     ${al.length ? al.map(([id, a]) => { const ts = (a.turmas || []).map(t => S.turmas[t]).filter(Boolean), m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), gs = Object.values(S.grupos).filter(g => (g.alunas || []).includes(id)).map(g => g.nome);
       return `<div class="filha">
-        <div class="filha-topo"><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t" style="font-size:1.05rem">${esc(a.nome)}</div>${C.ativaNoMes(a, mes) ? '' : '<span class="chip">Inativo(a)</span>'}</div></div>
+        <div class="filha-topo"><label class="filha-foto" aria-label="${FOTOS[id] ? 'Trocar a foto' : 'Adicionar uma foto'} de ${esc(primeiro(a.nome))}">${FOTOS[id] ? `<img src="${FOTOS[id]}" alt="">` : `<span>${esc(iniciais(a.nome))}</span>`}<span class="filha-cam" aria-hidden="true">${ICO_CAM}</span><input type="file" accept="image/*" data-ffoto="${esc(id)}" hidden></label><div class="grow"><div class="t" style="font-size:1.05rem">${esc(a.nome)}</div>${C.ativaNoMes(a, mes) ? '' : '<span class="chip">Inativo(a)</span>'}</div></div>
         <dl class="dl">
           ${linha('Nascimento', a.nascimento ? `${esc(dataBR(a.nascimento))}/${esc(a.nascimento.slice(0, 4))} <span class="sub">(${esc(idade(a.nascimento))})</span>` : '')}
           ${linha('Termo', (() => { const x = termoDe(id); const ult = ((x.t || {}).alteracoes || []).filter(m => (m.mudou || []).length).pop();
@@ -2914,6 +2923,11 @@ function tFilhas(v) {
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-vtermo]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vtermo));
   v.querySelectorAll('[data-fdoc]').forEach(b => b.onclick = () => sheetDocAluno(b.dataset.fdoc, b.dataset.fdt));
+  // fotos dos filhos: busca uma vez; a família adiciona ou troca
+  al.forEach(([id]) => { if (FOTOS[id] === undefined) fotoAluno(id).then(f => { if (f) agendar(); }); });
+  v.querySelectorAll('[data-ffoto]').forEach(inp => inp.onchange = async e => { const id = inp.dataset.ffoto, arq = e.target.files[0]; e.target.value = ''; if (!arq) return;
+    try { const f = await fotoQuadrada(arq); await B.set(`escolas/${S.eid}/fotosAlunos/${id}`, { foto: f, responsavelId: (S.alunas[id] || {}).responsavelId || null, em: Date.now(), por: 'familia' }); FOTOS[id] = f; render(); aviso('Foto salva'); }
+    catch (er) { aviso(msgErro(er)); } });
   if ($('fcal')) $('fcal').onclick = () => sheetCalendario();
   ligarFotos(v);
   v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;

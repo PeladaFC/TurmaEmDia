@@ -726,6 +726,21 @@ nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:up
 .scan-modos{display:flex;gap:4px;background:rgba(255,255,255,.12);padding:3px;border-radius:999px}
 .scan-modos button{height:32px;padding:0 14px;border:0;border-radius:999px;background:none;color:#fff;font-weight:700;font-size:.85rem}
 .scan-modos button[aria-pressed="true"]{background:#fff;color:#111}
+
+/* foto da criança: no cadastro e no cartão da família */
+.foto-campo{display:flex;align-items:center;gap:14px}
+.foto-av{flex:none;width:76px;height:76px;border-radius:50%;overflow:hidden;cursor:pointer;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;border:2px solid var(--line)}
+.foto-av img{width:100%;height:100%;object-fit:cover}
+.foto-av span{font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.4rem;display:grid;place-items:center}
+.foto-av svg,.filha-cam svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}
+.foto-campo .grow{display:flex;flex-direction:column;gap:4px;min-width:0}
+.foto-campo .sub{font-size:.82rem}
+.foto-bt{display:inline-flex;align-items:center;justify-content:center;align-self:flex-start;cursor:pointer;margin-top:4px}
+.filha-foto{position:relative;flex:none;width:56px;height:56px;border-radius:50%;cursor:pointer;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}
+.filha-foto img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+.filha-foto>span:first-child{font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.1rem}
+.filha-cam{position:absolute;right:-3px;bottom:-3px;width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--surface);display:grid;place-items:center;border:2px solid var(--surface)}
+.filha-cam svg{width:12px;height:12px}
 </style>
 </head>
 <body>

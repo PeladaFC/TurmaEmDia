@@ -189,10 +189,14 @@ service cloud.firestore {
         allow create, update: if false;
         allow delete: if admin(eid);
       }
-      // Foto do aluno (pequena): a administração e a família do aluno. O professor recebe pelo servidor.
+      // Foto do aluno (pequena): a administração e a família do aluno veem e colocam. O professor recebe pelo servidor.
       match /fotosAlunos/{alid} {
         allow read: if admin(eid) || minhaAluna(eid, alid);
         allow write: if admin(eid);
+        // a família põe ou troca a foto do próprio filho (só a foto, pequena)
+        allow create, update: if minhaAluna(eid, alid) && request.resource.data.responsavelId == ridDaAluna(eid, alid)
+          && request.resource.data.keys().hasOnly(['foto', 'responsavelId', 'em', 'por'])
+          && request.resource.data.foto is string && request.resource.data.foto.size() < 300000;
       }
       match /docsAlunos/{alid} {
         allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
