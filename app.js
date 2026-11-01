@@ -2160,8 +2160,8 @@ function sheetPerfilAluno(alid, volta) {
       </div>
     </div>
     ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
-    ${adm ? `<section class="psec"><h2>Documentos</h2><div class="plista">${tiposDoc().map(T => { const d = docDe(alid, T.id);
-      return `<button type="button" class="plinha" data-adoc="${esc(T.id)}"><span class="grow">${esc(T.nome)}</span>${chipDoc(d)}<span class="seta" aria-hidden="true">›</span></button>`; }).join('') || '<div class="plinha sub">Nenhum tipo de documento. Escolha em Ajustes.</div>'}</div></section>` : ''}
+    ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${docsDoAluno(alid).map(t => { const d = docDe(alid, t);
+      return `<button type="button" class="plinha" data-adoc="${esc(t)}"><span class="grow">${esc(tipoDoc(t).nome)}</span>${chipDoc(d)}<span class="seta" aria-hidden="true">›</span></button>`; }).join('') || '<div class="plinha sub">Nenhum documento. Toque em "+ Documento".</div>'}</div></section>` : ''}
     <section class="psec"><div class="psec-cab"><h2>Notas da equipe</h2><button type="button" class="pacao pacao-forte" id="pnova">+ Nota</button></div>
       <div class="pfiltros" id="pfilt"></div>
       <div id="pnotas"></div></section>
@@ -2179,6 +2179,7 @@ function sheetPerfilAluno(alid, volta) {
     if ($('pedit')) $('pedit').onclick = () => abrirDe(eu, () => sheetAluna(alid));
     if ($('pcob')) $('pcob').onclick = () => abrirDe(eu, () => sheetCobrancaAluna(alid));
     sh.querySelectorAll('[data-adoc]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetDocAluno(alid, b.dataset.adoc, eu)));
+    if ($('pnovodoc')) $('pnovodoc').onclick = () => abrirDe(eu, () => sheetDocAluno(alid, null, eu));
   }, () => { if (parar) parar(); });
 }
 
@@ -2900,7 +2901,7 @@ function tFilhas(v) {
           ${(() => { const x = termoDe(id); if (x.st !== 'ok' || !x.as) return ''; const at = x.t.atestado || {};
             const rot = { ok: '<span class="chip pago">Conferido</span>', conferir: '<span class="chip">Aguardando a escola</span>', recusado: '<span class="chip vencido">Mandar outro</span>', falta: '<span class="chip vencido">Falta enviar</span>' }[x.as];
             return linha('Atestado', `<span class="dd-col">${rot}<button type="button" class="link" data-atest="${esc(id)}">${at.enviadoEm && x.as !== 'recusado' ? 'Ver atestado' : 'Enviar atestado'}</button></span>`); })()}
-          ${tiposDoc().filter(T => T.familia !== false || docDe(id, T.id)).map(T => { const d = docDe(id, T.id), st = situacaoDoc(d).st;
+          ${[...tiposDoc(), ...avulsosDe(id).map(tipoDoc)].filter(T => T.familia !== false || docDe(id, T.id)).map(T => { const d = docDe(id, T.id), st = situacaoDoc(d).st;
             return linha(T.nome, `<span class="dd-col">${chipDoc(d)}<button type="button" class="link" data-fdoc="${esc(id)}" data-fdt="${esc(T.id)}">${!d ? 'Enviar' : st === 'ok' ? 'Ver ou trocar' : 'Enviar o novo'}</button></span>`); }).join('')}
           ${linha('Grupos', gs.length ? gs.map(g => `<span class="chip">${esc(g)}</span>`).join(' ') : '')}
         </dl>
@@ -3466,7 +3467,12 @@ const SUGESTOES_DOC = ['Certidão de nascimento', 'Atestado médico', 'Declaraç
 const VALIDADES_DOC = [[0, 'Sem validade'], [6, '6 meses'], [12, '1 ano'], [24, '2 anos']];
 const DOC_AVISO_DIAS = 30, DOC_MAX_1 = 380 * 1024, DOC_MAX_2 = 320 * 1024;
 const tiposDoc = () => Array.isArray(S.cfg.tiposDoc) ? S.cfg.tiposDoc : TIPOS_DOC_PADRAO;
-const tipoDoc = tid => tid === '_atest' ? { id: '_atest', nome: 'Atestado médico (do termo)', meses: 12 } : tiposDoc().find(t => t.id === tid) || { id: tid, nome: 'Documento', meses: 0 };
+const tipoDoc = tid => tid === '_atest' ? { id: '_atest', nome: 'Atestado médico (do termo)', meses: 12 } : tid === '_outros' ? { id: '_outros', nome: 'Outros documentos', meses: 0 } : tiposDoc().find(t => t.id === tid) || avulsoMeta(tid) || { id: tid, nome: 'Documento', meses: 0 };
+// documento avulso: guardado só para um aluno, com o nome que a escola quiser (fora dos tipos da escola)
+const ehAvulso = tid => !!tid && tid[0] === 'x' && !tiposDoc().some(t => t.id === tid);
+function avulsoMeta(tid) { for (const x of Object.values((S && S.docs) || {})) { const m = x && x.docs && x.docs[tid]; if (m && m.nome) return { id: tid, nome: m.nome, meses: 0, avulso: true, familia: false }; } return null; }
+const avulsosDe = alid => Object.entries((((S.docs || {})[alid] || {}).docs) || {}).filter(([k, m]) => m && ehAvulso(k)).sort((x, y) => String(x[1].nome).localeCompare(String(y[1].nome), 'pt-BR')).map(([k]) => k);
+const docsDoAluno = alid => [...tiposDoc().map(t => t.id), ...avulsosDe(alid)];
 const docDe = (alid, tid) => ((((S.docs || {})[alid] || {}).docs) || {})[tid] || null;
 const dataBRA = iso => iso ? `${dataBR(iso)}/${iso.slice(0, 4)}` : '';
 const mesesTxt = n => n === 12 ? '1 ano' : n === 24 ? '2 anos' : n % 12 === 0 ? `${n / 12} anos` : `${n} meses`;
@@ -3488,7 +3494,7 @@ function chipDoc(d) {
 // o pior caso entre os documentos de um aluno (para a etiqueta na lista)
 function piorDoc(alid) {
   let pior = null;
-  for (const T of tiposDoc()) { const s = situacaoDoc(docDe(alid, T.id)).st; if (s === 'vencido') return 'vencido'; if (s === 'vence') pior = 'vence'; }
+  for (const t of docsDoAluno(alid)) { const s = situacaoDoc(docDe(alid, t)).st; if (s === 'vencido') return 'vencido'; if (s === 'vence') pior = 'vence'; }
   return pior;
 }
 // atestado médico do termo (para juntar junto, se a escola quiser)
@@ -3499,6 +3505,8 @@ function atestadoMeta(alid) {
 // apagar os documentos de um aluno (exclusão ou LGPD)
 const opsApagarDocs = alid => [{ op: 'del', p: `escolas/${S.eid}/fotosAlunos/${alid}` }, ...opsApagarDocs0(alid)];
 const opsApagarDocs0 = alid => S.docs[alid] ? [...Object.keys(S.docs[alid].docs || {}).map(t => ({ op: 'del', p: `escolas/${S.eid}/documentos/${alid}__${t}` })), { op: 'del', p: `escolas/${S.eid}/docsAlunos/${alid}` }] : [];
+// "Outros documentos" vira os documentos avulsos de cada aluno
+const expandeTipos = (alid, tids) => tids.flatMap(t => t === '_outros' ? avulsosDe(alid) : [t]);
 const metaJunta = (alid, tid) => tid === '_atest' ? atestadoMeta(alid) : docDe(alid, tid);
 async function arquivosDoc(alid, tid) {
   if (tid === '_atest') { const f = await carregarAtestado(alid); return f && f.arquivo ? { formato: f.tipo === 'pdf' ? 'pdf' : 'img', arquivos: [f.arquivo] } : null; }
@@ -3519,19 +3527,22 @@ function ligarPreviaDoc(raiz, f, alid, tid) {
 
 // guardar ou ver um documento de um aluno (escola ou família)
 function sheetDocAluno(alid, tid, volta) {
-  const a = S.alunas[alid] || {}, T = tipoDoc(tid), d0 = docDe(alid, tid), adm = !!S.admin, s0 = situacaoDoc(d0);
+  const avulso = !tid || ehAvulso(tid);
+  if (!tid) tid = 'x' + novoId().replace(/[^A-Za-z0-9]/g, '').slice(0, 10);
+  const a = S.alunas[alid] || {}, d0 = docDe(alid, tid), T = avulso ? { id: tid, nome: (d0 && d0.nome) || 'Outro documento', meses: 0, familia: false } : tipoDoc(tid), adm = !!S.admin, s0 = situacaoDoc(d0);
   let novos = [], valMexida = !!(d0 && d0.validade && d0.data && T.meses && d0.validade !== maisMeses(d0.data, T.meses));
   const ehPdf = () => novos.length && novos[0].tipo === 'pdf';
   sheet(`<h3>${esc(T.nome)}</h3><div class="sub">${esc(a.nome || '')}</div>
+    ${avulso && adm ? `<div class="field"><label for="dnome">Nome do documento</label><input id="dnome" maxlength="50" value="${esc((d0 && d0.nome) || '')}" placeholder="Ex.: Carteirinha da federação"><span class="sub">Fica guardado só para ${esc(primeiro(a.nome || 'este aluno'))}. Para pedir a todos os alunos, use os tipos de documento em Ajustes.</span></div>` : ''}
     ${d0 ? `<div class="field"><span class="lb">Guardado</span><div class="doc-box" id="dgprev"><div class="sub">Carregando…</div></div>
       <div class="doc-meta">${chipDoc(d0)}<span class="sub">Enviado em ${esc(dataCurta(d0.em))} ${d0.familia ? 'pela família' : 'pela escola'}${d0.data ? ` · documento de ${esc(dataBRA(d0.data))}` : ''}</span></div></div>`
-      : `<div class="sub">${adm ? (T.familia === false ? 'Tire uma foto do documento ou escolha o PDF.' : 'A família também pode enviar pelo app, em Meus filhos. Ou tire a foto aqui do documento que você recebeu.') : 'Tire uma foto do documento inteiro, bem legível. Se tiver frente e verso, mande as duas.'}</div>`}
+      : avulso ? '' : `<div class="sub">${adm ? (T.familia === false ? 'Tire uma foto do documento ou escolha o PDF.' : 'A família também pode enviar pelo app, em Meus filhos. Ou tire a foto aqui do documento que você recebeu.') : 'Tire uma foto do documento inteiro, bem legível. Se tiver frente e verso, mande as duas.'}</div>`}
     ${d0 && s0.st !== 'ok' && !adm ? `<div class="aviso-lei"><b>${s0.st === 'vencido' ? 'Este documento venceu' : 'Este documento vence logo'}</b><span>Mande um novo para a escola.</span></div>` : ''}
     <div class="field" id="dnovo" hidden><span class="lb">${d0 ? 'Novo' : 'Documento'}</span><div class="doc-box" id="dnprev"></div><div class="sub num" id="dtam"></div></div>
     <div class="doc-botoes"><span class="btn ${d0 ? 'ghost' : ''} toque-arquivo" id="dbtn">${d0 ? 'Trocar o documento' : 'Tirar foto ou escolher arquivo'}<input type="file" id="darq" accept="image/*,application/pdf" aria-label="Escolher o documento"></span>
       <span class="btn ghost toque-arquivo" id="dversob" hidden>+ Foto do verso<input type="file" id="dverso" accept="image/*" aria-label="Foto do verso"></span></div>
     <div class="two"><div class="field"><label for="ddata">Data do documento</label><input type="date" id="ddata" max="${hoje()}" value="${esc((d0 && d0.data) || '')}"></div>
-    ${T.meses ? `<div class="field"><label for="dval">Válido até</label><input type="date" id="dval" value="${esc((d0 && d0.validade) || '')}"></div>` : '<div></div>'}</div>
+    ${T.meses || avulso ? `<div class="field"><label for="dval">Válido até${avulso ? ' (se tiver)' : ''}</label><input type="date" id="dval" value="${esc((d0 && d0.validade) || '')}"></div>` : '<div></div>'}</div>
     ${T.meses ? `<div class="note">Vale ${mesesTxt(T.meses)} a partir da data do documento. Se estiver escrito outro prazo, mude o "Válido até".</div>` : ''}
     <div class="err" id="derr" role="alert"></div>
     <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="dok" ${d0 ? '' : 'hidden'}>${adm ? 'Guardar' : 'Enviar para a escola'}</button></div>
@@ -3561,9 +3572,11 @@ function sheetDocAluno(alid, tid, volta) {
       $('ddata').addEventListener('input', () => { const v = $('ddata').value; if (v && !valMexida) $('dval').value = maisMeses(v, T.meses); });
       $('dval').addEventListener('input', () => { valMexida = true; });
     }
-    [$('ddata'), $('dval')].filter(Boolean).forEach(el => el.addEventListener('input', () => { $('dok').hidden = false; }));
+    [$('ddata'), $('dval'), $('dnome')].filter(Boolean).forEach(el => el.addEventListener('input', () => { $('dok').hidden = false; }));
+    if ($('dnome') && !d0) setTimeout(() => $('dnome').focus(), 60);
     $('dok').onclick = async () => {
-      const data = $('ddata').value || null, validade = T.meses ? ($('dval').value || null) : null;
+      const data = $('ddata').value || null, validade = T.meses || avulso ? ($('dval').value || null) : null, nomeAv = $('dnome') ? $('dnome').value.trim() : '';
+      if (avulso && adm && !nomeAv) return err('Dê um nome ao documento.');
       if (!novos.length && !d0) return err('Escolha a foto ou o PDF do documento.');
       if (data && data > hoje()) return err('A data do documento não pode ser depois de hoje.');
       if (validade && data && validade < data) return err('O "Válido até" não pode ser antes da data do documento.');
@@ -3573,7 +3586,7 @@ function sheetDocAluno(alid, tid, volta) {
       try {
         const agora = Date.now(), rid = a.responsavelId || null;
         const val = validade || (T.meses && data ? maisMeses(data, T.meses) : null);
-        let meta = { ...(d0 || {}), data, validade: val };
+        let meta = { ...(d0 || {}), data, validade: val, ...(avulso && nomeAv ? { nome: nomeAv, avulso: true } : {}) };
         if (novos.length) {
           const pdf = ehPdf(), tam = novos.reduce((s, n) => s + n.tam, 0);
           await B.set(`escolas/${S.eid}/documentos/${alid}__${tid}`, { alid, tipo: tid, responsavelId: rid, formato: pdf ? 'pdf' : 'img', arquivos: novos.map(n => n.arquivo), nome: novos[0].nome, tam, em: agora, por: EU.uid });
@@ -3643,7 +3656,7 @@ function sheetDocsEscola() {
   const linha = (alid, tid) => { const a = S.alunas[alid], wa = situacaoDoc(docDe(alid, tid)).st !== 'ok' ? waDoc(alid, tid) : '';
     return `<li class="tap" data-dal="${esc(alid)}" data-dt="${esc(tid)}"><div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(tipoDoc(tid).nome)}</span></div>${chipDoc(docDe(alid, tid))}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Pedir pelo WhatsApp">${ICO_WA}</a>` : ''}</li>`; };
   const alertas = [];
-  for (const [alid] of ativos) for (const T of tiposDoc()) { const st = situacaoDoc(docDe(alid, T.id)).st; if (st === 'vencido' || st === 'vence') alertas.push([alid, T.id, st]); }
+  for (const [alid] of ativos) for (const t of docsDoAluno(alid)) { const st = situacaoDoc(docDe(alid, t)).st; if (st === 'vencido' || st === 'vence') alertas.push([alid, t, st]); }
   alertas.sort((x, y) => (x[2] === 'vencido' ? 0 : 1) - (y[2] === 'vencido' ? 0 : 1));
   sheet(`<h3>Documentos dos alunos</h3>
     <button type="button" class="btn" id="dejunta">Juntar documentos em PDF</button>
@@ -3666,7 +3679,8 @@ function sheetDocsEscola() {
 function sheetJuntarDocs(op = {}) {
   const selA = new Set(op.pre || []), usados = new Set();
   const temAtest = Object.keys(S.alunas).some(id => atestadoMeta(id));
-  const tipos = [...tiposDoc().map(t => t.id), ...(temAtest ? ['_atest'] : [])], selT = new Set(op.tipos || tiposDoc().map(t => t.id));
+  const temOutros = Object.keys(S.alunas).some(id => avulsosDe(id).length);
+  const tipos = [...tiposDoc().map(t => t.id), ...(temOutros ? ['_outros'] : []), ...(temAtest ? ['_atest'] : [])], selT = new Set(op.tipos || tiposDoc().map(t => t.id));
   sheet(`<h3>Juntar documentos</h3>
     <div class="sub">Um PDF só, com os documentos dos alunos marcados, para mandar à competição pelo WhatsApp ou e-mail.</div>
     <div class="field"><label for="jdtit">Para qual competição?</label><input id="jdtit" maxlength="80" value="${esc(op.titulo || '')}" placeholder="Ex.: Copa Recife Sub-11"></div>
@@ -3683,7 +3697,7 @@ function sheetJuntarDocs(op = {}) {
     const resumo = () => {
       const al = [...selA].filter(id => S.alunas[id]), ts = tipos.filter(t => selT.has(t));
       let tem = 0; const faltam = [], vencidos = [];
-      for (const id of al) for (const t of ts) { const m = metaJunta(id, t), st = situacaoDoc(m).st; if (!m) faltam.push([id, t]); else { tem++; if (st === 'vencido') vencidos.push([id, t]); } }
+      for (const id of al) for (const t of expandeTipos(id, ts)) { const m = metaJunta(id, t), st = situacaoDoc(m).st; if (!m) faltam.push([id, t]); else { tem++; if (st === 'vencido') vencidos.push([id, t]); } }
       const nomes = l => l.slice(0, 6).map(([id, t]) => `${primeiro(S.alunas[id].nome)} (${tipoDoc(t).nome.toLowerCase()})`).join(', ') + (l.length > 6 ? ` e mais ${l.length - 6}` : '');
       $('jdresumo').innerHTML = !al.length || !ts.length ? '' : `<div class="faixa-card" style="background:var(--bg)"><b class="num">${al.length} aluno${al.length === 1 ? '' : 's'} · ${tem} documento${tem === 1 ? '' : 's'} no PDF</b>
         ${faltam.length ? `<span class="s">Faltam ${faltam.length}: ${esc(nomes(faltam))}. Na lista da primeira página aparece "falta".</span>` : '<span class="s">Todos os documentos estão no app.</span>'}
@@ -3762,7 +3776,7 @@ async function juntarDocsArquivos({ titulo, alids, tids, capa, separado }, progr
       escrever(pg, 'ALUNO(A)', M, y, { neg: true, tam: 8, cor: cinza }); escrever(pg, 'NASCIMENTO', W - M - 90, y, { neg: true, tam: 8, cor: cinza }); y += 6; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.6, color: linhaC }); y += 14; };
     topo(false);
     alids.forEach((id, i) => {
-      const linhas = tids.map(t => [`${tipoDoc(t).nome}: ${statusTxt(id, t)}`, !metaJunta(id, t) || situacaoDoc(metaJunta(id, t)).st === 'vencido']), alto = 14 + Math.ceil(linhas.length / 2) * 12 + 8;
+      const linhas = expandeTipos(id, tids).map(t => [`${tipoDoc(t).nome}: ${statusTxt(id, t)}`, !metaJunta(id, t) || situacaoDoc(metaJunta(id, t)).st === 'vencido']), alto = 14 + Math.ceil(linhas.length / 2) * 12 + 8;
       if (y + alto > H - M) { pg = pdf.addPage([W, H]); y = M + 8; topo(true); }
       escrever(pg, `${i + 1}. ${(S.alunas[id] || {}).nome || ''}`, M, y, { neg: true, tam: 11, max: W - 2 * M - 100 }); escrever(pg, nasc(id), W - M - 90, y, { tam: 10.5 }); y += 14;
       linhas.forEach(([l, ruim], k) => { const col = k % 2; escrever(pg, l, M + 14 + col * ((W - 2 * M - 14) / 2), y, { tam: 9, cor: ruim ? vermelho : cinza, max: (W - 2 * M - 14) / 2 - 8 }); if (col === 1 || k === linhas.length - 1) y += 12; });
@@ -3794,7 +3808,7 @@ async function juntarDocsArquivos({ titulo, alids, tids, capa, separado }, progr
       pg.drawImage(im, { x: (W - w) / 2, y: H - topo - h, width: w, height: h }); });
   };
   const fechar = async (pdf, t) => { pdf.setTitle(pdfTxt(t)); pdf.setProducer('Turma em Dia'); pdf.setCreator('Turma em Dia'); return pdf.save(); };
-  const lista = []; for (const id of alids) for (const t of tids) if (metaJunta(id, t)) lista.push([id, t]);
+  const lista = []; for (const id of alids) for (const t of expandeTipos(id, tids)) if (metaJunta(id, t)) lista.push([id, t]);
   if (!lista.length) throw new Error('Nenhum dos alunos marcados tem esses documentos no app.');
   if (!separado) {
     const pdf = await novoPdf(); if (capa) desenharCapa(pdf);
