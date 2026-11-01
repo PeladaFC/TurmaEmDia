@@ -383,7 +383,7 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
   s8('extras/x1', { tipo: 'taxa', nome: 'Uniforme', v: 90, nota: false }); s8('extras/x2', { tipo: 'evento', nome: 'Copa Recife', v: 60, nota: true }); s8('extras/x3', { tipo: 'taxa', nome: 'Rifa', v: 20 }); // sem marcar: não emite
   s8('responsaveis/r1', { nome: 'Kate Lima', cpf: '529.982.247-25', email: 'kate@x.com' }); s8('responsaveis/r2', { nome: 'Rui', cpf: '' });
   s8('alunas/a1', { nome: 'Davi Lima', responsavelId: 'r1', turmas: ['t1', 't2'], inicio: '2026-01' }); s8('alunas/a2', { nome: 'Leo', responsavelId: 'r2', turmas: ['t1'], inicio: '2026-01' });
-  s8('professoras/p8', { nome: 'Rafa', emailApp: 'rafa@x.com' }); s8('equipe/rafa', { pid: 'p8' });
+  s8('professoras/p8', { nome: 'Rafa', emailApp: 'rafa@x.com', nfAutonomia: true }); s8('equipe/rafa', { pid: 'p8' });
   s8('membros/kate/vinculos/r1', { em: 1 });
   const nf = async (body, tok) => { const r = resp(); await NF.notaFiscal(req({ eid: 'e8', ...body }, tok), r); return r; };
   const CFG = { cnpj: '11.444.777/0001-61', regime: 'simples', cTribNac: '060401', aliqIss: '5', pTrib: '6', modo: 'todas', ambiente: 'restrita' };
@@ -432,6 +432,12 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     let r2 = await nf({ acao: 'baixa', alid: 'a1', chaves: ['m:2026-09:a1'] }, 'ok:rafa:v'); assert.strictEqual(r2.code, 403);
     // o professor tem a configuração dele, separada da escola
     r2 = await nf({ acao: 'estado' }, 'ok:rafa:v'); assert.strictEqual(r2.body.papel, 'prof'); assert.ok(!r2.body.cert);
+    // sem autonomia dada pela escola: não configura nem emite
+    s8('professoras/p8', { nome: 'Rafa', emailApp: 'rafa@x.com', nfAutonomia: false });
+    r2 = await nf({ acao: 'estado' }, 'ok:rafa:v'); assert.strictEqual(r2.code, 403);
+    S.set('escolas/e8/segredos/nfseCfg_p8', { ...CFG, cnpj: '11444777000161', ligado: true });
+    assert.strictEqual(await NF.interno.emitir('e8', 'p8', { nid: 'y', rid: 'r1', itens: [], origem: 'pix' }), 'sem_autonomia');
+    s8('professoras/p8', { nome: 'Rafa', emailApp: 'rafa@x.com', nfAutonomia: true });
     S.set('escolas/e8/segredos/nfseCfg_p8', { ...CFG, cnpj: '11444777000161', ligado: true });
     // o professor decide a nota das turmas dele, independente da escola: a turma t2 tem nota ligada pela escola, mas vale a escolha dele
     S.set('escolas/e8/segredos/nfseCert_p8', { pfx: 'eA==', senha: 'certa', validade: Date.now() + 9e9 });

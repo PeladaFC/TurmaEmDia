@@ -2376,10 +2376,10 @@ function tPFin(v) {
   const pp = S.pp, T = pp.totais, f = S.pfFiltro || 'todos', ativos = pp.alunos.filter(a => a.mensal);
   const lista = ativos.filter(a => f === 'todos' || (f === 'pagos' ? a.mensal.st === 'pago' : a.mensal.st !== 'pago'));
   const nPag = ativos.filter(a => a.mensal.st === 'pago').length, nomeT = id => (S.turmas[id] || {}).nome || '';
-  const nfP = (S.profs[S.prof] || {}).nf || {};
+  const meuP = S.profs[S.prof] || {}, nfP = meuP.nf || {}, nfAut = meuP.nfAutonomia === true;
   v.innerHTML = `<div class="headrow"><h2>Financeiro</h2></div>
     <div class="sub">A parte que cabe a você nas suas turmas. Quem cobra as famílias é a escola.</div>
-    <button type="button" class="linha-botao" id="pnf" style="margin:10px 0"><span class="grow"><b>Minha nota fiscal</b><span class="s">${nfP.ligado ? 'Ligada: sai sozinha, no seu CNPJ' : 'Para emitir nota da sua parte, com o seu CNPJ'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>
+    ${nfAut ? `<button type="button" class="linha-botao" id="pnf" style="margin:10px 0"><span class="grow"><b>Minha nota fiscal</b><span class="s">${nfP.ligado ? 'Ligada: sai sozinha, no seu CNPJ' : 'Para emitir nota da sua parte, com o seu CNPJ'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : ''}
     <div class="pf-resumo"><div><span>Recebido</span><b class="num">${brl(T.recebido)}</b></div><div><span>A receber</span><b class="num">${brl(T.aVencer)}</b></div><div class="${T.atrasado ? 'ruim' : ''}"><span>Atrasado</span><b class="num">${brl(T.atrasado)}</b></div></div>
     <section><h2>Mensalidades de ${esc(C.nomeMes(S.mes))}</h2>
       <div class="opcoes c3" id="pfiltro">${[['todos', `Todos (${ativos.length})`], ['pagos', `Pagaram (${nPag})`], ['faltam', `Faltam (${ativos.length - nPag})`]].map(([k, n]) => `<button type="button" class="pick" data-pff="${k}" aria-pressed="${f === k}">${n}</button>`).join('')}</div>
@@ -2557,13 +2557,14 @@ function sheetProf(pid) {
         ${P && P.emailApp ? `<span class="sub">${P.appEm ? `Já entrou no app em ${esc(dataCurta(P.appEm))}.` : 'Ainda não entrou no app.'}</span>` : ''}
         <span class="sub">Com o e-mail, ele(a) entra no app e vê só as turmas dele(a): escreve notas sobre os alunos e acompanha os pagamentos que cabem a ele(a). Não vê telefone, CPF nem documentos das famílias, e não cobra ninguém. Para tirar o acesso, apague o e-mail.</span>
         ${P && P.emailApp && P.telefone && !P.appEm ? `<a class="btn ghost btn-ico" style="margin-top:8px" target="_blank" rel="noopener" href="${esc(waLink(P.telefone, `Olá, ${primeiro(P.nome)}! Cadastrei você no app Turma em Dia da ${S.escola.nome || 'escola'}. Abra ${LINK_APP} e entre com o e-mail ${P.emailApp}. Lá você vê as suas turmas, escreve notas sobre os alunos e acompanha os pagamentos.`))}">${ICO_WA}<span>Avisar pelo WhatsApp</span></a>` : ''}</div>
-      ${P ? `<div class="field"><span class="lb">Conta que recebe o Pix</span>${blocoConta(pid, P)}</div>` : '<div class="note">Depois de salvar, você adiciona a conta que recebe o Pix.</div>'}`,
+      ${P ? `<div class="field"><span class="lb">Conta que recebe o Pix</span>${blocoConta(pid, P)}</div>` : '<div class="note">Depois de salvar, você adiciona a conta que recebe o Pix.</div>'}
+      <label class="liga"><span class="grow"><b>Emite a própria nota fiscal</b><span class="s">Ligado: ele(a) emite a nota do que cai para ele(a), com o CNPJ dele(a), e decide o que leva nota. Desligado: não sai nota dessa parte.</span></span><input type="checkbox" role="switch" id="pnfaut" ${P && P.nfAutonomia === true ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`,
     montar: () => { document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid))); },
     salvar: async () => { const nome = $('pnome').value.trim(); if (!nome) return 'Digite o nome do(a) professor(a).';
       const email = $('pemail').value.trim().toLowerCase(); if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return 'Confira o e-mail.';
       const outro = Object.entries(S.profs).find(([id, x]) => id !== pid && email && String(x.emailApp || '').toLowerCase() === email); if (outro) return `Este e-mail já está com ${outro[1].nome}.`;
       const id = pid || novoId(), antes = String((P && P.emailApp) || '').toLowerCase();
-      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, telefone: $('ptel').value.trim(), emailApp: email || null, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
+      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, telefone: $('ptel').value.trim(), emailApp: email || null, nfAutonomia: $('pnfaut').checked, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
       if (MOCK && email !== antes) await espelhoProfMock(id, antes, email); },
     excluir: pid && (() => B.del(`escolas/${S.eid}/professoras/${pid}`)), bloqueio: n ? 'Este(a) professor(a) tem turmas. Troque o(a) professor(a) dessas turmas antes.' : null });
 }
@@ -2617,8 +2618,9 @@ function sheetConta(pid) {
 // liga/desliga "Emitir nota fiscal" de cada turma, taxa e evento (padrão: desligado; a escola liga o que quiser)
 const ligaNota = (id, on, dica) => `<label class="liga"><span class="grow"><b>Emitir nota fiscal</b><span class="s">${dica || 'Ligue se esta cobrança leva nota.'}</span></span><input type="checkbox" role="switch" id="${id}" ${on === true ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`;
 // nota da turma/taxa/evento: se o dinheiro vai para um professor, quem liga ou desliga é ele (na área dele)
-const blocoNota = (id, on, dica, rec) => `<div data-notaw="${id}" ${rec && rec !== 'escola' ? 'hidden' : ''}>${ligaNota(id, on, dica)}</div><div class="note" data-notap="${id}" ${rec && rec !== 'escola' ? '' : 'hidden'} style="margin-bottom:12px">A nota fiscal desta cobrança é de quem recebe: o(a) professor(a) liga ou desliga em <b>Minha nota fiscal</b>, na área dele(a).</div>`;
-const ligarBlocoNota = (id, sel) => { const s = $(sel); if (!s) return; s.addEventListener('change', () => { const p = s.value && s.value !== 'escola'; document.querySelector(`[data-notaw="${id}"]`).hidden = p; document.querySelector(`[data-notap="${id}"]`).hidden = !p; }); };
+const avisoNotaProf = rec => { const P = (S.profs || {})[rec] || {}; return P.nfAutonomia === true ? `A nota fiscal desta cobrança é de quem recebe: ${esc(primeiro(P.nome) || 'o(a) professor(a)')} liga ou desliga em <b>Minha nota fiscal</b>, na área dele(a).` : `O dinheiro desta cobrança cai para ${esc(primeiro(P.nome) || 'o(a) professor(a)')}, que não emite nota fiscal. Para liberar, ligue "Emite a própria nota fiscal" no cadastro do(a) professor(a).`; };
+const blocoNota = (id, on, dica, rec) => `<div data-notaw="${id}" ${rec && rec !== 'escola' ? 'hidden' : ''}>${ligaNota(id, on, dica)}</div><div class="note" data-notap="${id}" ${rec && rec !== 'escola' ? '' : 'hidden'} style="margin-bottom:12px">${rec && rec !== 'escola' ? avisoNotaProf(rec) : ''}</div>`;
+const ligarBlocoNota = (id, sel) => { const s = $(sel); if (!s) return; s.addEventListener('change', () => { const p = s.value && s.value !== 'escola', av = document.querySelector(`[data-notap="${id}"]`); document.querySelector(`[data-notaw="${id}"]`).hidden = p; av.hidden = !p; if (p) av.innerHTML = avisoNotaProf(s.value); }); };
 const notaSalvar = (id, sel, antes) => { const s = $(sel), rec = s ? s.value : 'escola'; return rec && rec !== 'escola' ? !!antes : $(id).checked; };
 function sheetTurma(tid, depois) {
   const novoTid = tid || novoId(), t = tid ? S.turmas[tid] : null, n = tid ? Object.values(S.alunas).filter(a => (a.turmas || []).includes(tid)).length : 0, todas = t ? C.todasIdades(t) : false;
@@ -3322,6 +3324,7 @@ async function nfMock(acao, d) {
     return { cfg: { modo: 'todas', ambiente: 'restrita', ...cfg }, cert: c ? { titular: c.titular, doc: c.doc, validade: c.validade } : null, falta: f, meus, papel: S.admin ? 'admin' : 'prof' }; };
   const publicar = async (r, ligado, modo) => { const v = { ligado, modo: modo || 'todas' };
     if (r === 'escola') await B.set(`${p}/config/geral`, { nfFam: v }, { merge: true }); else { await B.set(`${p}/profsPublico/${r}`, { nf: v }, { merge: true }); await B.set(`${p}/professoras/${r}`, { nf: v }, { merge: true }); } };
+  if (!S.admin && !acao.startsWith('fam') && !((S.profs[rec] || {}).nfAutonomia === true)) throw new Error('A escola não liberou a nota fiscal própria para você. Fale com a administração.');
   if (acao === 'estado') return estado(rec);
   if (acao === 'certificado') { if (d.senha !== '1234') throw new Error('Não abriu: a senha está errada ou o arquivo não é um certificado A1. (No teste, a senha é 1234.)');
     await B.set(`${p}/segredos/nfseCert_${rec}`, { titular: rec === 'escola' ? 'ESCOLINHA MOVIMENTO LTDA' : 'JULIANA COSTA', doc: '11444777000161', validade: Date.now() + 320 * 864e5 });
@@ -3352,7 +3355,9 @@ async function nfMock(acao, d) {
 }
 async function nfMockEmitir(rec, nid, rid, itens, origem) {
   const p = `escolas/${S.eid}`, cfg = (await B.get(`${p}/segredos/nfseCfg_${rec}`)) || {};
-  if (!cfg.ligado) return 'desligado'; if (!(await B.get(`${p}/segredos/nfseCert_${rec}`))) return 'sem_certificado';
+  if (!cfg.ligado) return 'desligado';
+  if (rec !== 'escola') { const P = await B.get(`${p}/professoras/${rec}`); if (!P || P.nfAutonomia !== true) return 'sem_autonomia'; }
+  if (!(await B.get(`${p}/segredos/nfseCert_${rec}`))) return 'sem_certificado';
   const r = (await B.get(`${p}/responsaveis/${rid}`)) || {}; if (r.nota === 'nao') return 'familia_nao'; if (cfg.modo === 'pedido' && r.nota !== 'sim') return 'nao_pediu';
   const ja = await B.get(`${p}/notasFamilia/${nid}`); if (ja && ja.status !== 'erro') return 'pulou';
   let valor = 0; const porAl = {};
