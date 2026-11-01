@@ -2042,6 +2042,9 @@ function sheetResp(rid) {
     $('rdel').onclick = () => al.length ? ($('rerr').textContent = 'Este responsável tem alunos. Troque o responsável deles antes.') : confirmar('Excluir responsável?', `${esc(r.nome)} e o código ${esc(r.codigo || '')} deixam de existir.`, 'Excluir', () => B.lote([{ op: 'del', p: `escolas/${S.eid}/responsaveis/${rid}` }, ...(r.codigo ? [{ op: 'del', p: 'codigos/' + r.codigo }] : [])]));
   });
 }
+// mês no formato mês/ano (11/2026), de 3 anos atrás a 1 ano à frente
+const opcoesMes = atual => { const h = mesHoje(), l = []; for (let k = -36; k <= 12; k++) l.push(mesMais(h, k)); if (atual && !l.includes(atual)) l.push(atual); l.sort();
+  return l.map(m => `<option value="${m}" ${m === atual ? 'selected' : ''}>${m.slice(5)}/${m.slice(0, 4)}</option>`).join(''); };
 function sheetAluna(alid, ridPadrao, turmaPadrao) {
   // aluno novo sem nenhuma turma cadastrada: primeiro a turma, depois volta para o cadastro com ela marcada
   if (!alid && !turmaPadrao && !Object.keys(S.turmas).length) return sheet(`<h3>Primeiro, cadastre uma turma</h3>
@@ -2091,8 +2094,8 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         <div class="chips">${['Combinado na matrícula', 'Dificuldade financeira', 'Atleta destaque', 'Filho(a) de funcionário'].map(m => `<button type="button" class="pick" data-mot="${esc(m)}">${esc(m)}</button>`).join('')}</div></div></div>
     <div class="note">Só vale o desconto que você escolher aqui.</div>
     <div class="filha" style="padding:12px" id="aconta"></div>` : `<div class="note">Desconto e valor da mensalidade ficam com a administração.</div>`}
-    <div class="two"><div class="field"><label for="aini">Cobrar a partir de</label><input id="aini" type="month" value="${esc(a ? a.inicio || mes : mes)}"></div>
-    <div class="field" id="afimw"><label for="afim">Último mês cobrado</label><input id="afim" type="month" value="${esc(a && a.fim ? a.fim : mesMais(mes, -1))}"></div></div>
+    <div class="two"><div class="field"><label for="aini">Cobrar a partir de</label><select id="aini">${opcoesMes(a ? a.inicio || mes : mes)}</select></div>
+    <div class="field" id="afimw"><label for="afim">Último mês cobrado</label><select id="afim">${opcoesMes(a && a.fim ? a.fim : mesMais(mes, -1))}</select></div></div>
     ${adm ? `<div class="field"><label for="apm">Desconto no primeiro mês</label>
       <div class="banner" id="apmaviso" hidden style="margin-bottom:8px"><span>A matrícula é depois do dia 15. Quer dar desconto no primeiro mês?</span></div>
       <select id="apm">${[['inteiro', 'Sem desconto: cobrar o mês inteiro'], ['metade', 'Metade do mês (50%)'], ['prop', 'Proporcional aos dias que faltam'], ['isento', 'Não cobrar o primeiro mês'], ['valor', 'Outro valor']].map(([k, n]) => `<option value="${k}" ${((a && a.primeiroMes && a.primeiroMes.tipo) || 'inteiro') === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
@@ -2187,13 +2190,13 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         if (r) ops.push({ op: 'merge', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim() } });
         else { r = novoId(); const cod = novoCodigo(); ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim(), codigo: cod, criadoEm: Date.now() } }, { op: 'set', p: 'codigos/' + cod, d: { eid: S.eid, rid: r } }); }
         ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ...(primeiroMes() !== undefined ? { primeiroMes: primeiroMes() } : {}),
-          // aluno novo depois do vencimento do mês: a primeira mensalidade vence em 7 dias, sem multa
-          ...(!ed && C.vencMens(ini, S.cfg) < hoje() ? { vencPrimeiro: new Date(Date.now() + 7 * 864e5 - 3 * 36e5).toISOString().slice(0, 10) } : {}), ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
+          // aluno novo depois do vencimento do mês: a primeira mensalidade vence em 3 dias, sem multa
+          ...(!ed && C.vencMens(ini, S.cfg) < hoje() ? { vencPrimeiro: new Date(Date.now() + 3 * 864e5 - 3 * 36e5).toISOString().slice(0, 10) } : {}), ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
         if (S.docs[id] && S.docs[id].responsavelId !== r) ops.push({ op: 'merge', p: `escolas/${S.eid}/docsAlunos/${id}`, d: { responsavelId: r } });
         for (const [g, G] of Object.entries(S.grupos)) { const tem = (G.alunas || []).includes(id); if (tem !== meusG.has(g)) ops.push({ op: 'merge', p: `escolas/${S.eid}/grupos/${g}`, d: { alunas: meusG.has(g) ? [...(G.alunas || []), id] : (G.alunas || []).filter(x => x !== id) } }); }
         if (novaFoto) ops.push({ op: 'set', p: `escolas/${S.eid}/fotosAlunos/${id}`, d: { foto: novaFoto, responsavelId: r, em: Date.now(), por: 'escola' } });
-        // aluno novo: taxa de matrícula (uma cobrança extra só dele, vence em 7 dias)
-        if ($('amat') && $('amat').checked) { const d7 = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+        // aluno novo: taxa de matrícula (uma cobrança extra só dele, vence em 3 dias)
+        if ($('amat') && $('amat').checked) { const d7 = new Date(Date.now() + 3 * 864e5 - 3 * 36e5).toISOString().slice(0, 10);
           ops.push({ op: 'set', p: `escolas/${S.eid}/extras/${novoId()}`, d: { tipo: 'taxa', matricula: true, nome: 'Taxa de matrícula', v: C.r2(S.cfg.matricula.valor), venc: d7, alunas: [id], valores: {}, grupos: [], turmas: [], recebedor: 'escola', nota: false, criadoEm: Date.now() } }); }
         await B.lote(ops); if (novaFoto) FOTOS[id] = novaFoto; fecharSheet(); aviso(ed ? 'Aluno(a) atualizado(a)' : 'Aluno(a) cadastrado(a)');
       } catch (e) { err(msgErro(e)); $('aok').disabled = false; }
