@@ -2325,6 +2325,16 @@ function dadosRelatorio(pid, mes) {
   const soma = l => C.r2(l.reduce((s, x) => s + x.v, 0));
   return { recebidos: rec, atrasados: atr, aVencer: ven, resumo: { recebido: soma(rec), atraso: soma(atr), aVencer: soma(ven), nRec: rec.length, nAtr: atr.length, nVen: ven.length } };
 }
+// vários arquivos de uma vez: no celular, um compartilhar só (WhatsApp, e-mail); senão baixa um por um
+async function salvarArquivos(arqs, tipo) {
+  if (arqs.length === 1) return salvarArquivo(arqs[0].nome, arqs[0].bytes, tipo);
+  try { if (window.claude && window.claude.use) { const dl = await window.claude.use('downloads'); if (dl) { for (const a of arqs) await dl.save({ filename: a.nome, data: new Blob([a.bytes], { type: tipo }) }); return 'salvo'; } } }
+  catch (e) { if (e && e.code === 'declined') return 'cancelado'; }
+  const fs = arqs.map(a => new File([a.bytes], a.nome, { type: tipo }));
+  try { if (navigator.canShare && navigator.canShare({ files: fs })) { await navigator.share({ files: fs }); return 'compartilhado'; } } catch (e) { if (e && e.name === 'AbortError') return 'cancelado'; }
+  for (const f of fs) { const url = URL.createObjectURL(f), a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 8000); await new Promise(r => setTimeout(r, 350)); }
+  return 'baixado';
+}
 async function salvarArquivo(nome, bytes, tipo) {
   // dentro do Claude (demonstração): pede ao app para salvar; no celular: abre o compartilhar (WhatsApp, e-mail); senão baixa
   try { if (window.claude && window.claude.use) { const dl = await window.claude.use('downloads'); if (dl) { await dl.save({ filename: nome, data: new Blob([bytes], { type: tipo }) }); return 'salvo'; } } }
@@ -3371,10 +3381,12 @@ function sheetJuntarDocs(op = {}) {
     <div class="field"><span class="lb">Quais documentos?</span><div class="chips" id="jdtipos">${tipos.map(t => `<button type="button" class="pick" data-jt="${esc(t)}" aria-pressed="${selT.has(t)}">${esc(tipoDoc(t).nome)}</button>`).join('')}</div></div>
     <div class="field"><span class="lb">Quais alunos? Toque num quadro para escolher</span><div id="jdquadros"></div></div>
     <div id="jdresumo"></div>
-    <label class="check"><input type="checkbox" id="jdcapa" checked> Primeira página com a lista dos alunos e a data de nascimento</label>
+    <div class="field"><span class="lb">Como enviar?</span><div class="insc-ops" id="jdmodo">${[['um', 'Um PDF só', 'Todos os documentos juntos, num arquivo.'], ['sep', 'Um arquivo para cada documento', 'Cada documento num PDF com o nome do aluno. Vão todos de uma vez.']].map(([k, n, d]) => `<button type="button" class="insc-op" data-jm="${k}" aria-pressed="${k === 'um'}"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${d}</span></span></button>`).join('')}</div></div>
+    <label class="check"><input type="checkbox" id="jdcapa" checked> <span id="jdcapat">Primeira página com a lista dos alunos e a data de nascimento</span></label>
     <div class="err" id="jderr" role="alert"></div>
-    <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="jdok">Gerar PDF</button></div>
-    <div class="note">No celular, o compartilhar abre sozinho: escolha o WhatsApp ou o e-mail. No computador, o PDF é baixado.</div>`, sh => {
+    <div id="jdpronto"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="jdok">Gerar</button></div>
+    <div class="note">Depois de gerar, toque em Enviar. No celular, o compartilhar abre: escolha o WhatsApp ou o e-mail. No computador, os arquivos são baixados.</div>`, sh => {
     if (op.volta) SHEET_VOLTAR = op.volta;
     const resumo = () => {
       const al = [...selA].filter(id => S.alunas[id]), ts = tipos.filter(t => selT.has(t));
@@ -3388,17 +3400,39 @@ function sheetJuntarDocs(op = {}) {
     const sel = seletorAtletas($('jdquadros'), { quadros: quadrosDe(selA, true, op.evento), selA, usados, aoMudar: resumo });
     sel.desenhar();
     sh.querySelectorAll('[data-jt]').forEach(b => b.onclick = () => { const t = b.dataset.jt; selT.has(t) ? selT.delete(t) : selT.add(t); b.setAttribute('aria-pressed', selT.has(t)); resumo(); });
+    let modo = 'um';
+    const limparPronto = () => { $('jdpronto').innerHTML = ''; $('jdok').textContent = 'Gerar'; $('jdok').classList.remove('ghost'); };
+    sh.querySelectorAll('[data-jm]').forEach(b => b.onclick = () => { modo = b.dataset.jm; sh.querySelectorAll('[data-jm]').forEach(x => x.setAttribute('aria-pressed', x.dataset.jm === modo));
+      $('jdcapat').textContent = modo === 'sep' ? 'Junto, um arquivo com a lista dos alunos e a data de nascimento' : 'Primeira página com a lista dos alunos e a data de nascimento'; limparPronto(); });
+    sh.addEventListener('change', e => { if (e.target.id === 'jdcapa' || e.target.closest('#jdquadros')) limparPronto(); });
+    sh.querySelectorAll('[data-jt]').forEach(b => b.addEventListener('click', limparPronto));
+    $('jdtit').addEventListener('input', limparPronto);
+    // gerar e enviar são dois toques: o celular só abre o compartilhar logo depois de um toque
+    const mostrarPronto = arqs => {
+      const lotes = lotesDeArquivos(arqs), tot = arqs.reduce((s, a) => s + a.bytes.length, 0);
+      const quantos = arqs.length === 1 ? `1 PDF pronto · ${kb(tot)}` : `${arqs.length} arquivos prontos · ${kb(tot)}`;
+      $('jdpronto').innerHTML = `<div class="faixa-card doc-pronto"><b class="num">${quantos}</b>
+        ${lotes.length > 1 ? `<span class="s">O celular manda até 10 arquivos de cada vez. Toque em cada botão, um depois do outro, e escolha a mesma conversa.</span>` : ''}
+        ${lotes.map((l, i) => { const a = lotes.slice(0, i).reduce((s, x) => s + x.length, 0) + 1, z = a + l.length - 1;
+          return `<button type="button" class="btn" data-lote="${i}">${lotes.length > 1 ? `Enviar ${a} a ${z}` : arqs.length === 1 ? 'Enviar o PDF' : `Enviar os ${arqs.length} arquivos`}</button>`; }).join('')}
+        ${arqs.length > 1 ? `<details class="doc-lista"><summary>Ver os arquivos</summary><ul>${arqs.map(a => `<li>${esc(a.nome)} <span class="s num">${kb(a.bytes.length)}</span></li>`).join('')}</ul></details>` : ''}</div>`;
+      $('jdpronto').querySelectorAll('[data-lote]').forEach(b => b.onclick = async () => {
+        const r = await salvarArquivos(lotes[Number(b.dataset.lote)], 'application/pdf');
+        if (r === 'cancelado') return;
+        b.dataset.rot = b.dataset.rot || b.textContent; b.classList.add('ghost');
+        b.textContent = `${lotes.length > 1 ? b.dataset.rot.replace('Enviar', 'Enviados') : 'Enviado'} ✓ · enviar de novo`;
+        aviso(r === 'baixado' ? (arqs.length === 1 ? 'PDF baixado' : 'Arquivos baixados') : 'Pronto');
+      });
+      $('jdpronto').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
     $('jdok').onclick = async () => {
       const err = m => $('jderr').textContent = m || '', al = porNome(S.alunas).filter(([id]) => selA.has(id)).map(([id]) => id), ts = tipos.filter(t => selT.has(t));
       err(''); if (!ts.length) return err('Escolha ao menos um documento.'); if (!al.length) return err('Escolha ao menos um aluno.');
-      const titulo = $('jdtit').value.trim(), b = $('jdok'); b.disabled = true;
+      const titulo = $('jdtit').value.trim(), b = $('jdok'); b.disabled = true; $('jdpronto').innerHTML = '';
       try {
-        const bytes = await pdfDocumentos({ titulo, alids: al, tids: ts, capa: $('jdcapa').checked }, txt => { b.textContent = txt; });
-        const nome = `Documentos ${titulo || S.escola.nome || ''}`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w .-]/g, '').trim().slice(0, 70) + '.pdf';
-        b.textContent = 'Gerar PDF'; b.disabled = false;
-        const r = await salvarArquivo(nome, bytes, 'application/pdf');
-        if (r !== 'cancelado') aviso(r === 'baixado' ? `PDF baixado (${kb(bytes.length)})` : 'PDF pronto');
-      } catch (e) { err(e.message || msgErro(e)); b.textContent = 'Gerar PDF'; b.disabled = false; }
+        const arqs = await juntarDocsArquivos({ titulo, alids: al, tids: ts, capa: $('jdcapa').checked, separado: modo === 'sep' }, txt => { b.textContent = txt; });
+        b.disabled = false; b.textContent = 'Gerar de novo'; b.classList.add('ghost'); mostrarPronto(arqs);
+      } catch (e) { err(e.message || msgErro(e)); b.textContent = 'Gerar'; b.disabled = false; }
     };
   });
 }
@@ -3411,45 +3445,46 @@ function carregarPdfLib() {
 // texto que a fonte padrão do PDF aceita (português sem problema; emoji e outros viram o mais próximo)
 const WIN_EXTRA = '—–“”‘’…•€';
 const pdfTxt = s => [...String(s ?? '')].map(ch => { const c = ch.charCodeAt(0); if ((c >= 32 && c <= 126) || (c >= 160 && c <= 255) || WIN_EXTRA.includes(ch)) return ch; const b = ch.normalize('NFD').replace(/[̀-ͯ]/g, ''); return b && b.charCodeAt(0) < 127 ? b[0] : ''; }).join('');
-async function pdfDocumentos({ titulo, alids, tids, capa }, progresso = () => { }) {
+// junta os documentos: num PDF só ou um PDF para cada documento (com a lista dos alunos à parte)
+// devolve [{ nome, bytes }]
+async function juntarDocsArquivos({ titulo, alids, tids, capa, separado }, progresso = () => { }) {
   progresso('Preparando…');
-  const L = await carregarPdfLib(), pdf = await L.PDFDocument.create();
-  const F = await pdf.embedFont(L.StandardFonts.Helvetica), FB = await pdf.embedFont(L.StandardFonts.HelveticaBold);
-  const W = 595.28, H = 841.89, M = 36, cinza = L.rgb(0.42, 0.4, 0.37), preto = L.rgb(0.1, 0.1, 0.1), linhaC = L.rgb(0.85, 0.83, 0.8);
+  const L = await carregarPdfLib(), FONTES = new Map();
+  const novoPdf = async () => { const d = await L.PDFDocument.create(); FONTES.set(d, { F: await d.embedFont(L.StandardFonts.Helvetica), FB: await d.embedFont(L.StandardFonts.HelveticaBold) }); return d; };
+  const W = 595.28, H = 841.89, M = 36, cinza = L.rgb(0.42, 0.4, 0.37), preto = L.rgb(0.1, 0.1, 0.1), linhaC = L.rgb(0.85, 0.83, 0.8), vermelho = L.rgb(0.7, 0.15, 0.1);
   const hexRgb = h => { const x = String(h || '').replace('#', ''); return /^[0-9a-f]{6}$/i.test(x) ? L.rgb(...[0, 2, 4].map(i => parseInt(x.slice(i, i + 2), 16) / 255)) : preto; };
   const corEsc = hexOk(S.cfg.cor) ? hexRgb(S.cfg.cor) : preto, escola = S.escola.nome || 'Escola', agora = new Date();
   const geradoEm = `${pad(agora.getDate())}/${pad(agora.getMonth() + 1)}/${agora.getFullYear()}`;
   const caber = (t, f, tam, max) => { t = pdfTxt(t); if (f.widthOfTextAtSize(t, tam) <= max) return t; while (t && f.widthOfTextAtSize(t + '…', tam) > max) t = t.slice(0, -1); return t + '…'; };
-  const escrever = (pg, t, x, y, o = {}) => pg.drawText(caber(t, o.f || F, o.tam || 10, o.max || (W - x - M)), { x, y: H - y, size: o.tam || 10, font: o.f || F, color: o.cor || preto });
+  const escrever = (pg, t, x, y, o = {}) => { const fs = FONTES.get(pg.doc), f = o.neg ? fs.FB : fs.F, tam = o.tam || 10;
+    pg.drawText(caber(t, f, tam, o.max || (W - x - M)), { x, y: H - y, size: tam, font: f, color: o.cor || preto }); };
   const nasc = id => { const n = (S.alunas[id] || {}).nascimento; return n ? dataBRA(n) : '—'; };
   const statusTxt = (id, t) => { const m = metaJunta(id, t), s = situacaoDoc(m); return !m ? 'falta' : s.st === 'vencido' ? `venceu ${dataBRA(m.validade)}` : m.validade ? `até ${dataBRA(m.validade)}` : 'ok'; };
   const tit = titulo || 'Documentos dos alunos';
-  // capa: lista dos alunos
-  if (capa) {
+  const limpaNome = t => String(t || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  // lista dos alunos
+  const desenharCapa = pdf => {
     let pg = pdf.addPage([W, H]), y = M + 8;
-    const topo = cont => { pg.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: corEsc }); escrever(pg, escola, M, y + 4, { f: FB, tam: 10, cor: cinza }); y += 26;
-      escrever(pg, cont ? `${tit} (continuação)` : tit, M, y, { f: FB, tam: 18 }); y += 18; escrever(pg, `${alids.length} aluno${alids.length === 1 ? '' : 's'} · gerado em ${geradoEm}`, M, y, { tam: 9.5, cor: cinza }); y += 22;
-      escrever(pg, 'ALUNO(A)', M, y, { f: FB, tam: 8, cor: cinza }); escrever(pg, 'NASCIMENTO', W - M - 90, y, { f: FB, tam: 8, cor: cinza }); y += 6; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.6, color: linhaC }); y += 14; };
+    const topo = cont => { pg.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: corEsc }); escrever(pg, escola, M, y + 4, { neg: true, tam: 10, cor: cinza }); y += 26;
+      escrever(pg, cont ? `${tit} (continuação)` : tit, M, y, { neg: true, tam: 18 }); y += 18; escrever(pg, `${alids.length} aluno${alids.length === 1 ? '' : 's'} · gerado em ${geradoEm}`, M, y, { tam: 9.5, cor: cinza }); y += 22;
+      escrever(pg, 'ALUNO(A)', M, y, { neg: true, tam: 8, cor: cinza }); escrever(pg, 'NASCIMENTO', W - M - 90, y, { neg: true, tam: 8, cor: cinza }); y += 6; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.6, color: linhaC }); y += 14; };
     topo(false);
     alids.forEach((id, i) => {
-      const linhas = tids.map(t => `${tipoDoc(t).nome}: ${statusTxt(id, t)}`), alto = 14 + Math.ceil(linhas.length / 2) * 12 + 8;
+      const linhas = tids.map(t => [`${tipoDoc(t).nome}: ${statusTxt(id, t)}`, !metaJunta(id, t) || situacaoDoc(metaJunta(id, t)).st === 'vencido']), alto = 14 + Math.ceil(linhas.length / 2) * 12 + 8;
       if (y + alto > H - M) { pg = pdf.addPage([W, H]); y = M + 8; topo(true); }
-      escrever(pg, `${i + 1}. ${(S.alunas[id] || {}).nome || ''}`, M, y, { f: FB, tam: 11, max: W - 2 * M - 100 }); escrever(pg, nasc(id), W - M - 90, y, { tam: 10.5 }); y += 14;
-      linhas.forEach((l, k) => { const col = k % 2, falta = /: falta$|: venceu/.test(l); escrever(pg, l, M + 14 + col * ((W - 2 * M - 14) / 2), y, { tam: 9, cor: falta ? L.rgb(0.7, 0.15, 0.1) : cinza, max: (W - 2 * M - 14) / 2 - 8 }); if (col === 1 || k === linhas.length - 1) y += 12; });
+      escrever(pg, `${i + 1}. ${(S.alunas[id] || {}).nome || ''}`, M, y, { neg: true, tam: 11, max: W - 2 * M - 100 }); escrever(pg, nasc(id), W - M - 90, y, { tam: 10.5 }); y += 14;
+      linhas.forEach(([l, ruim], k) => { const col = k % 2; escrever(pg, l, M + 14 + col * ((W - 2 * M - 14) / 2), y, { tam: 9, cor: ruim ? vermelho : cinza, max: (W - 2 * M - 14) / 2 - 8 }); if (col === 1 || k === linhas.length - 1) y += 12; });
       y += 4; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.4, color: linhaC }); y += 14;
     });
-  }
+  };
   // um cabeçalho em cada página de documento: quem é e que documento é
   const cab = (pg, id, t, extra) => { const m = metaJunta(id, t); pg.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: corEsc });
-    escrever(pg, `${(S.alunas[id] || {}).nome || ''} · ${tipoDoc(t).nome}`, M, M + 10, { f: FB, tam: 12 });
+    escrever(pg, `${(S.alunas[id] || {}).nome || ''} · ${tipoDoc(t).nome}`, M, M + 10, { neg: true, tam: 12 });
     escrever(pg, [`Nascimento ${nasc(id)}`, m && m.validade ? `válido até ${dataBRA(m.validade)}` : '', extra || '', escola].filter(Boolean).join(' · '), M, M + 25, { tam: 9, cor: cinza }); };
   const TOPO = M + 38, caixaH = H - TOPO - M;
-  const lista = []; for (const id of alids) for (const t of tids) if (metaJunta(id, t)) lista.push([id, t]);
-  let n = 0;
-  for (const [id, t] of lista) {
-    progresso(`Juntando ${++n} de ${lista.length}…`);
+  const desenharDoc = async (pdf, id, t) => {
     const f = await arquivosDoc(id, t);
-    if (!f || !(f.arquivos || []).length) { const pg = pdf.addPage([W, H]); cab(pg, id, t); escrever(pg, 'Não deu para abrir este arquivo no app.', M, TOPO + 20, { cor: cinza }); continue; }
+    if (!f || !(f.arquivos || []).length) { const pg = pdf.addPage([W, H]); cab(pg, id, t); escrever(pg, 'Não deu para abrir este arquivo no app.', M, TOPO + 20, { cor: cinza }); return; }
     if (f.formato === 'pdf') {
       try {
         const orig = await L.PDFDocument.load(bytesDe(f.arquivos[0]), { ignoreEncryption: true }), pags = await pdf.embedPdf(orig, orig.getPageIndices());
@@ -3457,7 +3492,7 @@ async function pdfDocumentos({ titulo, alids, tids, capa }, progresso = () => { 
           const e = Math.min((W - 2 * M) / p.width, caixaH / p.height), w = p.width * e, h = p.height * e;
           pg.drawPage(p, { x: (W - w) / 2, y: H - TOPO - h, width: w, height: h }); });
       } catch (e) { const pg = pdf.addPage([W, H]); cab(pg, id, t); escrever(pg, 'Este PDF é protegido e não deu para juntar. Mande-o à parte.', M, TOPO + 20, { cor: cinza }); }
-      continue;
+      return;
     }
     // fotos: uma ocupa a página; frente e verso dividem a página
     const pg = pdf.addPage([W, H]); cab(pg, id, t);
@@ -3465,11 +3500,32 @@ async function pdfDocumentos({ titulo, alids, tids, capa }, progresso = () => { 
     const vao = 12, cada = (caixaH - vao * (ims.length - 1)) / Math.max(1, ims.length);
     ims.forEach((im, k) => { const e = Math.min((W - 2 * M) / im.width, cada / im.height), w = im.width * e, h = im.height * e, topo = TOPO + k * (cada + vao);
       pg.drawImage(im, { x: (W - w) / 2, y: H - topo - h, width: w, height: h }); });
+  };
+  const fechar = async (pdf, t) => { pdf.setTitle(pdfTxt(t)); pdf.setProducer('Turma em Dia'); pdf.setCreator('Turma em Dia'); return pdf.save(); };
+  const lista = []; for (const id of alids) for (const t of tids) if (metaJunta(id, t)) lista.push([id, t]);
+  if (!lista.length) throw new Error('Nenhum dos alunos marcados tem esses documentos no app.');
+  if (!separado) {
+    const pdf = await novoPdf(); if (capa) desenharCapa(pdf);
+    let n = 0; for (const [id, t] of lista) { progresso(`Juntando ${++n} de ${lista.length}…`); await desenharDoc(pdf, id, t); }
+    progresso('Finalizando…');
+    return [{ nome: limpaNome(`Documentos ${titulo || escola}`) + '.pdf', bytes: await fechar(pdf, tit) }];
   }
-  if (!pdf.getPageCount()) throw new Error('Nenhum dos alunos marcados tem esses documentos no app.');
-  pdf.setTitle(pdfTxt(tit)); pdf.setProducer('Turma em Dia'); pdf.setCreator('Turma em Dia');
-  progresso('Finalizando…');
-  return pdf.save();
+  // separados: um arquivo para cada documento, com o nome do aluno e do documento
+  const saida = [], usados = new Set(), nomeUnico = base => { let n = limpaNome(base), k = 2; while (usados.has(n.toLowerCase())) n = limpaNome(base) + ` (${k++})`; usados.add(n.toLowerCase()); return n + '.pdf'; };
+  if (capa) { const pdf = await novoPdf(); desenharCapa(pdf); saida.push({ nome: nomeUnico(`Lista dos alunos - ${titulo || escola}`), bytes: await fechar(pdf, tit) }); }
+  let n = 0;
+  for (const [id, t] of lista) {
+    progresso(`Preparando ${++n} de ${lista.length}…`);
+    const pdf = await novoPdf(); await desenharDoc(pdf, id, t);
+    saida.push({ nome: nomeUnico(`${(S.alunas[id] || {}).nome || 'Aluno'} - ${tipoDoc(t).nome}`), bytes: await fechar(pdf, `${(S.alunas[id] || {}).nome || ''} · ${tipoDoc(t).nome}`) });
+  }
+  return saida;
+}
+// o compartilhar do celular aceita até 10 arquivos e 45 MB de cada vez: divide em lotes
+function lotesDeArquivos(arqs) {
+  const lotes = []; let atual = [], tam = 0;
+  for (const a of arqs) { if (atual.length && (atual.length >= 10 || tam + a.bytes.length > 45 * 1048576)) { lotes.push(atual); atual = []; tam = 0; } atual.push(a); tam += a.bytes.length; }
+  if (atual.length) lotes.push(atual); return lotes;
 }
 
 // enviar (família) ou anexar o atestado recebido em papel (administração)
