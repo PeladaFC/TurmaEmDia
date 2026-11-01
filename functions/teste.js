@@ -283,7 +283,7 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.match(r.body.url, /^https:\/\/auth\.mercadopago\.com\.br\/authorization\?client_id=123&.*redirect_uri=https%3A%2F%2Fsouthamerica-east1-escola-teste\.cloudfunctions\.net%2FmpRetorno/);
   });
   /* ---------- notas fiscais da comissão ---------- */
-  const N = require('./nfse')(db, P.interno);
+  const N = require('./nfse')(db, P.interno, { lib: async () => ({ parsePfx: (b, senha) => { if (senha !== 'certa') throw new Error('x'); return { subject: 'EMPRESA DO DONO LTDA:11222333000181', expiresOn: new Date(Date.parse('2027-12-01')) }; } }) });
   const set9 = (k, v) => S.set('escolas/e9/' + k, v);
   S.set('escolas/e9', { nome: 'Ballet Arte', admins: ['adm9'] });
   set9('professoras/p1', { nome: 'Juliana Costa' });
@@ -299,6 +299,17 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.strictEqual(L[1].grupo, 'Ballet Arte · Juliana Costa');
   });
   S.set('servidor/plataforma', { emails: ['dona@x.com'] });
+  await t('nota da comissão: o dono configura pelo app (certificado, dados, ligar); a escola não', async () => {
+    const pl = async (b, tok) => { const r = resp(); await N.notasPlataforma(req(b, tok), r); return r; };
+    let r = await pl({ acao: 'donoEstado' }, 'ok:adm9:v'); assert.strictEqual(r.code, 403);
+    r = await pl({ acao: 'donoCert', pfx: Buffer.alloc(900, 1).toString('base64'), senha: 'errada' }, 'ok:dona:v'); assert.strictEqual(r.code, 400);
+    r = await pl({ acao: 'donoCert', pfx: Buffer.alloc(900, 1).toString('base64'), senha: 'certa' }, 'ok:dona:v'); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.strictEqual(r.body.cfg.cnpj, '11222333000181'); assert.ok(!JSON.stringify(r.body).includes('certa'));
+    r = await pl({ acao: 'donoSalvar', cfg: { cnpj: '11222333000181', regime: 'simples', cTribNac: '', ligado: true } }, 'ok:dona:v'); assert.strictEqual(r.code, 412);
+    r = await pl({ acao: 'donoSalvar', cfg: { cnpj: '11222333000181', regime: 'simples', cTribNac: '100501', pTrib: '6', serie: '901', ligado: true } }, 'ok:dona:v'); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.deepStrictEqual(r.body.falta, []); const c = S.get('servidor/nfse'); assert.strictEqual(c.opSimpNac, '3'); assert.strictEqual(c.pTotTribSN, 6); assert.strictEqual(c.ligado, true);
+    S.delete('servidor/nfse'); S.delete('servidor/nfse_cert'); // os testes seguintes partem sem configuração
+  });
   await t('notas: relatório e dados do tomador só para a empresa do app', async () => {
     let r = resp(); await N.notasPlataforma(req({ acao: 'relatorio', mes: '2026-09' }, 'ok:adm9'), r); assert.strictEqual(r.code, 403);
     r = resp(); await N.notasPlataforma(req({ acao: 'relatorio', mes: '2026-09' }, 'ok:dona'), r); assert.strictEqual(r.code, 403); // e-mail ainda não confirmado

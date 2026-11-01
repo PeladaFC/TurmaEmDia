@@ -3166,6 +3166,80 @@ const NF_MOCK = () => (window.__nfMock = window.__nfMock || [
   { gid: 'esc1~escola', eid: 'esc1', rec: 'escola', grupo: 'Escolinha Movimento', qtd: 38, total: 52.4, nome: 'Movimento Esportes Ltda', doc: '11444777000161', tipoDoc: 'CNPJ', email: 'contato@movimento.com' },
   { gid: 'esc1~p1', eid: 'esc1', rec: 'p1', grupo: 'Escolinha Movimento · Juliana Costa', qtd: 9, total: 11.7, nome: 'Juliana Costa', doc: '', tipoDoc: '', email: '' },
   { gid: 'e2~escola', eid: 'e2', rec: 'escola', grupo: 'Ballet Arte', qtd: 21, total: 27.3, nome: 'Ana Paula Ribeiro', doc: '52998224725', tipoDoc: 'CPF', email: 'ballet@exemplo.com' }]);
+// dono do app: a nota da comissão (1% dos Pix) que a empresa do app emite para cada escola e professor
+async function sheetNotaDono(volta) {
+  const ajuda = `<div class="nf-ajuda" id="ndajuda" hidden>
+    <h4>O que é isto</h4><p>É a nota fiscal da <b>sua empresa</b> (a do app) para cada escola e cada professor que recebe Pix pelo app, no valor da comissão de 1% do mês. Não tem nada a ver com a nota que a escola emite para as famílias.</p>
+    <h4>O que você precisa</h4><ol>
+      <li><b>Certificado digital A1</b> do CNPJ da empresa: um arquivo .pfx ou .p12 com senha. O mesmo que o Pelota FC usa serve.</li>
+      <li>Da contadora: o <b>código do serviço</b> (6 números; o serviço do app é intermediação de pagamentos, diferente da escolinha), o <b>tipo de empresa</b> e o <b>percentual de tributos</b>.</li>
+      <li>O CNPJ habilitado no Emissor Nacional (nfse.gov.br), com um primeiro acesso.</li></ol>
+    <h4>Passo a passo</h4><ol>
+      <li>Escolha o arquivo do certificado, digite a senha e toque em <b>Instalar certificado</b>. A senha fica só no servidor.</li>
+      <li>Confira o CNPJ (vem do certificado), escolha o tipo de empresa e coloque o código do serviço.</li>
+      <li>A <b>série</b> já vem 901, para não misturar com as notas do Pelota FC (900).</li>
+      <li>Comece em <b>Teste</b>, ligue <b>Emitir sozinho todo dia 1º</b> e salve. Na tela de notas, toque em <b>Emitir as notas deste mês agora</b> para ver se sai certo.</li>
+      <li>Deu certo? Volte aqui e mude para <b>Valendo</b>.</li></ol>
+    <h4>Depois de ligado</h4><ul><li>Todo dia 1º, o app emite a nota do mês anterior para cada escola e professor, no CPF ou CNPJ da conta do Mercado Pago.</li>
+      <li>A escola baixa o PDF em Ajustes → Notas fiscais da comissão.</li><li>Se faltar o CPF ou CNPJ de alguém, aparece "Preencher dados" na tela de notas.</li></ul></div>`;
+  const casca = h => `<div class="headrow"><h3>Minha nota fiscal</h3><button type="button" class="chip" id="ndexp">Explique-me como</button></div>${ajuda}${h}`;
+  const ligarAj = () => { if ($('ndexp')) $('ndexp').onclick = () => { const a = $('ndajuda'); a.hidden = !a.hidden; $('ndexp').textContent = a.hidden ? 'Explique-me como' : 'Fechar explicação'; }; };
+  sheet(casca('<div class="empty">Carregando…</div>'), ligarAj);
+  let E; try { E = await notasServidor('donoEstado'); } catch (e) { return sheet(casca(`<div class="banner"><span>${esc(e.message)}</span></div><button class="btn ghost" data-fechar>Fechar</button>`), ligarAj); }
+  const c = E.cfg, cert = E.cert; let regime = c.regime || '', amb = c.ambiente || 'restrita';
+  const n2 = v => v == null ? '' : String(v).replace('.', ',');
+  sheet(casca(`<div class="sub">Nota da comissão do app (1% dos Pix) para cada escola e professor, todo mês.</div>
+    ${c.ligado ? `<div class="banner ok"><span><b>Ligada</b>${amb === 'restrita' ? ' · em teste (sem valor fiscal)' : ' · valendo'}. Sai sozinha todo dia 1º.</span></div>` : E.falta.length ? `<div class="banner"><span><b>Desligada.</b> Para ligar, falta: ${esc(E.falta.join(', '))}.</span></div>` : ''}
+    <div class="field"><span class="lb">Certificado digital A1</span>
+      ${cert ? `<div class="linha-botao" style="cursor:default"><span class="grow"><b>${esc(cert.titular || 'Certificado instalado')}</b><span class="s">Válido até ${new Date(cert.validade).toLocaleDateString('pt-BR')}${cert.validade - Date.now() < 30 * 864e5 ? ' · vence em breve: renove' : ''}</span></span><button type="button" class="chip" id="ndtroca">Trocar</button></div>` : ''}
+      <div id="ndcertw" ${cert ? 'hidden' : ''}><input id="ndarq" type="file" accept=".pfx,.p12,application/x-pkcs12" hidden>
+        <label for="ndarq" class="linha-botao" style="cursor:pointer;margin-bottom:10px"><span class="grow"><b id="ndarqn">Escolher o arquivo</b><span class="s">O certificado A1 é um arquivo .pfx ou .p12</span></span><span aria-hidden="true" style="font-weight:800">›</span></label>
+        <div class="field"><label for="ndsenha">Senha do certificado</label><input id="ndsenha" type="password" autocomplete="off"></div>
+        <button type="button" class="btn ghost" id="ndinst" style="width:100%;margin-top:10px">Instalar certificado</button>
+        <div class="note">A senha fica só no servidor, protegida.${MOCK ? ' (No teste: qualquer arquivo, senha 1234.)' : ''}</div></div></div>
+    <div class="field"><label for="ndcnpj">CNPJ da empresa</label><input id="ndcnpj" inputmode="numeric" maxlength="18" value="${esc(fmtCnpj(c.cnpj || ''))}" placeholder="00.000.000/0000-00"></div>
+    <div class="field"><span class="lb">Tipo de empresa</span><div class="opcoes c3" id="ndreg">${REGIMES_NF.map(([k, n]) => `<button type="button" class="pick" data-rg="${k}" aria-pressed="${regime === k}">${n}</button>`).join('')}</div>
+      <div class="note">Simples = Simples Nacional (ME ou EPP). Outro = Lucro Presumido ou Real.</div></div>
+    <div class="two"><div class="field"><label for="ndcod">Código do serviço</label><input id="ndcod" inputmode="numeric" maxlength="8" value="${esc(c.cTribNac || '')}" placeholder="6 números"></div>
+      <div class="field"><label for="ndnbs">Código NBS (opcional)</label><input id="ndnbs" inputmode="numeric" maxlength="9" value="${esc(c.cNBS || '')}"></div></div>
+    <div class="note" style="margin-top:-6px;margin-bottom:12px">A contadora informa. O serviço do app é intermediação de pagamentos, por isso o código é diferente do das escolinhas.</div>
+    <div id="ndimp" class="two"><div class="field"><label for="ndiss">Alíquota do ISS (%)</label><input id="ndiss" inputmode="decimal" value="${esc(n2(c.aliqIss))}" placeholder="Ex.: 5"></div>
+      <div class="field"><label for="ndtrib">Tributos aproximados (%)</label><input id="ndtrib" inputmode="decimal" value="${esc(n2(c.pTrib))}" placeholder="Ex.: 6"></div></div>
+    <div class="field"><label for="ndim">Inscrição municipal no Recife (opcional)</label><input id="ndim" inputmode="numeric" maxlength="15" value="${esc(c.im || '')}"></div>
+    <div class="two"><div class="field"><label for="ndserie">Série das notas</label><input id="ndserie" inputmode="numeric" maxlength="4" value="${esc(c.serie || '901')}"></div>
+      <div class="field"><label for="ndnini">Primeiro número</label><input id="ndnini" inputmode="numeric" maxlength="6" value="${esc(c.nInicial || 1)}"></div></div>
+    <div class="note" style="margin-top:-6px;margin-bottom:12px">O Pelota FC usa a série 900. Deixe 901 aqui para as notas não se misturarem.</div>
+    <div class="field"><span class="lb">Ambiente</span><div class="opcoes" id="ndamb">${[['restrita', 'Teste'], ['producao', 'Valendo']].map(([k, n]) => `<button type="button" class="pick" data-am="${k}" aria-pressed="${amb === k}">${n}</button>`).join('')}</div><div class="note" id="ndambn"></div></div>
+    <label class="liga"><span class="grow"><b>Emitir sozinho todo dia 1º</b><span class="s">A nota do mês anterior, para cada escola e professor que recebeu Pix.</span></span><input type="checkbox" role="switch" id="ndlig" ${c.ligado ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+    <div class="err" id="nderr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="ndok">Salvar</button></div>`), s => {
+    ligarAj();
+    const err = m => { $('nderr').textContent = m; };
+    const verReg = () => { $('ndimp').hidden = regime === 'mei' || !regime; s.querySelectorAll('[data-rg]').forEach(b => b.setAttribute('aria-pressed', b.dataset.rg === regime)); };
+    const verAmb = () => { s.querySelectorAll('[data-am]').forEach(b => b.setAttribute('aria-pressed', b.dataset.am === amb)); $('ndambn').textContent = amb === 'producao' ? 'As notas têm valor fiscal e geram imposto.' : 'As notas saem sem valor fiscal, só para conferir. Comece por aqui.'; };
+    verReg(); verAmb();
+    s.querySelectorAll('[data-rg]').forEach(b => b.onclick = () => { regime = b.dataset.rg; verReg(); });
+    s.querySelectorAll('[data-am]').forEach(b => b.onclick = () => { amb = b.dataset.am; verAmb(); });
+    $('ndcnpj').oninput = () => { const v = fmtCnpj($('ndcnpj').value); if (v !== $('ndcnpj').value) $('ndcnpj').value = v; };
+    $('ndarq').onchange = () => { const f = $('ndarq').files[0]; $('ndarqn').textContent = f ? f.name : 'Escolher o arquivo'; };
+    if ($('ndtroca')) $('ndtroca').onclick = () => { $('ndcertw').hidden = false; };
+    $('ndinst').onclick = async () => {
+      const f = $('ndarq').files[0]; if (!f) return err('Escolha o arquivo do certificado (.pfx ou .p12).'); if (!$('ndsenha').value) return err('Digite a senha do certificado.');
+      $('ndinst').disabled = true; $('ndinst').textContent = 'Instalando…';
+      try { const b64 = await new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = no; r.readAsDataURL(f); });
+        await notasServidor('donoCert', { pfx: b64, senha: $('ndsenha').value }); aviso('Certificado instalado'); sheetNotaDono(volta); }
+      catch (e) { err(msgErro(e)); $('ndinst').disabled = false; $('ndinst').textContent = 'Instalar certificado'; }
+    };
+    $('ndok').onclick = async () => {
+      const cfg = { cnpj: $('ndcnpj').value, regime, cTribNac: $('ndcod').value, cNBS: $('ndnbs').value, aliqIss: $('ndiss').value, pTrib: $('ndtrib').value, im: $('ndim').value, serie: $('ndserie').value, nInicial: $('ndnini').value, ambiente: amb, ligado: $('ndlig').checked };
+      if (cfg.ligado && amb === 'producao' && c.ambiente !== 'producao') { const ok = await new Promise(r => confirmar('Emitir notas valendo?', 'A partir de agora as notas da comissão têm valor fiscal. Fez o teste antes?', 'Sim, valendo', () => r(true))); if (!ok) return; }
+      $('ndok').disabled = true;
+      try { await notasServidor('donoSalvar', { cfg }); aviso(cfg.ligado ? 'Nota da comissão ligada' : 'Salvo'); if (volta) volta(); else fecharSheet(); }
+      catch (e) { err(msgErro(e)); $('ndok').disabled = false; }
+    };
+  });
+}
+const DONO_MOCK = { cfg: { serie: '901', nInicial: 1, ambiente: 'restrita', ligado: false }, cert: null };
 async function notasServidor(acao, extra) {
   if (MOCK) {
     if (acao === 'acesso') return { ok: true };
@@ -3173,7 +3247,15 @@ async function notasServidor(acao, extra) {
     if (acao === 'emitir') { let n = 0; L.forEach(l => { if (l.doc && !(l.nota && l.nota.status === 'ok')) { l.nota = { status: 'ok', chave: '26116062211444777000161000000000000126091234567890', ambiente: 'restrita' }; n++; } }); return { ok: n }; }
     if (acao === 'pdf') throw new Error('No modo de teste não há PDF.');
     if (acao === 'tomador') { const l = L.find(x => x.gid === extra.gid), d = extra.doc.replace(/\D/g, ''); if (l) Object.assign(l, { nome: extra.nome, doc: d, email: extra.email, tipoDoc: d.length === 14 ? 'CNPJ' : 'CPF' }); return { ok: true }; }
-    return { mes: extra.mes, linhas: L, total: C.r2(L.reduce((x, l) => x + l.total, 0)), nfse: { ligado: false, ambiente: 'restrita', falta: ['certificado digital A1'], validade: null } };
+    // configuração da nota do dono, no modo de teste
+    const D = DONO_MOCK, estadoD = () => { const c = D.cfg, f = []; if (!/^\d{14}$/.test(c.cnpj || '')) f.push('CNPJ da empresa'); if (!/^\d{6}$/.test(c.cTribNac || '')) f.push('código do serviço (cTribNac)');
+      if (c.regime === 'simples' && !(c.pTrib > 0)) f.push('percentual de tributos do Simples'); if (!D.cert) f.push('certificado digital A1'); return { cfg: { ...c }, cert: D.cert, falta: f }; };
+    if (acao === 'donoEstado') return estadoD();
+    if (acao === 'donoCert') { if (extra.senha !== '1234') throw new Error('Não abriu: a senha está errada ou o arquivo não é um certificado A1. (No teste, a senha é 1234.)'); D.cert = { titular: 'EMPRESA DO APP LTDA', validade: Date.now() + 330 * 864e5 }; if (!D.cfg.cnpj) D.cfg.cnpj = '11222333000181'; return estadoD(); }
+    if (acao === 'donoSalvar') { const c = extra.cfg; Object.assign(D.cfg, { ...c, cnpj: C.soDigitos(c.cnpj), cTribNac: C.soDigitos(c.cTribNac), aliqIss: c.regime === 'mei' ? null : parseValor(c.aliqIss) || null, pTrib: c.regime === 'mei' ? null : parseValor(c.pTrib) || null, ligado: false });
+      const e = estadoD(); if (c.ligado && e.falta.length) throw new Error('Para ligar, falta: ' + e.falta.join(', ') + '.'); D.cfg.ligado = !!c.ligado; return estadoD(); }
+    const eD = estadoD();
+    return { mes: extra.mes, linhas: L, total: C.r2(L.reduce((x, l) => x + l.total, 0)), nfse: { ligado: eD.cfg.ligado, ambiente: eD.cfg.ambiente || 'restrita', falta: eD.falta, validade: D.cert ? D.cert.validade : null } };
   }
   return servidor('notasPlataforma', { acao, ...(extra || {}) });
 }
@@ -3200,8 +3282,9 @@ async function sheetNotasPlataforma(mes, editar) {
   mes = mes || mesAnteriorNF();
   const [ano, mm] = mes.split('-'), nomeM = C.MESES[Number(mm) - 1];
   const topo = `${abasDono('notas')}<h3>Notas fiscais</h3><div class="sub">Comissão de 1% dos Pix, separada por quem recebe (escola ou professor com conta própria). Uma nota para cada um, uma vez por mês.</div>
+    <button type="button" class="linha-botao" id="nfdono" style="margin:4px 0 12px"><span class="grow"><b>Minha nota fiscal (empresa do app)</b><span class="s">Certificado, CNPJ, código do serviço e ligar a emissão, com o passo a passo</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>
     <div class="cal-topo"><button type="button" class="icon-btn" id="nfant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="nfprox" aria-label="Próximo mês">›</button></div>`;
-  const nav = () => { const vai = n => { const [y, m] = mes.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1)); sheetNotasPlataforma(d.toISOString().slice(0, 7)); }; $('nfant').onclick = () => vai(-1); $('nfprox').onclick = () => vai(1); ligarAbasDono(); };
+  const nav = () => { const vai = n => { const [y, m] = mes.split('-').map(Number), d = new Date(Date.UTC(y, m - 1 + n, 1)); sheetNotasPlataforma(d.toISOString().slice(0, 7)); }; $('nfant').onclick = () => vai(-1); $('nfprox').onclick = () => vai(1); $('nfdono').onclick = () => abrirDe(() => sheetNotasPlataforma(mes), () => sheetNotaDono(() => sheetNotasPlataforma(mes))); ligarAbasDono(); };
   sheet(`${topo}<div class="empty">Somando as comissões…</div><button class="btn ghost" data-fechar>Fechar</button>`, nav);
   let D; try { D = await notasServidor('relatorio', { mes }); } catch (e) { return sheet(`${topo}<div class="banner"><span>${esc(e.message)}</span></div><button class="btn ghost" data-fechar>Fechar</button>`, nav); }
   const L = D.linhas || [], F = D.nfse || null;

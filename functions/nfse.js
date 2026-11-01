@@ -22,11 +22,11 @@ const admin = require('firebase-admin');
 const COD_RECIFE = '2611606';
 const VER_APLIC = 'TurmaEmDia-1';
 
-module.exports = (db, PAG) => {
+module.exports = (db, PAG, op = {}) => {
   const erro = (m, http) => Object.assign(new Error(m), { http });
   const ler = async p => { const s = await db.doc(p).get(); return s.exists ? s.data() : null; };
   let LIB = null;
-  const lib = async () => LIB || (LIB = await import('open-nfse'));
+  const lib = async () => LIB || (LIB = op.lib ? await op.lib() : await import('open-nfse'));
   const idNota = (mes, gid) => `${mes}_${gid}`;
   const mesAnterior = agora => { const d = new Date((agora || Date.now()) - 3 * 3600e3); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); };
   const descricao = (l, mes) => { const [a, m] = mes.split('-');
@@ -38,7 +38,10 @@ module.exports = (db, PAG) => {
     const f = [];
     if (!/^\d{14}$/.test(cfg.cnpj || '')) f.push('CNPJ da empresa');
     if (!/^\d{6}$/.test(cfg.cTribNac || '')) f.push('código do serviço (cTribNac)');
-    if ((cfg.opSimpNac || '3') === '3' && cfg.pTotTribSN == null) f.push('percentual de tributos do Simples');
+    const r = String(cfg.opSimpNac || '3');
+    if (r === '3' && cfg.pTotTribSN == null) f.push('percentual de tributos do Simples');
+    if (r === '1' && !(Number(cfg.aliqIss) > 0)) f.push('alíquota do ISS');
+    if (r === '1' && cfg.pTotTribSN == null) f.push('percentual aproximado de tributos');
     return f;
   }
 
@@ -89,7 +92,11 @@ module.exports = (db, PAG) => {
       dCompet: new Date(Date.UTC(a, m, 0, 15)), // último dia do mês da comissão
       verAplic: VER_APLIC,
       servico: { cTribNac: cfg.cTribNac, ...(cfg.cNBS ? { cNBS: String(cfg.cNBS) } : {}), ...(cfg.cTribMun ? { cTribMun: String(cfg.cTribMun) } : {}), descricao: descricao(l, mes), codMunicipioPrestacao: codMun },
-      valores: { vServ: Math.round(l.total * 100) / 100, ...(cfg.pTotTribSN != null ? { pTotTribSN: Number(cfg.pTotTribSN) } : {}), ...(cfg.aliqIss != null ? { aliqIss: Number(cfg.aliqIss) } : {}) },
+      // tributos aproximados conforme o regime: MEI não informa; Simples = pTotTribSN; outro = pTotTrib (federal + municipal)
+      valores: { vServ: Math.round(l.total * 100) / 100,
+        ...(opSimpNac === '3' && cfg.pTotTribSN != null ? { pTotTribSN: Number(cfg.pTotTribSN) } : {}),
+        ...(opSimpNac === '1' ? { pTotTrib: { pTotTribFed: Math.max(0, Math.round((Number(cfg.pTotTribSN || 0) - Number(cfg.aliqIss || 0)) * 100) / 100), pTotTribEst: 0, pTotTribMun: Number(cfg.aliqIss || 0) } } : {}),
+        ...(cfg.aliqIss != null && opSimpNac !== '2' ? { aliqIss: Number(cfg.aliqIss) } : {}) },
       tomador: { documento: l.doc.length === 14 ? { CNPJ: l.doc } : { CPF: l.doc }, nome: String(l.nome || '').slice(0, 300), ...(l.email ? { email: l.email } : {}) }
     };
   }
@@ -171,6 +178,39 @@ module.exports = (db, PAG) => {
   }
   const mesOk = m => /^\d{4}-(0[1-9]|1[0-2])$/.test(m || '');
 
+  /* ---------- configuração da nota da comissão, pelo Painel do dono ---------- */
+  const REG = { mei: '2', simples: '3', normal: '1' }, REG_DE = { '2': 'mei', '3': 'simples', '1': 'normal' };
+  async function estadoDono() {
+    const cfg = await config(), c = await ler('servidor/nfse_cert');
+    const cert = c && c.pfx ? { titular: c.titular || '', validade: c.validade || null, vencido: !!(c.validade && c.validade < Date.now()) } : null;
+    const f = falta(cfg).concat(cert ? (cert.vencido ? ['certificado válido (o atual venceu)'] : []) : ['certificado digital A1']);
+    return { cfg: { cnpj: cfg.cnpj || '', regime: REG_DE[String(cfg.opSimpNac || '')] || '', im: cfg.im || '', cTribNac: cfg.cTribNac || '', cNBS: cfg.cNBS || '',
+      aliqIss: cfg.aliqIss ?? null, pTrib: cfg.pTotTribSN ?? null, serie: cfg.serie || '901', nInicial: cfg.nInicial || 1, ambiente: cfg.ambiente || 'restrita', ligado: !!cfg.ligado }, cert, falta: f };
+  }
+  async function certDono(pfx64, senha) {
+    const L = await lib(), buf = Buffer.from(String(pfx64 || ''), 'base64');
+    if (buf.length < 500 || buf.length > 30000) throw erro('Esse arquivo não parece um certificado A1 (.pfx ou .p12).', 400);
+    let c; try { c = L.parsePfx(buf, String(senha || '')); } catch (e) { throw erro('Não abriu: a senha está errada ou o arquivo não é um certificado A1.', 400); }
+    const validade = c.expiresOn instanceof Date ? c.expiresOn.getTime() : Date.parse(c.expiresOn);
+    if (validade < Date.now()) throw erro('Esse certificado já venceu. Peça um novo à certificadora.', 400);
+    const titular = String(c.subject || '').replace(/^CN=/, '').replace(/:\d+$/, '').trim().slice(0, 150), doc = (String(c.subject || '').match(/(\d{14})\s*$/) || [])[1] || '';
+    await db.doc('servidor/nfse_cert').set({ pfx: buf.toString('base64'), senha: String(senha || ''), titular, validade, em: Date.now() });
+    const cfg = await config(); if (doc && !cfg.cnpj) await db.doc('servidor/nfse').set({ cnpj: doc }, { merge: true });
+  }
+  async function salvarDono(b) {
+    const n = x => x === '' || x == null ? null : Math.round(Number(String(x).replace(',', '.')) * 100) / 100, reg = REG[b.regime] || null;
+    const o = { cnpj: String(b.cnpj || '').replace(/\D/g, '').slice(0, 14), opSimpNac: reg, regApTribSN: '1', regEspTrib: '0', im: String(b.im || '').replace(/\D/g, '').slice(0, 15),
+      cTribNac: String(b.cTribNac || '').replace(/\D/g, '').slice(0, 6), cNBS: String(b.cNBS || '').replace(/\D/g, '').slice(0, 9),
+      aliqIss: reg === '2' ? null : n(b.aliqIss), pTotTribSN: reg === '2' ? null : n(b.pTrib), serie: /^\d{1,4}$/.test(String(b.serie || '')) ? String(Number(b.serie)) : '901',
+      nInicial: Math.max(1, parseInt(b.nInicial, 10) || 1), ambiente: b.ambiente === 'producao' ? 'producao' : 'restrita', codMun: COD_RECIFE, em: Date.now() };
+    if (o.cnpj && o.cnpj.length !== 14) throw erro('O CNPJ tem 14 números.', 400);
+    if (o.aliqIss != null && !(o.aliqIss >= 2 && o.aliqIss <= 5)) throw erro('A alíquota do ISS fica entre 2% e 5%.', 400);
+    if (o.pTotTribSN != null && !(o.pTotTribSN > 0 && o.pTotTribSN < 40)) throw erro('O percentual de tributos parece errado. Confira com a contadora.', 400);
+    const ligar = !!b.ligado;
+    if (ligar) { const c = await ler('servidor/nfse_cert'), f = falta(o).concat(c && c.pfx ? [] : ['certificado digital A1']); if (!reg) f.push('tipo de empresa'); if (f.length) throw erro('Para ligar, falta: ' + f.join(', ') + '.', 412); }
+    await db.doc('servidor/nfse').set({ ...o, ligado: ligar }, { merge: true });
+  }
+
   /* ---------- painel do dono: uso do app por região (como no Pelota FC) ---------- */
   const UF_REGIAO = { AC: 'Norte', AP: 'Norte', AM: 'Norte', PA: 'Norte', RO: 'Norte', RR: 'Norte', TO: 'Norte',
     AL: 'Nordeste', BA: 'Nordeste', CE: 'Nordeste', MA: 'Nordeste', PB: 'Nordeste', PE: 'Nordeste', PI: 'Nordeste', RN: 'Nordeste', SE: 'Nordeste',
@@ -228,6 +268,10 @@ module.exports = (db, PAG) => {
       await daPlataforma(req);
       const b = req.body || {};
       if (b.acao === 'acesso') return res.json({ ok: true });
+      // configuração da nota da comissão pelo próprio app (antes era só pelo Cloud Shell)
+      if (b.acao === 'donoEstado') return res.json(await estadoDono());
+      if (b.acao === 'donoCert') { await certDono(b.pfx, b.senha); return res.json(await estadoDono()); }
+      if (b.acao === 'donoSalvar') { await salvarDono(b.cfg || {}); return res.json(await estadoDono()); }
       if (b.acao === 'painel') return res.json(await painel());
       if (b.acao === 'tomador') {
         const [eid, rec] = String(b.gid || '').split('~'), doc = String(b.doc || '').replace(/\D/g, '');
