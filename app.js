@@ -2113,24 +2113,17 @@ function sheetPerfilAluno(alid, volta) {
   const a = S.alunas[alid]; if (!a) return;
   const eu = () => sheetPerfilAluno(alid, volta), adm = !!S.admin, prof = !!S.prof && !adm;
   const A = prof ? ((S.pp || {}).alunos || []).find(x => x.id === alid) || {} : null;
-  const r = adm ? respDe(alid) : {}, P = adm ? pendenciasAluno(alid) : null;
+  const r = adm ? respDe(alid) : {};
   const ts = (prof ? A.turmas || [] : a.turmas || []).map(t => S.turmas[t]).filter(Boolean);
   const gs = prof ? A.grupos || [] : porNome(S.grupos).filter(([, G]) => (G.alunas || []).includes(alid)).map(([, G]) => G.nome);
   const wa = adm && r.telefone ? waLink(r.telefone, `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
   const cor = hexOk(S.cfg.cor) ? S.cfg.cor : COR_PADRAO;
   let filtro = '', notas = null, parar = null;
-  // situação, em poucas palavras (só o que importa agora)
-  const status = (prof ? [chipMensal(A.mensal)] : [
-    !P.ativo ? '<span class="chip">Inativo(a)</span>' : '',
-    P.nAtraso ? `<span class="chip vencido">Em atraso ${brl(P.atraso)}</span>` : P.ativo ? '<span class="chip pago">Em dia</span>' : '',
-    P.termo ? '<span class="chip aberto">Sem termo</span>' : '',
-    P.docRuim ? '<span class="chip vencido">Documento vencendo</span>' : P.docFalta ? '<span class="chip aberto">Falta documento</span>' : '']).filter(Boolean).join('');
-  const aniver = a.nascimento && a.nascimento.slice(5, 7) === mesHoje().slice(5, 7) ? ` · 🎂 dia ${Number(a.nascimento.slice(8, 10))}` : '';
   const desenharNotas = () => {
     if (!$('pnotas')) return;
     if (!notas) { $('pnotas').innerHTML = '<div class="sub">Carregando…</div>'; return; }
     const usadas = TAGS_NOTA.filter(([k]) => notas.some(n => n.tag === k));
-    $('pfilt').innerHTML = usadas.length > 1 ? [['', 'Todas'], ...usadas].map(([k, n]) => `<button type="button" class="pick" data-nf="${k}" aria-pressed="${filtro === k}">${esc(n)}</button>`).join('') : '';
+    $('pfilt').innerHTML = usadas.length > 1 ? [['', 'Todas'], ...usadas].map(([k, n]) => `<button type="button" class="pilula" data-nf="${k}" aria-pressed="${filtro === k}">${esc(n)}</button>`).join('') : '';
     $('pfilt').querySelectorAll('[data-nf]').forEach(b => b.onclick = () => { filtro = b.dataset.nf; desenharNotas(); });
     const lista = notas.filter(n => !filtro || n.tag === filtro);
     $('pnotas').innerHTML = lista.length ? lista.map(n => { const T = tagNota(n.tag), meu = n.autorUid === EU.uid;
@@ -2146,22 +2139,20 @@ function sheetPerfilAluno(alid, volta) {
   };
   const fotoHTML = f => f ? `<img src="${f}" alt="Foto de ${esc(a.nome)}">` : `<span class="pfoto-ini">${esc(iniciais(a.nome))}</span>`;
   sheet(`<div class="pcard" style="--pc:${esc(cor)}">
-      <div class="pcard-topo">
-        <${adm ? 'label' : 'div'} class="pfoto ${adm ? 'pode' : ''}" id="pfoto" ${adm ? 'aria-label="Trocar a foto"' : ''}>${fotoHTML(FOTOS[alid])}${adm ? `<span class="pfoto-cam" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><input type="file" id="pfotoarq" accept="image/*" hidden>` : ''}</${adm ? 'label' : 'div'}>
-        <div class="pcard-id"><div class="pcard-nome">${esc(a.nome)}</div><div class="pcard-meta num">${esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · '))}${aniver}</div>
-          ${status ? `<div class="pcard-status">${status}</div>` : ''}</div>
-      </div>
-      <div class="pcard-info">
-        ${ts.length ? `<div class="pcard-linha"><span class="pcard-ic" aria-hidden="true">${ICO.escola}</span><span>${ts.map(t => esc(t.nome)).join(' · ')}</span></div>` : '<div class="pcard-linha sub">Sem turma</div>'}
-        ${gs.length ? `<div class="pcard-linha"><span class="pcard-ic" aria-hidden="true">${ICO.filhas}</span><span class="pcard-tags">${gs.map(g => `<span>${esc(g)}</span>`).join('')}</span></div>` : ''}
-        ${adm && r.nome ? `<div class="pcard-linha"><span class="pcard-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></span><span class="grow">${esc(r.nome)}${r.telefone ? ` <span class="num sub">${esc(r.telefone)}</span>` : ''}</span>${wa ? `<a class="pcard-wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome)}">${ICO_WA}</a>` : ''}</div>` : ''}
+      <${adm ? 'label' : 'div'} class="pfoto ${adm ? 'pode' : ''}" id="pfoto" ${adm ? 'aria-label="Trocar a foto"' : ''}>${fotoHTML(FOTOS[alid])}${adm ? `<span class="pfoto-cam" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span><input type="file" id="pfotoarq" accept="image/*" hidden>` : ''}</${adm ? 'label' : 'div'}>
+      <div class="pcard-id">
+        <div class="pcard-nome">${esc(a.nome)}</div>
+        ${idade(a.nascimento) ? `<div class="pcard-meta num">${esc(idade(a.nascimento))}</div>` : ''}
+        ${ts.length ? `<div class="pcard-turmas">${ts.map(t => esc(t.nome)).join(' · ')}</div>` : ''}
+        ${gs.length ? `<div class="pcard-tags">${gs.map(g => `<span>${esc(g)}</span>`).join('')}</div>` : ''}
+        ${adm && r.nome ? `<div class="pcard-resp"><span>${esc(r.nome)}</span>${wa ? `<a class="pcard-wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome)}">${ICO_WA}</a>` : ''}</div>` : ''}
       </div>
     </div>
-    ${adm ? '<div class="perfil-botoes"><button type="button" class="btn ghost" id="pedit">Editar cadastro</button><button type="button" class="btn ghost" id="pcob">Cobranças</button></div>' : ''}
-    ${adm ? `<section><h2>Documentos</h2><div class="docs-al">${tiposDoc().map(T => { const d = docDe(alid, T.id);
-      return `<button type="button" class="linha-botao" data-adoc="${esc(T.id)}"><span class="grow"><b>${esc(T.nome)}</b><span class="s">${d ? `${d.familia ? 'Enviado pela família' : 'Guardado pela escola'} em ${dataCurta(d.em)}` : T.familia !== false ? 'A família pode enviar pelo app' : 'Toque para guardar'}</span></span>${chipDoc(d)}<span aria-hidden="true">›</span></button>`; }).join('') || '<div class="sub">Nenhum tipo de documento. Escolha em Ajustes.</div>'}</div></section>` : ''}
-    <section><div class="headrow"><h2>Notas da equipe</h2><button type="button" class="add" id="pnova">+ Nota</button></div>
-      <div class="opcoes" id="pfilt"></div>
+    ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
+    ${adm ? `<section class="psec"><h2>Documentos</h2><div class="plista">${tiposDoc().map(T => { const d = docDe(alid, T.id);
+      return `<button type="button" class="plinha" data-adoc="${esc(T.id)}"><span class="grow">${esc(T.nome)}</span>${chipDoc(d)}<span class="seta" aria-hidden="true">›</span></button>`; }).join('') || '<div class="plinha sub">Nenhum tipo de documento. Escolha em Ajustes.</div>'}</div></section>` : ''}
+    <section class="psec"><div class="psec-cab"><h2>Notas da equipe</h2><button type="button" class="pacao pacao-forte" id="pnova">+ Nota</button></div>
+      <div class="pfiltros" id="pfilt"></div>
       <div id="pnotas"></div></section>
     <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
     if (volta) SHEET_VOLTAR = volta;

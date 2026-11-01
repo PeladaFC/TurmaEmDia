@@ -459,8 +459,6 @@ details.doc-tipo summary{display:flex;align-items:center;gap:10px;padding:12px 1
 details.doc-tipo summary::-webkit-details-marker{display:none}
 details.doc-tipo summary .s{display:block;font-size:.82rem;color:var(--muted)}
 details.doc-tipo[open] summary .seta{transform:rotate(180deg)}
-.perfil-botoes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.perfil-botoes:empty{display:none}
 .nota{border:1px solid var(--line);border-left:5px solid var(--tc);border-radius:5px;background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
 .nota-cab{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .nota-cab .s{font-size:.8rem;color:var(--muted)}
@@ -662,29 +660,43 @@ nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:up
 .opcoes.c3{--cols:3}
 .busca-filtros select,.busca-campo input{width:100%;box-sizing:border-box;min-height:46px}
 
-/* cartão do aluno: foto, nome e o resumo, discreto */
-.pcard{position:relative;display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
-.pcard::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:var(--pc)}
-.pcard-topo{display:flex;gap:14px;align-items:center}
-.pfoto{position:relative;flex:none;width:76px;height:76px;border-radius:50%;padding:3px;background:conic-gradient(var(--pc),color-mix(in srgb,var(--pc) 45%,#fff),var(--pc));display:grid;place-items:center;margin:0}
-.pfoto img,.pfoto .pfoto-ini{width:100%;height:100%;border-radius:50%;border:3px solid var(--surface);object-fit:cover;display:grid;place-items:center;background:color-mix(in srgb,var(--pc) 12%,var(--surface));color:var(--pc);font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.5rem}
+/* cartão do aluno: foto grande, nome e o resumo, na cor da escola */
+.pcard{display:flex;align-items:center;gap:16px;padding:18px 16px;border-radius:10px;color:#fff;background:linear-gradient(140deg,color-mix(in srgb,var(--pc) 88%,#000) 0%,color-mix(in srgb,var(--pc) 62%,#000) 100%);box-shadow:0 8px 22px -12px color-mix(in srgb,var(--pc) 70%,#000)}
+.pfoto{position:relative;flex:none;width:104px;height:104px;border-radius:50%;padding:3px;background:rgba(255,255,255,.55);margin:0}
+.pfoto img,.pfoto .pfoto-ini{width:100%;height:100%;border-radius:50%;object-fit:cover;display:grid;place-items:center;background:color-mix(in srgb,var(--pc) 40%,#fff);color:color-mix(in srgb,var(--pc) 85%,#000);font-family:var(--f-display);font-style:italic;font-weight:800;font-size:2rem}
 .pfoto.pode{cursor:pointer}
-.pfoto-cam{position:absolute;right:-2px;bottom:-2px;width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--surface);display:grid;place-items:center;border:2px solid var(--surface)}
-.pfoto-cam svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
-.pcard-id{min-width:0;display:flex;flex-direction:column;gap:3px}
-.pcard-nome{font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.35rem;line-height:1.05;text-transform:uppercase;overflow-wrap:anywhere}
-.pcard-meta{font-size:.86rem;color:var(--muted)}
-.pcard-status{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
-.pcard-status .chip{font-size:.62rem;padding:2px 7px}
-.pcard-info{display:flex;flex-direction:column;gap:7px;padding-top:12px;border-top:1px solid var(--line)}
-.pcard-linha{display:flex;align-items:center;gap:9px;font-size:.88rem;color:var(--ink);min-width:0}
-.pcard-ic{flex:none;width:18px;height:18px;color:var(--muted);display:grid;place-items:center}
-.pcard-ic svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.pcard-tags{display:flex;flex-wrap:wrap;gap:5px}
-.pcard-tags span{font-size:.75rem;font-weight:600;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--pc) 10%,var(--surface));color:color-mix(in srgb,var(--pc) 80%,var(--ink))}
-.pcard-wa{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#1FA855;color:#fff}
-.pcard-wa svg{width:16px;height:16px}
-.foto-dot{object-fit:cover;padding:0}
+.pfoto-cam{position:absolute;right:0;bottom:2px;width:28px;height:28px;border-radius:50%;background:#fff;color:color-mix(in srgb,var(--pc) 85%,#000);display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.pfoto-cam svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
+.pcard-id{min-width:0;flex:1;display:flex;flex-direction:column;gap:5px}
+.pcard-nome{font-family:var(--f-display);font-style:italic;font-weight:800;font-size:1.4rem;line-height:1.02;text-transform:uppercase;overflow-wrap:anywhere}
+.pcard-meta{font-size:.85rem;opacity:.85;margin-top:-2px}
+.pcard-turmas{font-size:.85rem;opacity:.92}
+.pcard-tags{display:flex;flex-wrap:wrap;gap:4px}
+.pcard-tags span{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.18);color:#fff}
+.pcard-resp{display:flex;align-items:center;gap:8px;font-size:.82rem;opacity:.95;margin-top:2px}
+.pcard-wa{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#1FA855;color:#fff}
+.pcard-wa svg{width:14px;height:14px}
+/* página do aluno: ações pequenas e listas compactas */
+.pacoes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pacao{height:38px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:6px;padding:0 12px;font-family:var(--f-display);font-style:italic;font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:.88rem}
+.pacao-forte{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);height:32px;font-size:.8rem}
+.psec{display:flex;flex-direction:column;gap:8px}
+.psec h2{font-size:1.15rem;margin:0}
+.psec-cab{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.plista{border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden}
+.plinha{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:8px 12px;border:0;border-top:1px solid var(--line);background:none;color:var(--ink);text-align:left;font-size:.9rem}
+.plinha:first-child{border-top:0}
+.plinha .chip{font-size:.62rem;padding:3px 8px}
+.plinha .seta{color:var(--muted);font-weight:700}
+.pfiltros{display:flex;flex-wrap:wrap;gap:6px}
+.pfiltros:empty{display:none}
+.pilula{height:28px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:.78rem;font-weight:600}
+.pilula[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.nota{padding:10px 12px;gap:6px;margin-bottom:8px}
+.nota-txt{font-size:.92rem}
+.nota-tag{font-size:.6rem;padding:2px 7px}
+.nota-autor{font-size:.74rem;padding:2px 7px}
+.nota-acoes .link{font-size:.82rem}
 /* área do professor */
 .pt-turma{display:flex;flex-direction:column;gap:8px}
 .pt-cab{display:flex;flex-direction:column;gap:2px}
