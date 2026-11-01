@@ -1168,7 +1168,7 @@ function preencherModelo(modelo, v) {
 }
 function camposMsg(tipo, alid, itens) {
   const r = respDe(alid), a = S.alunas[alid] || {};
-  const A = tipo === 'acordo' ? Object.entries(S.acordos).filter(([, x]) => x.alid === alid && !x.cancelado).map(([, x]) => x).pop() : null;
+  const A = tipo === 'acordo' ? Object.entries(S.acordos).filter(([, x]) => x.alid === alid && !x.cancelado && !x.perdao).map(([, x]) => x).pop() : null;
   const tot = A ? A.total : itens.reduce((s, i) => s + i.v, 0);
   return { responsavel: primeiro(r.nome) || 'responsável', aluno: primeiro(a.nome) || 'seu filho(a)', escola: S.escola.nome || 'escola',
     lista: itens.map(i => `• ${i.desc}: ${brl(i.v)} (${st(i) === 'vencido' ? 'venceu' : 'vence'} ${dataBR(i.venc)}${i.enc ? ', com multa e juros' : i.perdao && i.perdao.ate ? `, sem multa e juros se pago até ${dataBR(i.perdao.ate)}` : ''})`).join('\n'),
@@ -1177,7 +1177,7 @@ function camposMsg(tipo, alid, itens) {
     link: LINK_APP, codigo: r.codigo ? `No primeiro acesso, use o código: ${r.codigo}` : '' };
 }
 function textoMsg(tipo, alid, itens) {
-  if (tipo === 'acordo' && !Object.values(S.acordos).some(x => x.alid === alid && !x.cancelado)) tipo = 'lembrete';
+  if (tipo === 'acordo' && !Object.values(S.acordos).some(x => x.alid === alid && !x.cancelado && !x.perdao)) tipo = 'lembrete';
   return preencherModelo(modeloDe(tipo), camposMsg(tipo, alid, itens));
 }
 // editar e salvar os modelos das mensagens
@@ -1216,7 +1216,8 @@ function sheetCobrancaAluna(alid) {
     const r = respDe(alid), it = itensDe(alid), abertos = it.filter(i => !i.pago), pagos = it.filter(i => i.pago).reverse();
     const sel = new Set(abertos.map(i => i.k)), tot = abertos.reduce((s, i) => s + i.v, 0);
     const acordosAl = Object.entries(S.acordos).filter(([, A]) => A.alid === alid && !A.cancelado);
-    let tipoMsg = abertos.some(i => st(i) === 'vencido') ? 'atraso' : acordosAl.length ? 'acordo' : 'lembrete';
+    const temAcordo = acordosAl.some(([, A]) => !A.perdao);
+    let tipoMsg = abertos.some(i => st(i) === 'vencido') ? 'atraso' : temAcordo ? 'acordo' : 'lembrete';
     sheet(`<div class="headrow"><h3>${esc(a.nome)}</h3><button class="chip" id="cfich">Ficha do(a) aluno(a)</button></div>
       ${ddl([['Nascimento', esc(nascTxt(a))], ['Turmas', esc(turmasTxt(a) || 'Sem turma')], ['Responsável', esc(r.nome || '—')], ['WhatsApp', r.telefone ? `<span class="num" style="user-select:all">${esc(r.telefone)}</span>` : '']])}
       ${abertos.length ? `<div class="tot"><span>Em aberto</span><b class="num">${brl(tot)}</b></div>
@@ -1227,13 +1228,15 @@ function sheetCobrancaAluna(alid) {
         ${S.cfg.mpConectadoEm ? '' : '<div class="note">Ligue o Pix automático em Ajustes para gerar o QR Code.</div>'}
         ${abertos.some(i => st(i) === 'vencido' && i.tipo !== 'a') ? `<button class="btn ghost" id="facordo">Fazer acordo dos atrasados</button>` : ''}
         <div class="hero" style="padding:14px;gap:10px"><div class="label">Mensagem para ${esc(primeiro(r.nome) || 'o responsável')}</div>
-          <div class="seg"><button data-mt="lembrete">Lembrete</button><button data-mt="atraso">Atraso</button>${acordosAl.length ? '<button data-mt="acordo">Acordo</button>' : ''}</div>
+          <div class="seg"><button data-mt="lembrete">Lembrete</button><button data-mt="atraso">Atraso</button>${temAcordo ? '<button data-mt="acordo">Acordo</button>' : ''}</div>
           <textarea id="fmtxt" class="msg-edit" rows="8" aria-label="Mensagem"></textarea>
           <div class="note">Pode mexer no texto antes de enviar. Para mudar o texto de todas as próximas vezes, <button type="button" class="link" id="fmod">edite o modelo</button>.</div>
           <div class="actions">${numeroWa(r.telefone) ? `<a class="btn wa-btn" id="fwa" target="_blank" rel="noopener">${ICO_WA} Abrir no WhatsApp</span></a>` : ''}<button class="btn ghost" id="fmsg">Copiar</button></div>
           ${numeroWa(r.telefone) ? `<div class="note">Abre a conversa com ${esc(r.telefone)} e a mensagem já escrita. Você confere e toca em enviar.</div>` : '<div class="note">Cadastre o WhatsApp do responsável para enviar direto.</div>'}</div>`
         : `<div class="empty"><b>${it.length ? 'Nada em aberto. Tudo pago!' : 'Nenhuma cobrança.'}</b></div>`}
-      ${acordosAl.map(([aid, A]) => { const pg = A.parcelas.filter(q => C.stPag((((S.pags[alid] || {}).acordos || {})[aid] || {})[q.n])).length; return `<div class="banner ok"><span><b>Acordo de ${dataBR(A.criadoEm)}</b>: ${A.parcelas.length}x, total ${brl(A.total)}${A.desconto > 0 ? ` (desconto de ${brl(A.desconto)})` : ''} · ${pg} de ${A.parcelas.length} paga${pg === 1 ? '' : 's'}.</span>${pg ? '' : `<button data-cancac="${esc(aid)}">Cancelar acordo</button>`}</span></div>`; }).join('')}
+      ${acordosAl.map(([aid, A]) => { const pg = A.parcelas.filter(q => C.stPag((((S.pags[alid] || {}).acordos || {})[aid] || {})[q.n])).length; const quem = `${A.porNome ? ` por ${esc(A.porNome)}` : ''} em ${dataBR(A.criadoEm)}`, por = A.obs ? `<span class="s" style="display:block;margin-top:4px">“${esc(A.obs)}”</span>` : '';
+        return A.perdao ? `<div class="banner ok"><span><b>Dívida perdoada</b>${quem}: ${brl(A.original)} (${esc(A.resumo || '')}).${por}</span><button data-cancac="${esc(aid)}">Desfazer perdão</button></div>`
+          : `<div class="banner ok"><span><b>Acordo</b>${quem}: ${A.parcelas.length}x, total ${brl(A.total)}${A.desconto > 0 ? ` (desconto de ${brl(A.desconto)})` : ''} · ${pg} de ${A.parcelas.length} paga${pg === 1 ? '' : 's'}.${por}</span>${pg ? '' : `<button data-cancac="${esc(aid)}">Cancelar acordo</button>`}</div>`; }).join('')}
       ${pagos.length ? `<details class="historico"><summary><span class="grow"><b>Histórico de pagamentos</b><span class="s">${pagos.length} pagamento${pagos.length === 1 ? '' : 's'} · ${brl(C.r2(pagos.reduce((x, i) => x + i.v, 0)))}</span></span><span class="seta" aria-hidden="true">▾</span></summary><ul class="list">${pagos.map(i => `<li><div class="grow"><div class="t">${esc(i.desc)}</div>${linhas(`<span class="num">${nomeVia(i.pago)}${i.pago.d ? ' em ' + dataBR(i.pago.d) : ''}</span>`)}</div>${valorCol(brl(i.v), ONLINE(i.pago.via) ? `<span class="chip pix">${NOME_VIA[i.pago.via]}</span>` : `<button class="chip" data-desf="${esc(i.k)}">Desfazer</button>`, 'in')}</li>`).join('')}</ul>
         <div class="note">O que foi pago por Pix fica travado: só o que foi recebido em dinheiro pode ser desfeito.</div></details>` : ''}
       <div class="err" id="ferr" role="alert"></div>
@@ -1250,7 +1253,7 @@ function sheetCobrancaAluna(alid) {
       s.querySelectorAll('[data-i]').forEach(c => c.addEventListener('change', msg)); msg();
       if ($('fmsg')) $('fmsg').onclick = () => copiar($('fmtxt').value, 'Mensagem copiada. Cole no WhatsApp do responsável.');
       if ($('facordo')) $('facordo').onclick = () => abrirDe(() => sheetCobrancaAluna(alid), () => sheetAcordo(alid));
-      s.querySelectorAll('[data-cancac]').forEach(b => b.onclick = () => confirmar('Cancelar acordo?', 'As cobranças antigas voltam para a lista de atraso, com os valores originais.', 'Cancelar acordo', async () => { await cancelarAcordo(b.dataset.cancac); setTimeout(() => sheetCobrancaAluna(alid), 80); }));
+      s.querySelectorAll('[data-cancac]').forEach(b => b.onclick = () => { const pd = (S.acordos[b.dataset.cancac] || {}).perdao; confirmar(pd ? 'Desfazer o perdão?' : 'Cancelar acordo?', 'As cobranças antigas voltam para a lista de atraso, com os valores originais.', pd ? 'Desfazer perdão' : 'Cancelar acordo', async () => { await cancelarAcordo(b.dataset.cancac); setTimeout(() => sheetCobrancaAluna(alid), 80); }); });
       if ($('fqr')) $('fqr').onclick = () => sheetPix(marcados().map(i => i.k), () => sheetCobrancaAluna(alid));
       if ($('fdin')) $('fdin').onclick = () => duploToque($('fdin'), receberDinheiro, 'Toque de novo');
       const receberDinheiro = async () => {
@@ -1305,27 +1308,30 @@ function sheetPerdao(alid, k) {
 
 /* ================= Acordo de atrasados ================= */
 function sheetAcordo(alid) {
+  if (!S.admin) return; // acordo e perdão: só a administração da escola (as regras do banco também barram o professor)
   const a = S.alunas[alid], r = respDe(alid), venc = itensDe(alid).filter(i => !i.pago && st(i) === 'vencido' && i.tipo !== 'a');
   const sel = new Set(venc.map(i => i.k)), d7 = new Date(Date.now() + 7 * 864e5), prim = `${d7.getFullYear()}-${pad(d7.getMonth() + 1)}-${pad(d7.getDate())}`;
   sheet(`<h3>Acordo · ${esc(a.nome)}</h3>
     <div class="sub">Responsável: ${esc(r.nome || '—')}. Junte as cobranças atrasadas, dê um desconto se quiser e divida em parcelas. As parcelas aparecem para pagar pelo app, e as cobranças antigas saem da lista de atraso.</div>
     <div class="checks full">${venc.map(i => `<label><input type="checkbox" data-ai="${esc(i.k)}" checked><span class="grow"><span class="t" style="display:block">${esc(i.desc)}</span><span class="s">venceu ${dataBR(i.venc)}</span></span><b class="num">${brl(i.v)}</b></label>`).join('')}</div>
     <div class="tot"><span>Total atrasado</span><b class="num" id="aqtot"></b></div>
-    <div class="two"><div class="field"><label for="aqdt">Desconto</label><select id="aqdt"><option value="0">Sem desconto</option><option value="pct">Em %</option><option value="rs">Em R$</option></select></div>
+    <div class="two"><div class="field"><label for="aqdt">Desconto</label><select id="aqdt"><option value="0">Sem desconto</option><option value="pct">Em %</option><option value="rs">Em R$</option><option value="tudo">Perdoar tudo</option></select></div>
     <div class="field" id="aqdvw" hidden><label for="aqdv" id="aqdl">Valor</label><input id="aqdv" inputmode="decimal"></div></div>
-    <div class="two"><div class="field"><label for="aqn">Parcelas</label><select id="aqn">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => `<option value="${n}" ${n === 3 ? 'selected' : ''}>${n === 1 ? 'À vista' : n + 'x'}</option>`).join('')}</select></div>
+    <div id="aqparcw"><div class="two"><div class="field"><label for="aqn">Parcelas</label><select id="aqn">${[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => `<option value="${n}" ${n === 3 ? 'selected' : ''}>${n === 1 ? 'À vista' : n + 'x'}</option>`).join('')}</select></div>
     <div class="field"><label for="aqv">1º vencimento</label><input id="aqv" type="date" value="${prim}" min="${hoje()}"></div></div>
     <div class="field"><label for="aqrec">As parcelas caem na conta de</label><select id="aqrec"><option value="" id="aqrec0">Conta original</option>${opcoesRec('__nenhum')}</select>
-      <div class="note" id="aqrecnota"></div></div>
+      <div class="note" id="aqrecnota"></div></div></div>
     <div class="items" id="aqprev"></div>
-    <div class="field"><label for="aqobs">Observação (opcional)</label><input id="aqobs" maxlength="120" placeholder="Ex.: combinado por telefone com o responsável"></div>
+    <div class="field"><label for="aqobs" id="aqobsl">Observação (opcional)</label><textarea id="aqobs" rows="2" maxlength="300" placeholder="Ex.: combinado por telefone com o responsável"></textarea>
+      <div class="note">Fica registrado quem fez e quando: ${esc(EU.nome || EU.email || 'você')}, hoje.</div></div>
     <div class="err" id="aqerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="aqok">Fechar acordo</button></div>`, s => {
     let plano = null;
     const calc = () => {
       const its = venc.filter(i => sel.has(i.k)), bruto = C.r2(its.reduce((x, i) => x + i.v, 0)), t = $('aqdt').value, dv = parseValor($('aqdv').value);
       $('aqdvw').hidden = t === '0'; $('aqdl').textContent = t === 'pct' ? 'Desconto (%)' : 'Desconto (R$)';
-      const desc = t === 'pct' && dv > 0 ? C.r2(bruto * Math.min(dv, 100) / 100) : t === 'rs' && dv > 0 ? Math.min(bruto, C.r2(dv)) : 0, total = C.r2(bruto - desc), n = Number($('aqn').value);
+      $('aqdvw').hidden = t === '0' || t === 'tudo';
+      const desc = t === 'tudo' ? bruto : t === 'pct' && dv > 0 ? C.r2(bruto * Math.min(dv, 100) / 100) : t === 'rs' && dv > 0 ? Math.min(bruto, C.r2(dv)) : 0, total = C.r2(bruto - desc), n = Number($('aqn').value);
       const base = Math.floor(total / n * 100) / 100, parcelas = [];
       for (let k = 1; k <= n; k++) { const dt = new Date($('aqv').value + 'T12:00'); dt.setMonth(dt.getMonth() + k - 1); parcelas.push({ n: k, v: k === n ? C.r2(total - base * (n - 1)) : base, venc: `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}` }); }
       // quem recebe as parcelas: na mesma proporção das cobranças que entraram
@@ -1340,23 +1346,33 @@ function sheetAcordo(alid) {
       $('aqrec').querySelectorAll('option[value]:not([value=""])').forEach(o => { const rep = ks.length === 1 && o.value === ks[0]; o.hidden = o.disabled = rep; if (rep && $('aqrec').value === o.value) $('aqrec').value = ''; });
       const outra = $('aqrec').value, fracoes = outra ? { [outra]: 1 } : original;
       $('aqrecnota').textContent = outra ? `Todas as parcelas vão para a conta de ${nomeRc(outra)}${recConectado(outra) ? '' : ', que ainda não ligou o Pix'}.` : ks.length > 1 ? 'Cada parcela é dividida entre essas contas, como as cobranças originais.' : 'A mesma conta que recebia essas cobranças.';
-      plano = { its, bruto, desc, total, parcelas, fracoes };
+      // perdão (desconto de 100%): não tem parcelas; com desconto, a explicação é obrigatória
+      const perdao = its.length > 0 && !(total > 0);
+      $('aqparcw').hidden = perdao;
+      $('aqobsl').textContent = desc > 0 ? (perdao ? 'Por que a dívida foi perdoada? (obrigatório)' : 'Explique o acordo e o desconto (obrigatório)') : 'Observação (opcional)';
+      $('aqok').textContent = perdao ? 'Perdoar dívida' : 'Fechar acordo';
+      plano = { its, bruto, desc, total, parcelas: perdao ? [] : parcelas, fracoes, perdao };
       $('aqtot').textContent = brl(bruto);
       $('aqprev').innerHTML = its.length ? `${desc > 0 ? `<div class="item"><span>Desconto</span><b class="num" style="color:var(--in)">− ${brl(desc)}</b></div>` : ''}<div class="item"><span><b>Total do acordo</b></span><b class="num">${brl(total)}</b></div>${parcelas.map(q => `<div class="item sub"><span>${n === 1 ? 'À vista' : `Parcela ${q.n} de ${n}`} · vence ${dataBR(q.venc)}</span><span class="num">${brl(q.v)}</span></div>`).join('')}<div class="item sub"><span>Recebe: ${esc(Object.keys(fracoes).map(nomeRec).join(', '))}</span></div>` : '';
+      if (perdao) $('aqprev').innerHTML = `<div class="item"><span>Perdoado</span><b class="num" style="color:var(--in)">− ${brl(bruto)}</b></div><div class="item"><span><b>Fica devendo</b></span><b class="num">${brl(0)}</b></div><div class="note">As cobranças marcadas saem do "Quem deve" e ficam no histórico como perdoadas. Não entram no caixa, nem geram Pix ou nota fiscal. Dá para desfazer depois.</div>`;
     };
     s.querySelectorAll('[data-ai]').forEach(c => c.onchange = () => { c.checked ? sel.add(c.dataset.ai) : sel.delete(c.dataset.ai); calc(); });
     ['aqdt', 'aqdv', 'aqn', 'aqv', 'aqrec'].forEach(id => $(id).addEventListener('input', calc)); $('aqrec').addEventListener('change', calc); calc();
-    $('aqok').onclick = async () => {
-      const err = m => $('aqerr').textContent = m;
+    $('aqok').onclick = () => {
+      const err = m => $('aqerr').textContent = m; err('');
       if (!plano.its.length) return err('Marque ao menos uma cobrança atrasada.');
-      if (!(plano.total > 0)) return err('O total do acordo precisa ser maior que zero.');
-      if (!$('aqv').value) return err('Escolha o vencimento da primeira parcela.');
+      if (plano.desc > 0 && $('aqobs').value.trim().length < 5) { $('aqobs').focus(); return err(plano.perdao ? 'Explique por que a dívida foi perdoada.' : 'Explique o acordo e o desconto.'); }
+      if (!plano.perdao && !$('aqv').value) return err('Escolha o vencimento da primeira parcela.');
+      duploToque($('aqok'), fechar, 'Toque de novo para confirmar');
+    };
+    const fechar = async () => {
+      const err = m => $('aqerr').textContent = m;
       $('aqok').disabled = true;
       const aid = novoId(), A = { alid, rid: S.alunas[alid].responsavelId || null, itens: plano.its.map(i => ({ k: i.k, tipo: i.tipo, mes: i.mes || null, xid: i.xid || null, v: i.v, desc: i.desc })), original: plano.bruto, desconto: plano.desc, total: plano.total,
-        parcelas: plano.parcelas, fracoes: plano.fracoes, resumo: `${plano.its.length} cobrança${plano.its.length > 1 ? 's' : ''} atrasada${plano.its.length > 1 ? 's' : ''}`, obs: $('aqobs').value.trim(), criadoEm: hoje(), por: EU.uid };
+        parcelas: plano.parcelas, fracoes: plano.fracoes, resumo: `${plano.its.length} cobrança${plano.its.length > 1 ? 's' : ''} atrasada${plano.its.length > 1 ? 's' : ''}`, obs: $('aqobs').value.trim(), criadoEm: hoje(), em: Date.now(), por: EU.uid, porNome: EU.nome || EU.email || '', ...(plano.perdao ? { perdao: true } : {}) };
       const marca = i => ({ s: 'acordo', acordo: aid, v: i.v, d: hoje() }), up = { mens: {}, extras: {} };
       plano.its.forEach(i => { if (i.tipo === 'm') up.mens[i.mes] = marca(i); else up.extras[i.xid] = marca(i); });
-      try { await B.lote([{ op: 'set', p: `escolas/${S.eid}/acordos/${aid}`, d: A }, { op: 'merge', p: `escolas/${S.eid}/pagamentos/${alid}`, d: up }]); aviso('Acordo fechado. Mande as parcelas para o responsável.'); setTimeout(() => sheetCobrancaAluna(alid), 80); }
+      try { await B.lote([{ op: 'set', p: `escolas/${S.eid}/acordos/${aid}`, d: A }, { op: 'merge', p: `escolas/${S.eid}/pagamentos/${alid}`, d: up }]); aviso(plano.perdao ? 'Dívida perdoada' : 'Acordo fechado. Mande as parcelas para o responsável.'); setTimeout(() => sheetCobrancaAluna(alid), 80); }
       catch (e) { err(msgErro(e)); $('aqok').disabled = false; }
     };
   });
@@ -1364,7 +1380,7 @@ function sheetAcordo(alid) {
 async function cancelarAcordo(aid) {
   const A = S.acordos[aid]; if (!A) return;
   for (const i of A.itens || []) await B.tirar(`escolas/${S.eid}/pagamentos/${A.alid}`, i.tipo === 'm' ? `mens.${i.mes}` : `extras.${i.xid}`).catch(() => { });
-  await B.set(`escolas/${S.eid}/acordos/${aid}`, { cancelado: true, canceladoEm: hoje() }, { merge: true });
+  await B.set(`escolas/${S.eid}/acordos/${aid}`, { cancelado: true, canceladoEm: hoje(), canceladoPor: EU.uid, canceladoPorNome: EU.nome || EU.email || '' }, { merge: true });
   aviso('Acordo cancelado');
 }
 
@@ -2985,6 +3001,7 @@ function tPagar(v) {
     </div>`; }).join('')}
     ${!abertos.length && !pagos.length ? `<div class="empty"><b>Nenhuma cobrança ainda.</b><span>Quando a escola cadastrar as turmas dos seus filhos, as cobranças aparecem aqui.</span></div>` : ''}
     ${pagos.length ? `<section><h2>Pagos recentemente</h2><ul class="list">${pagos.map(i => `<li><div class="grow"><div class="t">${esc(i.desc)}</div>${linhas(esc(primeiro(i.nome)), `<span class="num">${nomeVia(i.pago)}${i.pago.d ? ' em ' + dataBR(i.pago.d) : ''}</span>`)}</div>${valorCol(brl(i.v), '<span class="chip pago">Pago</span>', 'in')}</li>`).join('')}</ul></section>` : ''}
+    ${(() => { const pd = Object.values(S.acordos || {}).filter(A => A.perdao && !A.cancelado && S.alunas[A.alid]); return pd.length ? `<section><h2>Perdoado pela escola</h2><ul class="list">${pd.map(A => `<li><div class="grow"><div class="t">${esc(A.resumo || 'Cobranças atrasadas')}</div>${linhas(esc(primeiro(S.alunas[A.alid].nome)), `em ${dataBR(A.criadoEm)}`)}</div>${valorCol(brl(A.original), '<span class="chip pago">Perdoado</span>', 'in')}</li>`).join('')}</ul></section>` : ''; })()}
     ${nfFamLigada() ? `<button type="button" class="linha-botao" id="pnfam" style="margin-top:12px"><span class="grow"><b>Notas fiscais</b><span class="s">Baixar as notas dos pagamentos, ou pedir e dispensar a nota</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : ''}
     ${abertos.length ? `<div class="paybar"><div class="grow"><div class="label">${marcados.length ? (() => { const n = dividirPorRecebedor(marcados).length; return `${marcados.length} ite${marcados.length === 1 ? 'm' : 'ns'}${n > 1 ? ` · ${n} Pix` : ''}`; })() : 'Escolha o que pagar'}</div><b class="num" style="font-size:1.25rem">${brl(totSel)}</b></div><button class="btn" id="ppagar" ${pixOk && totSel > 0 ? '' : 'disabled'}>${OUTRAS_FORMAS ? 'Pagar' : 'Pagar com Pix'}</button></div>` : ''}`;
   v.querySelectorAll('[data-k]').forEach(c => c.onchange = () => { c.checked ? S.sel.add(c.dataset.k) : S.sel.delete(c.dataset.k); render(); });
