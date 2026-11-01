@@ -1765,6 +1765,7 @@ const marcarPart = (xid, id, st) => { if (!MOCK && S.papel === 'f') return servi
   if (pelaEscola(x)) { const novo = { ...(x.part || {}), [id]: { st } }; d.alunas = (x.convidados || []).filter(a => ['interesse', 'inscrito'].includes((novo[a] || {}).st) || pagouEvento(x, a)); }
   return B.set(`escolas/${S.eid}/extras/${xid}`, d, { merge: true }); };
 // administração: quem vai, quem já está inscrito
+const EV_LIBERADOS = new Set(); // eventos encerrados que a administração confirmou que quer editar (até fechar o app)
 function sheetVerEvento(xid) {
   const x = S.extras[xid]; if (!x) return fecharSheet();
   const cv = porNome(Object.fromEntries(convidadosDe(x).map(id => [id, S.alunas[id]]))).map(([id]) => id);
@@ -1780,6 +1781,7 @@ function sheetVerEvento(xid) {
   const sec = (tit, ids, acoes, vazio) => `<section><h2>${tit} <span class="sub num">${ids.length}</span></h2>${ids.length ? `<ul class="list">${ids.map(id => lin(id, acoes(id))).join('')}</ul>` : `<div class="note">${vazio}</div>`}</section>`;
   sheet(`<h3>${esc(x.nome)}</h3>
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', app ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo caixa da escola · vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
+    ${fimDe(x) < hoje() ? `<div class="banner"><span><b>Evento encerrado</b> em ${dataBR(fimDe(x))}. Para mudar alguma coisa, o app pede confirmação.</span></div>` : ''}
     ${localEventoHTML(x)}
     ${fotosHTML(xid, fotosDoEvento(xid, x, () => { if ($('evmsg')) sheetVerEvento(xid); }))}
     <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : fam ? 'Falta confirmar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
@@ -1800,12 +1802,14 @@ function sheetVerEvento(xid) {
     $('evdocs').onclick = () => { const cv = convidadosDe(x), vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)));
       abrirDe(volta, () => sheetJuntarDocs({ titulo: x.nome, evento: xid, pre: vao, volta })); };
     ligarFotos(sh);
+    // evento já encerrado: qualquer mudança pede confirmação antes (uma vez por abertura da tela)
+    const seLiberado = f => (fimDe(x) >= hoje() || EV_LIBERADOS.has(xid)) ? f() : confirmar('Evento encerrado', `${esc(x.nome)} terminou em ${dataBR(fimDe(x))}. Deseja realmente editar?`, 'Sim, editar', () => { EV_LIBERADOS.add(xid); f(); });
     const fazPart = async b => { b.disabled = true; await marcarPart(xid, b.dataset.pid, b.dataset.pst); if (b.dataset.pst === 'inscrito') aviso(`${primeiro(S.alunas[b.dataset.pid].nome)} inscrito(a)`); setTimeout(volta, 60); };
     // inscrever pede toque duplo (evita marcar sem querer); "Vai" e "Não vai" são um toque só
-    sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = () => b.dataset.pst === 'inscrito' ? duploToque(b, () => fazPart(b), 'Confirmar?') : fazPart(b));
+    sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = () => seLiberado(() => b.dataset.pst === 'inscrito' ? duploToque(b, () => fazPart(b), 'Confirmar?') : fazPart(b)));
     sh.querySelectorAll('[data-tx]').forEach(li => li.onclick = () => abrirDe(volta, () => sheetExtra(li.dataset.tx)));
-    $('evedit').onclick = () => abrirDe(volta, () => sheetEvento(xid));
-    $('evtaxa').onclick = () => abrirDe(volta, () => sheetExtra(null, { tipo: 'taxa', pre: { ids: g.inscrito.length ? g.inscrito : g.interesse, evento: xid, quadro: (g.inscrito.length ? 'ei:' : 'ev:') + xid } }));
+    $('evedit').onclick = () => seLiberado(() => abrirDe(volta, () => sheetEvento(xid)));
+    $('evtaxa').onclick = () => seLiberado(() => abrirDe(volta, () => sheetExtra(null, { tipo: 'taxa', pre: { ids: g.inscrito.length ? g.inscrito : g.interesse, evento: xid, quadro: (g.inscrito.length ? 'ei:' : 'ev:') + xid } })));
   });
 }
 // relatório do evento em uma mensagem só, para mandar no grupo de WhatsApp
@@ -1891,6 +1895,12 @@ function respFamilia(xid, x, id) {
   const vaiNao = `<div class="seg ev-seg">${b('interesse', 'Vai', st === 'interesse' || st === 'inscrito')}${b('nao', 'Não vai', st === 'nao')}</div>`;
   let sub = 'Vai?', direita = vaiNao, extra = '';
   if (st === 'nao') sub = 'Não vai';
+  // evento encerrado ou prazo passado: só mostra como ficou, sem botões
+  const h = hoje(), acabou = fimDe(x) < h, fechou = !!(x.prazo && x.prazo < h);
+  if (acabou || fechou) {
+    const ficou = st === 'inscrito' ? 'Inscrito(a)' : st === 'interesse' ? 'Vai' : st === 'nao' ? 'Não vai' : 'Não respondeu';
+    return `<div class="ev-resp"><span class="grow"><b>${nm}</b><span class="s">${acabou ? 'Evento encerrado' : `Respostas encerradas em ${dataBR(x.prazo)}`}</span></span><span class="chip ${st === 'inscrito' ? 'pago' : ''}">${ficou}</span></div>`;
+  }
   if (st === 'inscrito') {
     sub = modo === 'app' ? 'Inscrição paga' : modo === 'familia' ? `Inscrição confirmada${P.quem === 'familia' ? ' por você' : ' pela escola'}${P.em ? ' em ' + dataCurta(P.em) : ''}` : 'Inscrição feita pela escola';
     direita = '<span class="chip pago">Inscrito(a)</span>';

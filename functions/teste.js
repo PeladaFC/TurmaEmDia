@@ -255,6 +255,11 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev2', alid: 'a1', st: 'interesse' }, 'ok:mae'), r); assert.strictEqual(r.code, 200);
     S.set('escolas/e1/extras/ev2', { ...S.get('escolas/e1/extras/ev2'), part: { a1: { st: 'inscrito', quem: 'escola' } } });
     r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev2', alid: 'a1', st: 'nao' }, 'ok:mae'), r); assert.strictEqual(r.code, 409); // a escola confirmou: só a escola muda
+    // evento encerrado ou prazo passado: a família não responde mais
+    S.set('escolas/e1/extras/ev3', { tipo: 'evento', cobranca: 'familia', semCobranca: true, nome: 'Copa velha', data: '2026-10-01', convidados: ['a1'], alunas: [], part: {} });
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev3', alid: 'a1', st: 'interesse' }, 'ok:mae'), r); assert.strictEqual(r.code, 409);
+    S.set('escolas/e1/extras/ev4', { tipo: 'evento', cobranca: 'familia', semCobranca: true, nome: 'Copa nova', data: '2026-11-30', prazo: '2026-10-10', convidados: ['a1'], alunas: [], part: {} });
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev4', alid: 'a1', st: 'inscrito' }, 'ok:mae'), r); assert.strictEqual(r.code, 409);
   });
   await t('convite para a administração: só o dono convida; só o e-mail convidado, confirmado, aceita', async () => {
     S.set('escolas/e1', { ...S.get('escolas/e1'), dono: 'adm', admins: ['adm', 'adm2'], adminsInfo: {} });
