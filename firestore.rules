@@ -167,6 +167,21 @@ service cloud.firestore {
           && mesmo('recebidoEm') && mesmo('recusa'));
         allow delete: if admin(eid);
       }
+      // Documentos dos alunos (parecer cardiológico, identidade e outros que a escola pede): só a família do aluno e a administração.
+      // A situação (datas e validade) fica em docsAlunos, leve, para as listas; o arquivo (até 2 fotos reduzidas ou 1 PDF pequeno) em documentos.
+      match /docsAlunos/{alid} {
+        allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
+        allow create, update: if admin(eid) || (minhaAluna(eid, alid) && request.resource.data.responsavelId == ridDaAluna(eid, alid));
+        allow delete: if admin(eid);
+      }
+      match /documentos/{did} {
+        allow read: if admin(eid) || minhaAluna(eid, resource.data.alid);
+        allow create, update: if (admin(eid) || minhaAluna(eid, request.resource.data.alid))
+          && request.resource.data.alid is string && request.resource.data.tipo is string
+          && did == request.resource.data.alid + '__' + request.resource.data.tipo
+          && request.resource.data.arquivos is list && request.resource.data.arquivos.size() >= 1 && request.resource.data.arquivos.size() <= 2;
+        allow delete: if admin(eid);
+      }
       // Foto ou PDF do atestado (pequeno: o app reduz a foto).
       match /atestados/{alid} {
         allow read: if admin(eid) || meu(eid, resource.data.responsavelId);

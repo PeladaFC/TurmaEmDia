@@ -443,6 +443,23 @@ li.pisca{animation:pisca 1.2s ease} @keyframes pisca{0%,100%{background:inherit}
 .at-botoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px} .at-botoes .btn{text-decoration:none}
 .atest-box{border:1px solid var(--line);border-radius:5px;padding:8px;background:var(--surface);margin-top:8px}
 .atest-img{display:block;width:100%;max-height:340px;object-fit:contain;border-radius:5px;background:var(--surface2);cursor:zoom-in}
+.doc-box{display:flex;flex-direction:column;gap:8px}
+.doc-fotos{display:flex;flex-direction:column;gap:8px}
+.doc-fotos .atest-img{max-height:240px}
+.doc-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:8px}
+.doc-botoes{display:flex;flex-direction:column;gap:8px}
+.docs-al{display:flex;flex-direction:column;gap:6px}
+.docs-al .chip{flex:none}
+.tipo-doc{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--line);border-radius:5px;background:var(--surface);margin-bottom:8px}
+.tipo-doc-l1{display:flex;gap:8px;align-items:center}
+.tipo-doc-l1 input{flex:1;min-width:0;font-size:16px;padding:10px;border-radius:4px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.tipo-doc .ev-foto-x{position:static;background:var(--surface2);color:var(--ink);flex:none}
+details.doc-tipo{border:1px solid var(--line);border-radius:5px;margin-bottom:8px;background:var(--surface);overflow:hidden}
+details.doc-tipo summary{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;list-style:none}
+details.doc-tipo summary::-webkit-details-marker{display:none}
+details.doc-tipo summary .s{display:block;font-size:.82rem;color:var(--muted)}
+details.doc-tipo[open] summary .seta{transform:rotate(180deg)}
+details.doc-tipo .list{margin:0;border:0;border-top:1px solid var(--line);border-radius:0}
 .atest-pdf{display:flex;align-items:center;gap:12px;padding:6px} .atest-pdf .s{display:block;font-size:.82rem;color:var(--muted)}
 .atest-ic{display:grid;place-items:center;width:44px;height:52px;border-radius:5px;background:var(--out-soft);color:var(--out);font-weight:800;font-size:.78rem}
 .atest-zoom{align-items:center;z-index:60;padding:16px}

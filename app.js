@@ -666,7 +666,7 @@ async function abrirEscola(eid, tab) {
   const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['turmas', 'lancar'], f: ['pagar', 'filhas'] }[papel];
   ls.set('escolinha.ultima', eid);
   S = { eid, admin, prof, papel, escola, mes: mesHoje(), tab: tab || ls.get('escolinha.tab.' + papel) || ABAS_OK[0],
-    cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
+    cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, docs: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
   if (!ABAS_OK.includes(S.tab)) S.tab = ABAS_OK[0];
   const p = `escolas/${eid}`;
   const col = (nome, chave, onde) => B.ouvirCol(`${p}/${nome}`, docs => { S[chave] = Object.fromEntries(docs.map(d => [d.id, d.data])); S.carregado.add(chave); agendar(); }, e => console.warn(nome, e), onde);
@@ -676,7 +676,7 @@ async function abrirEscola(eid, tab) {
   if (admin || prof) {
     OUV.push(col('acordos', 'acordos'));
     OUV.push(col('professoras', 'profs')); OUV.push(col('responsaveis', 'resps')); OUV.push(col('alunas', 'alunas')); OUV.push(col('pagamentos', 'pags'));
-    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); }
+    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
   } else {
     // a família só vê o nome de cada professor(a) (profsPublico, copiado pelo servidor); telefone e chave Pix ficam com a escola
     OUV.push(col(MOCK ? 'professoras' : 'profsPublico', 'profs'));
@@ -695,6 +695,7 @@ async function abrirEscola(eid, tab) {
         B.ouvirDoc(`${p}/responsaveis/${rid}`, d => { if (d) S.resps[rid] = d; else delete S.resps[rid]; agendar(); }, () => { }),
         B.ouvirCol(`${p}/alunas`, docs2 => { alunasPorRid[rid] = Object.fromEntries(docs2.map(x => [x.id, x.data])); juntarAlunas(); }, () => { }, ['responsavelId', rid]),
         B.ouvirCol(`${p}/saude`, docs3 => { for (const x of docs3) S.saude[x.id] = x.data; agendar(); }, () => { }, ['responsavelId', rid]),
+        B.ouvirCol(`${p}/docsAlunos`, docs5 => { for (const x of docs5) S.docs[x.id] = x.data; agendar(); }, () => { }, ['responsavelId', rid]),
         B.ouvirCol(`${p}/acordos`, docs4 => { acordosPorRid[rid] = Object.fromEntries(docs4.map(x => [x.id, x.data])); S.acordos = Object.assign({}, ...Object.values(acordosPorRid)); agendar(); }, () => { }, ['rid', rid])];
       for (const rid of Object.keys(porRid)) if (!rids.has(rid)) { porRid[rid].forEach(f => f()); delete porRid[rid]; delete alunasPorRid[rid]; delete acordosPorRid[rid]; delete S.resps[rid]; juntarAlunas(); }
       if (!rids.size) juntarAlunas();
@@ -1739,6 +1740,7 @@ function sheetVerEvento(xid) {
     ${fotosHTML(xid, fotosDoEvento(xid, x, () => { if ($('evmsg')) sheetVerEvento(xid); }))}
     <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : fam ? 'Falta confirmar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
     <button type="button" class="btn ghost btn-ico" id="evmsg">${ICO_WA}<span>Mensagem para o grupo</span></button>
+    <button type="button" class="btn ghost" id="evdocs">Juntar documentos dos atletas (PDF)</button>
     ${app ? sec('Vão · aguardando pagamento', g.interesse, id => `${valorCol(brl(C.valorExtra(x, id)), '<span class="chip aberto">A pagar</span>')}${bt(id, 'nao', 'Não vai')}`, 'Ninguém com inscrição a pagar.')
       : fam ? sec('Vão · falta confirmar a inscrição', g.interesse, id => { const wa = waLink(respDe(id).telefone, `Olá, ${primeiro(respDe(id).nome) || 'tudo bem'}! Aqui é da ${S.escola.nome || 'escola'}. Lembrete: a inscrição de ${primeiro(S.alunas[id].nome)} em ${x.nome} é feita direto com ${x.organizador || 'quem organiza'}. Depois de fazer, toque em "Já fiz a inscrição" no app: ${LINK_APP}`);
           return `${bt(id, 'inscrito', 'Marcar inscrito')}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Lembrar pelo WhatsApp">${ICO_WA}</a>` : ''}`; }, 'Todos que vão já confirmaram a inscrição.')
@@ -1752,6 +1754,8 @@ function sheetVerEvento(xid) {
     <div class="note">${g.inscrito.length + g.interesse.length ? `Já vem marcado quem ${g.inscrito.length ? 'confirmou a inscrição' : 'disse que vai'}; dá para ajustar. Serve para ajuda de custo, uniforme, transporte.` : 'Disponível quando alguém disser que vai.'}</div>
     <div class="actions"><button type="button" class="btn ghost" id="evedit">Editar evento</button><button type="button" class="btn ghost" data-fechar>Fechar</button></div>`, sh => {
     $('evmsg').onclick = () => abrirDe(volta, () => sheetMsgEvento(xid));
+    $('evdocs').onclick = () => { const cv = convidadosDe(x), vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)));
+      abrirDe(volta, () => sheetJuntarDocs({ titulo: x.nome, evento: xid, pre: vao, volta })); };
     ligarFotos(sh);
     sh.querySelectorAll('[data-pst]').forEach(b => b.onclick = async () => { b.disabled = true; await marcarPart(xid, b.dataset.pid, b.dataset.pst); if (b.dataset.pst === 'inscrito') aviso(`${primeiro(S.alunas[b.dataset.pid].nome)} inscrito(a)`); setTimeout(volta, 60); });
     sh.querySelectorAll('[data-tx]').forEach(li => li.onclick = () => abrirDe(volta, () => sheetExtra(li.dataset.tx)));
@@ -1884,15 +1888,18 @@ function tAlunas(v) {
     <div class="sub num">${nAtivas} alunos ativos · ${Object.keys(S.resps).length} responsáveis</div>
     ${(() => { const at = Object.entries(S.alunas).filter(([, a]) => C.ativaNoMes(a, mes) && !a.anonimizadoEm), sem = at.filter(([id]) => termoDe(id).st !== 'ok').length, atest = at.filter(([id]) => termoDe(id).atest).length;
       return sem || atest ? `<div class="banner"><span><b>Termo de matrícula:</b> ${sem ? `${sem} aluno${sem === 1 ? '' : 's'} sem termo assinado` : ''}${sem && atest ? ' · ' : ''}${atest ? `${atest} precisa${atest === 1 ? '' : 'm'} de atestado médico` : ''}. Os responsáveis preenchem pelo app; as etiquetas aparecem em cada aluno.</span></div>` : ''; })()}
+    ${S.admin ? (() => { let venc = 0, logo = 0; for (const [id, a] of Object.entries(S.alunas)) { if (!C.ativaNoMes(a, mes) || a.anonimizadoEm) continue; const pd = piorDoc(id); if (pd === 'vencido') venc++; else if (pd === 'vence') logo++; }
+      return `<button type="button" class="faixa-resumo ${venc || logo ? '' : 'neutra'}" id="adocs" style="margin-bottom:12px"><span class="grow"><b>Documentos dos alunos</b><span class="s">${venc || logo ? [venc ? `${venc} com documento vencido` : '', logo ? `${logo} vence${logo === 1 ? '' : 'm'} em até 30 dias` : ''].filter(Boolean).join(' · ') : 'Parecer cardiológico, identidade… e juntar em PDF para competição'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`; })() : ''}
     ${reps.map(x => `<div class="banner"><span><b>${esc(S.resps[x.a].nome)}</b> (${esc(alunasDoResp(x.a).map(([, a]) => primeiro(a.nome)).join(', ') || 'sem alunos')}) e <b>${esc(S.resps[x.b].nome)}</b> (${esc(alunasDoResp(x.b).map(([, a]) => primeiro(a.nome)).join(', ') || 'sem alunos')}) têm o mesmo ${x.por}. É a mesma pessoa?</span><span class="actions"><button data-junta="${esc(x.par)}">Agrupar</button><button data-nao="${esc(x.par)}" style="color:var(--muted)">Não é</button></span></div>`).join('')}
     <div class="field"><input id="abusca" type="search" placeholder="Buscar aluno(a), responsável ou telefone" value="${esc(S.busca || '')}" aria-label="Buscar"></div>
     ${vis.length ? vis.map(({ rid, r, al }) => `<ul class="list">
         <li class="${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''} style="background:var(--surface2)"><div class="grow"><div class="label">Responsável</div><div class="t">${esc(r.nome)}</div>${rid ? linhas(`<span class="num">${esc(r.telefone || 'Sem telefone')}</span>`, r.cpf ? `<span class="num">CPF ${esc(r.cpf)}</span>` : '') : ''}</div>${rid && r.codigo ? `<span class="chip" style="letter-spacing:.12em">${esc(r.codigo)}</span>` : ''}</li>
-        ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}"><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })()].join(''))}</li>`; }).join('')}
+        ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}"><div class="dot">${esc(iniciais(a.nome))}</div><div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].join(''))}</li>`; }).join('')}
         ${rid ? `<li class="tap" data-nova="${esc(rid)}" style="min-height:44px"><span class="sub">+ Outro(a) aluno(a) com ${esc(primeiro(r.nome))}</span></li>` : ''}
       </ul>`).join('') : `<div class="empty">${q ? 'Nada encontrado.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre cada aluno(a) com a turma e o responsável. Se o telefone ou o CPF do responsável já existir, o app sugere agrupar os irmãos.</span>'}</div>`}`;
   $('abusca').oninput = e => { S.busca = e.target.value; render(); };
   $('ana').onclick = () => sheetAluna();
+  if ($('adocs')) $('adocs').onclick = () => sheetDocsEscola();
   v.querySelectorAll('[data-resp]').forEach(li => li.onclick = () => sheetResp(li.dataset.resp));
   v.querySelectorAll('[data-al]').forEach(li => li.onclick = () => sheetAluna(li.dataset.al));
   v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vmud));
@@ -1962,6 +1969,10 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     <div class="field"><span class="lb">Turma</span>
       <div class="checks">${listaT.map(([tid, t]) => { const n = alunasDaTurma(tid).length, cheia = t.vagas && n >= t.vagas && !minhas.has(tid); return `<label><input type="checkbox" data-tu="${esc(tid)}" ${minhas.has(tid) ? 'checked' : ''}><span class="grow"><span class="t" style="display:block">${esc(t.nome)}</span><span class="s">${esc(C.faixaTxt(t))}</span>${t.horario ? `<span class="s">${esc(t.horario)}</span>` : ''}${profNome(t) || localDe(t) ? `<span class="s">${esc([profNome(t), localDe(t)].filter(Boolean).join(' · '))}</span>` : ''}${t.vagas && !cheia ? `<span class="s num">${t.vagas - n === 1 ? 'Resta 1 vaga' : `Restam ${t.vagas - n} vagas`}</span>` : ''}<span class="s fora" data-fx="${esc(tid)}" style="color:var(--out);font-weight:700"></span></span><span class="valor-col">${adm ? `<b class="num">${brl(t.preco)}</b>` : ''}${cheia ? '<span class="chip vencido">Cheia</span>' : ''}</span></label>`; }).join('') || '<div class="grp">Nenhuma turma cadastrada ainda</div>'}</div></div>
     ${Object.keys(S.grupos).length ? `<div class="field"><span class="lb">Grupos</span><div class="chips">${porNome(S.grupos).map(([g, G]) => `<button type="button" class="pick" data-gr="${esc(g)}" aria-pressed="${meusG.has(g)}">${esc(G.nome)}</button>`).join('')}</div></div>` : ''}
+    ${ed && adm ? `<div class="field"><span class="lb">Documentos</span><div class="docs-al">${tiposDoc().map(T => { const d = docDe(alid, T.id);
+      return `<button type="button" class="linha-botao" data-adoc="${esc(T.id)}"><span class="grow"><b>${esc(T.nome)}</b><span class="s">${d ? `${d.familia ? 'Enviado pela família' : 'Guardado pela escola'} em ${dataCurta(d.em)}` : T.familia !== false ? 'A família pode enviar pelo app' : 'Toque para guardar'}</span></span>${chipDoc(d)}<span aria-hidden="true">›</span></button>`; }).join('') || '<div class="sub">Nenhum tipo de documento.</div>'}</div>
+      <button type="button" class="link" id="atipos" style="align-self:flex-start">Mudar os tipos de documento</button></div>`
+      : adm && !ed ? '<div class="note">Documentos (parecer cardiológico, identidade…) você guarda depois de salvar o cadastro.</div>' : ''}
     <div class="hero" style="padding:14px;gap:10px"><div class="label">Responsável</div>
       <div class="field"><label for="rnome">Nome</label><input id="rnome" maxlength="60" value="${esc(r0.nome || '')}" placeholder="Quem paga"></div>
       <div class="two"><div class="field"><label for="rtel">WhatsApp</label><input id="rtel" inputmode="tel" maxlength="20" value="${esc(r0.telefone || '')}" placeholder="(81) 99999-9999"></div>
@@ -2029,6 +2040,9 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       s.querySelectorAll('[data-mot]').forEach(b => b.onclick = () => { $('ajmot').value = $('ajmot').value.trim() === b.dataset.mot ? '' : b.dataset.mot; prev(); });
     }
     if ($('acob')) $('acob').onclick = () => sheetCobrancaAluna(alid);
+    const voltaAl = () => sheetAluna(alid);
+    s.querySelectorAll('[data-adoc]').forEach(b => b.onclick = () => abrirDe(voltaAl, () => sheetDocAluno(alid, b.dataset.adoc, voltaAl)));
+    if ($('atipos')) $('atipos').onclick = () => abrirDe(voltaAl, () => sheetTiposDoc(voltaAl));
     if ($('avtermo')) $('avtermo').onclick = () => abrirDe(() => sheetAluna(alid), () => sheetVerTermo(alid));
     $('aok').onclick = async () => {
       const nome = $('anome').value.trim(), ts = [...s.querySelectorAll('[data-tu]')].filter(c => c.checked).map(c => c.dataset.tu), err = m => $('aerr').textContent = m;
@@ -2051,6 +2065,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         if (r) ops.push({ op: 'merge', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc } });
         else { r = novoId(); const cod = novoCodigo(); ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, codigo: cod, criadoEm: Date.now() } }, { op: 'set', p: 'codigos/' + cod, d: { eid: S.eid, rid: r } }); }
         ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
+        if (S.docs[id] && S.docs[id].responsavelId !== r) ops.push({ op: 'merge', p: `escolas/${S.eid}/docsAlunos/${id}`, d: { responsavelId: r } });
         for (const [g, G] of Object.entries(S.grupos)) { const tem = (G.alunas || []).includes(id); if (tem !== meusG.has(g)) ops.push({ op: 'merge', p: `escolas/${S.eid}/grupos/${g}`, d: { alunas: meusG.has(g) ? [...(G.alunas || []), id] : (G.alunas || []).filter(x => x !== id) } }); }
         await B.lote(ops); fecharSheet(); aviso(ed ? 'Aluno(a) atualizado(a)' : 'Aluno(a) cadastrado(a)');
       } catch (e) { err(msgErro(e)); $('aok').disabled = false; }
@@ -2059,7 +2074,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     if ($('adel')) $('adel').onclick = () => {
       const p = S.pags[alid] || {};
       if (Object.keys(p.mens || {}).length || Object.keys(p.extras || {}).length) return $('aerr').textContent = 'Este(a) aluno(a) tem pagamentos registrados. Para sair, desmarque "Aluno(a) ativo(a)"; o histórico fica guardado. Se a família pediu, use "Apagar dados pessoais".';
-      confirmar('Excluir aluno(a)?', `${esc(a.nome)} sai da escola e das cobranças.`, 'Excluir', () => B.del(`escolas/${S.eid}/alunas/${alid}`));
+      confirmar('Excluir aluno(a)?', `${esc(a.nome)} sai da escola e das cobranças.${S.docs[alid] ? ' Os documentos guardados também são apagados.' : ''}`, 'Excluir', () => B.lote([{ op: 'del', p: `escolas/${S.eid}/alunas/${alid}` }, ...opsApagarDocs(alid)]));
     };
   });
 }
@@ -2584,6 +2599,8 @@ function tFilhas(v) {
           ${(() => { const x = termoDe(id); if (x.st !== 'ok' || !x.as) return ''; const at = x.t.atestado || {};
             const rot = { ok: '<span class="chip pago">Conferido</span>', conferir: '<span class="chip">Aguardando a escola</span>', recusado: '<span class="chip vencido">Mandar outro</span>', falta: '<span class="chip vencido">Falta enviar</span>' }[x.as];
             return linha('Atestado', `<span class="dd-col">${rot}<button type="button" class="link" data-atest="${esc(id)}">${at.enviadoEm && x.as !== 'recusado' ? 'Ver atestado' : 'Enviar atestado'}</button></span>`); })()}
+          ${tiposDoc().filter(T => T.familia !== false || docDe(id, T.id)).map(T => { const d = docDe(id, T.id), st = situacaoDoc(d).st;
+            return linha(T.nome, `<span class="dd-col">${chipDoc(d)}<button type="button" class="link" data-fdoc="${esc(id)}" data-fdt="${esc(T.id)}">${!d ? 'Enviar' : st === 'ok' ? 'Ver ou trocar' : 'Enviar o novo'}</button></span>`); }).join('')}
           ${linha('Grupos', gs.length ? gs.map(g => `<span class="chip">${esc(g)}</span>`).join(' ') : '')}
         </dl>
         ${ts.map(t => `<div class="filha-turma"><div class="label">Turma</div><div class="t">${esc(t.nome)}</div>
@@ -2594,6 +2611,7 @@ function tFilhas(v) {
   v.querySelectorAll('[data-termo]').forEach(b => b.onclick = () => sheetTermo(b.dataset.termo));
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-vtermo]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vtermo));
+  v.querySelectorAll('[data-fdoc]').forEach(b => b.onclick = () => sheetDocAluno(b.dataset.fdoc, b.dataset.fdt));
   if ($('fcal')) $('fcal').onclick = () => sheetCalendario();
   ligarFotos(v);
   v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;
@@ -3093,11 +3111,12 @@ const dataCurta = ms => { const d = new Date(ms); return `${String(d.getDate()).
 const lerDataUrl = arq => new Promise((ok, falha) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => falha(new Error('Não deu para ler esse arquivo.')); r.readAsDataURL(arq); });
 const bytesDe = url => { const b = atob(url.split(',')[1]), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
 // reduz a foto no próprio celular: até 1600 px, JPEG, abaixo de ~380 KB (uma foto de celular tem 3 a 5 MB)
-async function prepararAtestado(arq) {
+async function prepararAtestado(arq, o = {}) {
+  const maxImg = o.img || ATEST_MAX_IMG, oque = o.oque || 'atestado';
   if (!arq) throw new Error('Escolha um arquivo.');
   if (arq.type === 'application/pdf' || /\.pdf$/i.test(arq.name || '')) {
-    if (arq.size > ATEST_MAX_PDF) throw new Error(`Esse PDF tem ${kb(arq.size)}. Tire uma foto do atestado (o app reduz sozinho) ou mande um PDF de até ${kb(ATEST_MAX_PDF)}.`);
-    return { arquivo: await lerDataUrl(arq), tipo: 'pdf', nome: arq.name || 'atestado.pdf', tam: arq.size, original: arq.size };
+    if (arq.size > ATEST_MAX_PDF) throw new Error(`Esse PDF tem ${kb(arq.size)}. Tire uma foto do ${oque} (o app reduz sozinho) ou mande um PDF de até ${kb(ATEST_MAX_PDF)}.`);
+    return { arquivo: await lerDataUrl(arq), tipo: 'pdf', nome: arq.name || oque + '.pdf', tam: arq.size, original: arq.size };
   }
   if (!/^image\//.test(arq.type || '')) throw new Error('Escolha uma foto ou um PDF.');
   let fonte = await abrirImagem(arq, 1600), url = '';
@@ -3105,10 +3124,10 @@ async function prepararAtestado(arq) {
     const f = Math.min(1, lado / Math.max(fonte.width, fonte.height)), c = document.createElement('canvas');
     c.width = Math.round(fonte.width * f); c.height = Math.round(fonte.height * f);
     const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(fonte, 0, 0, c.width, c.height);
-    for (const q of [0.72, 0.6, 0.5]) { url = c.toDataURL('image/jpeg', q); if (url.length * 0.75 <= ATEST_MAX_IMG) break; }
-    if (url.length * 0.75 <= ATEST_MAX_IMG) break;
+    for (const q of [0.72, 0.6, 0.5]) { url = c.toDataURL('image/jpeg', q); if (url.length * 0.75 <= maxImg) break; }
+    if (url.length * 0.75 <= maxImg) break;
   }
-  return { arquivo: url, tipo: 'img', nome: (arq.name || 'atestado').replace(/\.\w+$/, '') + '.jpg', tam: Math.round(url.length * 0.75), original: arq.size };
+  return { arquivo: url, tipo: 'img', nome: (arq.name || oque).replace(/\.\w+$/, '') + '.jpg', tam: Math.round(url.length * 0.75), original: arq.size };
 }
 function previaAtestado(f) {
   if (!f || !f.arquivo) return '<div class="sub">Arquivo não encontrado.</div>';
@@ -3120,17 +3139,338 @@ function ligarPrevia(raiz, f, alid) {
   raiz.querySelectorAll('[data-atabrir]').forEach(b => b.onclick = () => abrirArquivoAtestado(f, alid));
 }
 async function abrirArquivoAtestado(f, alid) {
-  const tipo = f.tipo === 'pdf' ? 'application/pdf' : 'image/jpeg', nome = `atestado-${(primeiro((S.alunas[alid] || {}).nome) || 'aluno').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()}.${f.tipo === 'pdf' ? 'pdf' : 'jpg'}`;
-  if (f.tipo !== 'pdf') { // foto: abre grande por cima, com botão de salvar
+  const nome = `atestado-${(primeiro((S.alunas[alid] || {}).nome) || 'aluno').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()}.${f.tipo === 'pdf' ? 'pdf' : 'jpg'}`;
+  return abrirArquivo(f, nome, 'Atestado médico', 'Atestado salvo');
+}
+// foto: abre grande por cima, com botão de salvar; PDF: salva (no celular, abre o compartilhar)
+async function abrirArquivo(f, nome, alt, msg) {
+  const tipo = f.tipo === 'pdf' ? 'application/pdf' : 'image/jpeg';
+  if (f.tipo !== 'pdf') {
     const el = document.createElement('div'); el.className = 'doc-legal-bg atest-zoom';
-    el.innerHTML = `<div class="atest-zoom-box"><img src="${f.arquivo}" alt="Atestado médico"><div class="actions"><button type="button" class="btn ghost" data-z="0">Fechar</button><button type="button" class="btn" data-z="1">Salvar no celular</button></div></div>`;
+    el.innerHTML = `<div class="atest-zoom-box"><img src="${f.arquivo}" alt="${esc(alt)}"><div class="actions"><button type="button" class="btn ghost" data-z="0">Fechar</button><button type="button" class="btn" data-z="1">Salvar no celular</button></div></div>`;
     document.body.appendChild(el);
-    el.onclick = async e => { const b = e.target.closest('[data-z]'); if (e.target === el || (b && b.dataset.z === '0')) return el.remove(); if (b) { const r = await salvarArquivo(nome, bytesDe(f.arquivo), tipo); if (r !== 'cancelado') aviso('Atestado salvo'); } };
+    el.onclick = async e => { const b = e.target.closest('[data-z]'); if (e.target === el || (b && b.dataset.z === '0')) return el.remove(); if (b) { const r = await salvarArquivo(nome, bytesDe(f.arquivo), tipo); if (r !== 'cancelado') aviso(msg); } };
     return;
   }
-  const r = await salvarArquivo(nome, bytesDe(f.arquivo), tipo); if (r !== 'cancelado') aviso('Atestado salvo');
+  const r = await salvarArquivo(nome, bytesDe(f.arquivo), tipo); if (r !== 'cancelado') aviso(msg);
 }
 const carregarAtestado = alid => B.get(`escolas/${S.eid}/atestados/${alid}`).catch(() => null);
+
+// ---- Documentos dos alunos: parecer cardiológico, identidade e outros que a escola quiser ----
+// Tipos (a escola escolhe): config/geral.tiposDoc = [{ id, nome, meses (0 = sem validade), familia (a família envia pelo app) }]
+// Situação de cada aluno (leve, para listas): escolas/{eid}/docsAlunos/{alid} = { responsavelId, docs: { tipo: { em, por, familia, data, validade, formato, paginas, tam } } }
+// Arquivo: escolas/{eid}/documentos/{alid}__{tipo} = { alid, tipo, responsavelId, formato ('img' | 'pdf'), arquivos: [até 2 fotos ou 1 PDF], nome, em }
+const TIPOS_DOC_PADRAO = [{ id: 'cardio', nome: 'Parecer cardiológico', meses: 12, familia: true }, { id: 'ident', nome: 'Documento de identidade', meses: 0, familia: true }];
+const SUGESTOES_DOC = ['Certidão de nascimento', 'Atestado médico', 'Declaração escolar', 'Foto 3x4', 'Comprovante de residência', 'Autorização de viagem'];
+const VALIDADES_DOC = [[0, 'Sem validade'], [6, '6 meses'], [12, '1 ano'], [24, '2 anos']];
+const DOC_AVISO_DIAS = 30, DOC_MAX_1 = 380 * 1024, DOC_MAX_2 = 320 * 1024;
+const tiposDoc = () => Array.isArray(S.cfg.tiposDoc) ? S.cfg.tiposDoc : TIPOS_DOC_PADRAO;
+const tipoDoc = tid => tid === '_atest' ? { id: '_atest', nome: 'Atestado médico (do termo)', meses: 12 } : tiposDoc().find(t => t.id === tid) || { id: tid, nome: 'Documento', meses: 0 };
+const docDe = (alid, tid) => ((((S.docs || {})[alid] || {}).docs) || {})[tid] || null;
+const dataBRA = iso => iso ? `${dataBR(iso)}/${iso.slice(0, 4)}` : '';
+const mesesTxt = n => n === 12 ? '1 ano' : n === 24 ? '2 anos' : n % 12 === 0 ? `${n / 12} anos` : `${n} meses`;
+function maisMeses(iso, n) { const d = new Date(iso + 'T12:00'), dia = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + n); d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); return isoDe(d); }
+// falta, vencido, vence (nos próximos 30 dias) ou ok
+function situacaoDoc(d) {
+  if (!d) return { st: 'falta' };
+  if (!d.validade) return { st: 'ok' };
+  const dias = Math.round((new Date(d.validade + 'T12:00') - new Date(hoje() + 'T12:00')) / 864e5);
+  return { st: dias < 0 ? 'vencido' : dias <= DOC_AVISO_DIAS ? 'vence' : 'ok', dias };
+}
+function chipDoc(d) {
+  const s = situacaoDoc(d);
+  if (s.st === 'falta') return '<span class="chip aberto">Falta</span>';
+  if (s.st === 'vencido') return `<span class="chip vencido">Venceu ${esc(dataBRA(d.validade))}</span>`;
+  if (s.st === 'vence') return `<span class="chip vencido">Vence ${s.dias === 0 ? 'hoje' : s.dias === 1 ? 'amanhã' : `em ${s.dias} dias`}</span>`;
+  return d.validade ? `<span class="chip pago">Até ${esc(dataBRA(d.validade))}</span>` : '<span class="chip pago">Guardado</span>';
+}
+// o pior caso entre os documentos de um aluno (para a etiqueta na lista)
+function piorDoc(alid) {
+  let pior = null;
+  for (const T of tiposDoc()) { const s = situacaoDoc(docDe(alid, T.id)).st; if (s === 'vencido') return 'vencido'; if (s === 'vence') pior = 'vence'; }
+  return pior;
+}
+// atestado médico do termo (para juntar junto, se a escola quiser)
+function atestadoMeta(alid) {
+  const at = ((S.saude[alid] || {}).atestado) || {}, em = at.recebidoEm || at.enviadoEm;
+  return em && !(at.recusa && at.recusa.em > (at.enviadoEm || 0)) ? { em, validade: isoDe(new Date(em + ANO_MS)), formato: null } : null;
+}
+// apagar os documentos de um aluno (exclusão ou LGPD)
+const opsApagarDocs = alid => S.docs[alid] ? [...Object.keys(S.docs[alid].docs || {}).map(t => ({ op: 'del', p: `escolas/${S.eid}/documentos/${alid}__${t}` })), { op: 'del', p: `escolas/${S.eid}/docsAlunos/${alid}` }] : [];
+const metaJunta = (alid, tid) => tid === '_atest' ? atestadoMeta(alid) : docDe(alid, tid);
+async function arquivosDoc(alid, tid) {
+  if (tid === '_atest') { const f = await carregarAtestado(alid); return f && f.arquivo ? { formato: f.tipo === 'pdf' ? 'pdf' : 'img', arquivos: [f.arquivo] } : null; }
+  return B.get(`escolas/${S.eid}/documentos/${alid}__${tid}`).catch(() => null);
+}
+function previaDoc(f) {
+  if (!f || !(f.arquivos || []).length) return '<div class="sub">Arquivo não encontrado.</div>';
+  if (f.formato === 'pdf') return `<div class="atest-pdf"><span class="atest-ic" aria-hidden="true">PDF</span><span class="grow"><b>${esc(f.nome || 'documento.pdf')}</b><span class="s">${kb(f.tam || Math.round(f.arquivos[0].length * 0.75))}</span></span><button type="button" class="btn ghost btn-mini" data-dabrir="0">Abrir</button></div>`;
+  return `<div class="doc-fotos">${f.arquivos.map((u, i) => `<img class="atest-img" src="${u}" alt="${i ? 'Verso' : 'Frente'} do documento" data-dabrir="${i}">`).join('')}</div>`;
+}
+const nomeArqDoc = (alid, tid, ext) => `${tipoDoc(tid).nome} ${(S.alunas[alid] || {}).nome || 'aluno'}.${ext}`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w .-]/g, '');
+function ligarPreviaDoc(raiz, f, alid, tid) {
+  raiz.querySelectorAll('[data-dabrir]').forEach(b => b.onclick = () => {
+    const u = f.arquivos[Number(b.dataset.dabrir)];
+    abrirArquivo({ arquivo: u, tipo: f.formato === 'pdf' ? 'pdf' : 'img' }, nomeArqDoc(alid, tid, f.formato === 'pdf' ? 'pdf' : 'jpg'), tipoDoc(tid).nome, 'Documento salvo');
+  });
+}
+
+// guardar ou ver um documento de um aluno (escola ou família)
+function sheetDocAluno(alid, tid, volta) {
+  const a = S.alunas[alid] || {}, T = tipoDoc(tid), d0 = docDe(alid, tid), adm = !!S.admin, s0 = situacaoDoc(d0);
+  let novos = [], valMexida = !!(d0 && d0.validade && d0.data && T.meses && d0.validade !== maisMeses(d0.data, T.meses));
+  const ehPdf = () => novos.length && novos[0].tipo === 'pdf';
+  sheet(`<h3>${esc(T.nome)}</h3><div class="sub">${esc(a.nome || '')}</div>
+    ${d0 ? `<div class="field"><span class="lb">Guardado</span><div class="doc-box" id="dgprev"><div class="sub">Carregando…</div></div>
+      <div class="doc-meta">${chipDoc(d0)}<span class="sub">Enviado em ${esc(dataCurta(d0.em))} ${d0.familia ? 'pela família' : 'pela escola'}${d0.data ? ` · documento de ${esc(dataBRA(d0.data))}` : ''}</span></div></div>`
+      : `<div class="sub">${adm ? (T.familia === false ? 'Tire uma foto do documento ou escolha o PDF.' : 'A família também pode enviar pelo app, em Meus filhos. Ou tire a foto aqui do documento que você recebeu.') : 'Tire uma foto do documento inteiro, bem legível. Se tiver frente e verso, mande as duas.'}</div>`}
+    ${d0 && s0.st !== 'ok' && !adm ? `<div class="aviso-lei"><b>${s0.st === 'vencido' ? 'Este documento venceu' : 'Este documento vence logo'}</b><span>Mande um novo para a escola.</span></div>` : ''}
+    <div class="field" id="dnovo" hidden><span class="lb">${d0 ? 'Novo' : 'Documento'}</span><div class="doc-box" id="dnprev"></div><div class="sub num" id="dtam"></div></div>
+    <div class="doc-botoes"><span class="btn ${d0 ? 'ghost' : ''} toque-arquivo" id="dbtn">${d0 ? 'Trocar o documento' : 'Tirar foto ou escolher arquivo'}<input type="file" id="darq" accept="image/*,application/pdf" aria-label="Escolher o documento"></span>
+      <span class="btn ghost toque-arquivo" id="dversob" hidden>+ Foto do verso<input type="file" id="dverso" accept="image/*" aria-label="Foto do verso"></span></div>
+    <div class="two"><div class="field"><label for="ddata">Data do documento</label><input type="date" id="ddata" max="${hoje()}" value="${esc((d0 && d0.data) || '')}"></div>
+    ${T.meses ? `<div class="field"><label for="dval">Válido até</label><input type="date" id="dval" value="${esc((d0 && d0.validade) || '')}"></div>` : '<div></div>'}</div>
+    ${T.meses ? `<div class="note">Vale ${mesesTxt(T.meses)} a partir da data do documento. Se estiver escrito outro prazo, mude o "Válido até".</div>` : ''}
+    <div class="err" id="derr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="dok" ${d0 ? '' : 'hidden'}>${adm ? 'Guardar' : 'Enviar para a escola'}</button></div>
+    ${d0 && adm ? '<button type="button" class="btn ghost" id="ddel" style="color:var(--out)">Apagar este documento</button>' : ''}`, sh => {
+    if (volta) SHEET_VOLTAR = volta;
+    const err = m => { $('derr').textContent = m || ''; };
+    if (d0) arquivosDoc(alid, tid).then(f => { if (!$('dgprev')) return; $('dgprev').innerHTML = previaDoc(f); if (f) ligarPreviaDoc($('dgprev'), f, alid, tid); });
+    const verNovos = () => {
+      $('dnovo').hidden = !novos.length; $('dok').hidden = !novos.length && !d0;
+      const f = { formato: ehPdf() ? 'pdf' : 'img', arquivos: novos.map(n => n.arquivo), nome: novos[0] && novos[0].nome, tam: novos.reduce((s, n) => s + n.tam, 0) };
+      $('dnprev').innerHTML = novos.length ? previaDoc(f) : ''; if (novos.length) ligarPreviaDoc($('dnprev'), f, alid, tid);
+      $('dtam').textContent = novos.length && !ehPdf() ? `${novos.length === 2 ? 'Frente e verso · ' : ''}${kb(f.tam)}` : '';
+      $('dversob').hidden = !(novos.length === 1 && !ehPdf());
+      $('dbtn').firstChild.textContent = novos.length ? 'Escolher outro' : (d0 ? 'Trocar o documento' : 'Tirar foto ou escolher arquivo');
+      $('dbtn').classList.toggle('ghost', !!(novos.length || d0));
+    };
+    const ler = async (arq, max) => { err(''); try { return await prepararAtestado(arq, { img: max, oque: 'documento' }); } catch (e) { err(e.message); return null; } };
+    let frente = null; // a foto original da frente, para reduzir mais se vier o verso
+    $('darq').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq) return; const n = await ler(arq, DOC_MAX_1); if (n) { novos = [n]; frente = arq; verNovos(); } };
+    $('dverso').onchange = async e => { const arq = e.target.files[0]; e.target.value = ''; if (!arq || !novos.length) return;
+      // com duas fotos, cada uma fica um pouco menor para caber no mesmo documento
+      const n = await ler(arq, DOC_MAX_2); if (!n) return;
+      if (novos[0].tam > DOC_MAX_2 && frente) { const r = await ler(frente, DOC_MAX_2); if (r) novos[0] = r; }
+      if (novos[0].tam + n.tam > 2 * DOC_MAX_2 + 60 * 1024) return err('As duas fotos ficaram grandes demais. Tente tirar de novo, mais de perto.');
+      novos = [novos[0], n]; verNovos(); };
+    if (T.meses) {
+      $('ddata').addEventListener('input', () => { const v = $('ddata').value; if (v && !valMexida) $('dval').value = maisMeses(v, T.meses); });
+      $('dval').addEventListener('input', () => { valMexida = true; });
+    }
+    [$('ddata'), $('dval')].filter(Boolean).forEach(el => el.addEventListener('input', () => { $('dok').hidden = false; }));
+    $('dok').onclick = async () => {
+      const data = $('ddata').value || null, validade = T.meses ? ($('dval').value || null) : null;
+      if (!novos.length && !d0) return err('Escolha a foto ou o PDF do documento.');
+      if (data && data > hoje()) return err('A data do documento não pode ser depois de hoje.');
+      if (validade && data && validade < data) return err('O "Válido até" não pode ser antes da data do documento.');
+      if (T.meses && !validade && adm) return err('Informe até quando o documento vale.');
+      if (T.meses && !validade && !data) return err('Informe a data do documento (está escrita nele).');
+      $('dok').disabled = true; $('dok').textContent = 'Guardando…';
+      try {
+        const agora = Date.now(), rid = a.responsavelId || null;
+        const val = validade || (T.meses && data ? maisMeses(data, T.meses) : null);
+        let meta = { ...(d0 || {}), data, validade: val };
+        if (novos.length) {
+          const pdf = ehPdf(), tam = novos.reduce((s, n) => s + n.tam, 0);
+          await B.set(`escolas/${S.eid}/documentos/${alid}__${tid}`, { alid, tipo: tid, responsavelId: rid, formato: pdf ? 'pdf' : 'img', arquivos: novos.map(n => n.arquivo), nome: novos[0].nome, tam, em: agora, por: EU.uid });
+          meta = { ...meta, em: agora, por: EU.uid, familia: !adm, formato: pdf ? 'pdf' : 'img', paginas: novos.length, tam };
+        }
+        await B.set(`escolas/${S.eid}/docsAlunos/${alid}`, { responsavelId: rid, docs: { [tid]: meta } }, { merge: true });
+        S.docs[alid] = { ...(S.docs[alid] || {}), responsavelId: rid, docs: { ...((S.docs[alid] || {}).docs || {}), [tid]: meta } };
+        fecharSheet(); aviso(adm ? 'Documento guardado' : 'Documento enviado para a escola'); if (volta) setTimeout(volta, 60);
+      } catch (e) { err(msgErro(e)); $('dok').disabled = false; $('dok').textContent = adm ? 'Guardar' : 'Enviar para a escola'; }
+    };
+    if ($('ddel')) $('ddel').onclick = () => confirmar('Apagar este documento?', `${esc(T.nome)} de ${esc(a.nome || '')}. O arquivo sai do app.`, 'Apagar', async () => {
+      await B.del(`escolas/${S.eid}/documentos/${alid}__${tid}`); await B.tirar(`escolas/${S.eid}/docsAlunos/${alid}`, `docs.${tid}`);
+      if (S.docs[alid] && S.docs[alid].docs) delete S.docs[alid].docs[tid]; aviso('Documento apagado'); if (volta) setTimeout(volta, 60);
+    });
+  });
+}
+
+// tipos de documento que a escola pede
+function sheetTiposDoc(volta) {
+  let tipos = tiposDoc().map(t => ({ ...t }));
+  const usados = tid => Object.values(S.docs || {}).filter(x => x && x.docs && x.docs[tid]).length;
+  const desenhar = () => {
+    $('tdlista').innerHTML = tipos.map((t, i) => `<div class="tipo-doc"><div class="tipo-doc-l1"><input data-tn="${i}" maxlength="40" value="${esc(t.nome)}" placeholder="Nome do documento" aria-label="Nome do documento"><button type="button" class="ev-foto-x" data-tx="${i}" aria-label="Tirar ${esc(t.nome)}">×</button></div>
+      <div class="chips">${VALIDADES_DOC.map(([m, n]) => `<button type="button" class="pick" data-tv="${i}:${m}" aria-pressed="${Number(t.meses || 0) === m}">${n}</button>`).join('')}</div>
+      <label class="check"><input type="checkbox" data-tf="${i}" ${t.familia !== false ? 'checked' : ''}> A família envia pelo app</label></div>`).join('') || '<div class="empty">Nenhum tipo de documento.</div>';
+    $('tdsug').innerHTML = SUGESTOES_DOC.filter(n => !tipos.some(t => t.nome.toLowerCase() === n.toLowerCase())).map(n => `<button type="button" class="pick" data-ts="${esc(n)}">+ ${esc(n)}</button>`).join('');
+    $('tdlista').querySelectorAll('[data-tn]').forEach(e => e.oninput = () => { tipos[Number(e.dataset.tn)].nome = e.value; });
+    $('tdlista').querySelectorAll('[data-tv]').forEach(b => b.onclick = () => { const [i, m] = b.dataset.tv.split(':').map(Number); tipos[i].meses = m; desenhar(); });
+    $('tdlista').querySelectorAll('[data-tf]').forEach(c => c.onchange = () => { tipos[Number(c.dataset.tf)].familia = c.checked; });
+    $('tdlista').querySelectorAll('[data-tx]').forEach(b => b.onclick = () => { const t = tipos[Number(b.dataset.tx)], n = t.id ? usados(t.id) : 0;
+      if (n) return $('tderr').textContent = `${n === 1 ? '1 aluno tem' : `${n} alunos têm`} "${t.nome}" guardado. Apague esses documentos antes, ou só mude o nome.`;
+      tipos.splice(Number(b.dataset.tx), 1); desenhar(); });
+    $('tdsug').querySelectorAll('[data-ts]').forEach(b => b.onclick = () => { tipos.push({ id: '', nome: b.dataset.ts, meses: /atestado/i.test(b.dataset.ts) ? 12 : 0, familia: true }); desenhar(); });
+  };
+  sheet(`<h3>Documentos dos alunos</h3>
+    <div class="sub">Os documentos que a escola guarda de cada aluno. Com validade, o app avisa quando estiver perto de vencer. Nenhum é obrigatório.</div>
+    <div id="tdlista"></div>
+    <button type="button" class="add-disc" id="tdmais" style="align-self:flex-start">+ Outro documento</button>
+    <div class="field"><span class="lb">Sugestões</span><div class="chips" id="tdsug"></div></div>
+    <div class="err" id="tderr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="tdok">Salvar</button></div>`, () => {
+    if (volta) SHEET_VOLTAR = volta;
+    desenhar();
+    $('tdmais').onclick = () => { tipos.push({ id: '', nome: '', meses: 0, familia: true }); desenhar(); const u = $('tdlista').querySelector(`[data-tn="${tipos.length - 1}"]`); if (u) u.focus(); };
+    $('tdok').onclick = async () => {
+      const lim = tipos.map(t => ({ ...t, nome: String(t.nome || '').trim() }));
+      if (lim.some(t => !t.nome)) return $('tderr').textContent = 'Dê um nome para cada documento, ou tire o que ficou em branco.';
+      const nomes = lim.map(t => t.nome.toLowerCase()); if (new Set(nomes).size !== nomes.length) return $('tderr').textContent = 'Tem dois documentos com o mesmo nome.';
+      const final = lim.map(t => ({ id: t.id || ('d' + novoId().slice(0, 8)), nome: t.nome, meses: Number(t.meses) || 0, familia: t.familia !== false }));
+      $('tdok').disabled = true;
+      try { await B.set(`escolas/${S.eid}/config/geral`, { tiposDoc: final }, { merge: true }); S.cfg.tiposDoc = final; fecharSheet(); aviso('Documentos salvos'); if (volta) setTimeout(volta, 60); }
+      catch (e) { $('tderr').textContent = msgErro(e); $('tdok').disabled = false; }
+    };
+  });
+}
+
+// mensagem de WhatsApp para pedir um documento à família
+function waDoc(alid, tid) {
+  const a = S.alunas[alid] || {}, r = respDe(alid), T = tipoDoc(tid), d = docDe(alid, tid), s = situacaoDoc(d);
+  const como = s.st === 'vencido' ? `venceu em ${dataBRA(d.validade)}` : s.st === 'vence' ? `vence em ${dataBRA(d.validade)}` : 'ainda não está no app';
+  return waLink(r.telefone, `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}. O documento "${T.nome}" de ${primeiro(a.nome || '')} ${como}. Pode mandar ${s.st === 'falta' ? 'uma foto' : 'o novo'} pelo app, em Meus filhos? ${LINK_APP}`);
+}
+// administração: visão geral dos documentos
+function sheetDocsEscola() {
+  const volta = () => sheetDocsEscola(), mes = mesHoje();
+  const ativos = porNome(S.alunas).filter(([, a]) => C.ativaNoMes(a, mes) && !a.anonimizadoEm);
+  const linha = (alid, tid) => { const a = S.alunas[alid], wa = situacaoDoc(docDe(alid, tid)).st !== 'ok' ? waDoc(alid, tid) : '';
+    return `<li class="tap" data-dal="${esc(alid)}" data-dt="${esc(tid)}"><div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(tipoDoc(tid).nome)}</span></div>${chipDoc(docDe(alid, tid))}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Pedir pelo WhatsApp">${ICO_WA}</a>` : ''}</li>`; };
+  const alertas = [];
+  for (const [alid] of ativos) for (const T of tiposDoc()) { const st = situacaoDoc(docDe(alid, T.id)).st; if (st === 'vencido' || st === 'vence') alertas.push([alid, T.id, st]); }
+  alertas.sort((x, y) => (x[2] === 'vencido' ? 0 : 1) - (y[2] === 'vencido' ? 0 : 1));
+  sheet(`<h3>Documentos dos alunos</h3>
+    <button type="button" class="btn" id="dejunta">Juntar documentos em PDF</button>
+    <div class="note">Para mandar a uma competição: escolha os alunos e os documentos, e o app junta tudo num PDF só.</div>
+    ${alertas.length ? `<section><h2>Vencidos ou vencendo</h2><ul class="list">${alertas.map(([al, t]) => linha(al, t)).join('')}</ul></section>` : ''}
+    <section><h2>Por documento</h2>
+    ${tiposDoc().map(T => { const tem = ativos.filter(([id]) => docDe(id, T.id)), falta = ativos.filter(([id]) => !docDe(id, T.id));
+      return `<details class="doc-tipo"><summary><span class="grow"><b>${esc(T.nome)}</b><span class="s num">${tem.length} guardado${tem.length === 1 ? '' : 's'} · ${falta.length} falta${falta.length === 1 ? '' : 'm'}${T.meses ? ` · vale ${mesesTxt(T.meses)}` : ''}</span></span><span class="seta" aria-hidden="true">▾</span></summary>
+        <ul class="list">${[...falta, ...tem].map(([id]) => linha(id, T.id)).join('') || '<li><span class="sub">Nenhum aluno ativo.</span></li>'}</ul></details>`; }).join('')}
+    </section>
+    <button type="button" class="linha-botao" id="detipos"><span class="grow"><b>Mudar os tipos de documento</b><span class="s">${esc(tiposDoc().map(t => t.nome).join(', ') || 'Nenhum')}</span></span><span aria-hidden="true">›</span></button>
+    <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
+    $('dejunta').onclick = () => abrirDe(volta, () => sheetJuntarDocs({ volta }));
+    $('detipos').onclick = () => abrirDe(volta, () => sheetTiposDoc(volta));
+    sh.querySelectorAll('[data-dal]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; abrirDe(volta, () => sheetDocAluno(li.dataset.dal, li.dataset.dt, volta)); });
+  });
+}
+
+// juntar os documentos dos alunos marcados num PDF só (para a competição)
+function sheetJuntarDocs(op = {}) {
+  const selA = new Set(op.pre || []), usados = new Set();
+  const temAtest = Object.keys(S.alunas).some(id => atestadoMeta(id));
+  const tipos = [...tiposDoc().map(t => t.id), ...(temAtest ? ['_atest'] : [])], selT = new Set(op.tipos || tiposDoc().map(t => t.id));
+  sheet(`<h3>Juntar documentos</h3>
+    <div class="sub">Um PDF só, com os documentos dos alunos marcados, para mandar à competição pelo WhatsApp ou e-mail.</div>
+    <div class="field"><label for="jdtit">Para qual competição?</label><input id="jdtit" maxlength="80" value="${esc(op.titulo || '')}" placeholder="Ex.: Copa Recife Sub-11"></div>
+    <div class="field"><span class="lb">Quais documentos?</span><div class="chips" id="jdtipos">${tipos.map(t => `<button type="button" class="pick" data-jt="${esc(t)}" aria-pressed="${selT.has(t)}">${esc(tipoDoc(t).nome)}</button>`).join('')}</div></div>
+    <div class="field"><span class="lb">Quais alunos? Toque num quadro para escolher</span><div id="jdquadros"></div></div>
+    <div id="jdresumo"></div>
+    <label class="check"><input type="checkbox" id="jdcapa" checked> Primeira página com a lista dos alunos e a data de nascimento</label>
+    <div class="err" id="jderr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="jdok">Gerar PDF</button></div>
+    <div class="note">No celular, o compartilhar abre sozinho: escolha o WhatsApp ou o e-mail. No computador, o PDF é baixado.</div>`, sh => {
+    if (op.volta) SHEET_VOLTAR = op.volta;
+    const resumo = () => {
+      const al = [...selA].filter(id => S.alunas[id]), ts = tipos.filter(t => selT.has(t));
+      let tem = 0; const faltam = [], vencidos = [];
+      for (const id of al) for (const t of ts) { const m = metaJunta(id, t), st = situacaoDoc(m).st; if (!m) faltam.push([id, t]); else { tem++; if (st === 'vencido') vencidos.push([id, t]); } }
+      const nomes = l => l.slice(0, 6).map(([id, t]) => `${primeiro(S.alunas[id].nome)} (${tipoDoc(t).nome.toLowerCase()})`).join(', ') + (l.length > 6 ? ` e mais ${l.length - 6}` : '');
+      $('jdresumo').innerHTML = !al.length || !ts.length ? '' : `<div class="faixa-card" style="background:var(--bg)"><b class="num">${al.length} aluno${al.length === 1 ? '' : 's'} · ${tem} documento${tem === 1 ? '' : 's'} no PDF</b>
+        ${faltam.length ? `<span class="s">Faltam ${faltam.length}: ${esc(nomes(faltam))}. Na lista da primeira página aparece "falta".</span>` : '<span class="s">Todos os documentos estão no app.</span>'}
+        ${vencidos.length ? `<span class="s" style="color:var(--out);font-weight:700">Vencidos: ${esc(nomes(vencidos))}.</span>` : ''}</div>`;
+    };
+    const sel = seletorAtletas($('jdquadros'), { quadros: quadrosDe(selA, true, op.evento), selA, usados, aoMudar: resumo });
+    sel.desenhar();
+    sh.querySelectorAll('[data-jt]').forEach(b => b.onclick = () => { const t = b.dataset.jt; selT.has(t) ? selT.delete(t) : selT.add(t); b.setAttribute('aria-pressed', selT.has(t)); resumo(); });
+    $('jdok').onclick = async () => {
+      const err = m => $('jderr').textContent = m || '', al = porNome(S.alunas).filter(([id]) => selA.has(id)).map(([id]) => id), ts = tipos.filter(t => selT.has(t));
+      err(''); if (!ts.length) return err('Escolha ao menos um documento.'); if (!al.length) return err('Escolha ao menos um aluno.');
+      const titulo = $('jdtit').value.trim(), b = $('jdok'); b.disabled = true;
+      try {
+        const bytes = await pdfDocumentos({ titulo, alids: al, tids: ts, capa: $('jdcapa').checked }, txt => { b.textContent = txt; });
+        const nome = `Documentos ${titulo || S.escola.nome || ''}`.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w .-]/g, '').trim().slice(0, 70) + '.pdf';
+        b.textContent = 'Gerar PDF'; b.disabled = false;
+        const r = await salvarArquivo(nome, bytes, 'application/pdf');
+        if (r !== 'cancelado') aviso(r === 'baixado' ? `PDF baixado (${kb(bytes.length)})` : 'PDF pronto');
+      } catch (e) { err(e.message || msgErro(e)); b.textContent = 'Gerar PDF'; b.disabled = false; }
+    };
+  });
+}
+let PDFLIB = null;
+function carregarPdfLib() {
+  if (window.PDFLib) return Promise.resolve(window.PDFLib);
+  return PDFLIB || (PDFLIB = new Promise((ok, falha) => { const s = document.createElement('script'); s.src = 'pdf-lib.min.js';
+    s.onload = () => ok(window.PDFLib); s.onerror = () => { PDFLIB = null; falha(new Error('Não deu para abrir o gerador de PDF. Confira a internet e tente de novo.')); }; document.head.appendChild(s); }));
+}
+// texto que a fonte padrão do PDF aceita (português sem problema; emoji e outros viram o mais próximo)
+const WIN_EXTRA = '—–“”‘’…•€';
+const pdfTxt = s => [...String(s ?? '')].map(ch => { const c = ch.charCodeAt(0); if ((c >= 32 && c <= 126) || (c >= 160 && c <= 255) || WIN_EXTRA.includes(ch)) return ch; const b = ch.normalize('NFD').replace(/[̀-ͯ]/g, ''); return b && b.charCodeAt(0) < 127 ? b[0] : ''; }).join('');
+async function pdfDocumentos({ titulo, alids, tids, capa }, progresso = () => { }) {
+  progresso('Preparando…');
+  const L = await carregarPdfLib(), pdf = await L.PDFDocument.create();
+  const F = await pdf.embedFont(L.StandardFonts.Helvetica), FB = await pdf.embedFont(L.StandardFonts.HelveticaBold);
+  const W = 595.28, H = 841.89, M = 36, cinza = L.rgb(0.42, 0.4, 0.37), preto = L.rgb(0.1, 0.1, 0.1), linhaC = L.rgb(0.85, 0.83, 0.8);
+  const hexRgb = h => { const x = String(h || '').replace('#', ''); return /^[0-9a-f]{6}$/i.test(x) ? L.rgb(...[0, 2, 4].map(i => parseInt(x.slice(i, i + 2), 16) / 255)) : preto; };
+  const corEsc = hexOk(S.cfg.cor) ? hexRgb(S.cfg.cor) : preto, escola = S.escola.nome || 'Escola', agora = new Date();
+  const geradoEm = `${pad(agora.getDate())}/${pad(agora.getMonth() + 1)}/${agora.getFullYear()}`;
+  const caber = (t, f, tam, max) => { t = pdfTxt(t); if (f.widthOfTextAtSize(t, tam) <= max) return t; while (t && f.widthOfTextAtSize(t + '…', tam) > max) t = t.slice(0, -1); return t + '…'; };
+  const escrever = (pg, t, x, y, o = {}) => pg.drawText(caber(t, o.f || F, o.tam || 10, o.max || (W - x - M)), { x, y: H - y, size: o.tam || 10, font: o.f || F, color: o.cor || preto });
+  const nasc = id => { const n = (S.alunas[id] || {}).nascimento; return n ? dataBRA(n) : '—'; };
+  const statusTxt = (id, t) => { const m = metaJunta(id, t), s = situacaoDoc(m); return !m ? 'falta' : s.st === 'vencido' ? `venceu ${dataBRA(m.validade)}` : m.validade ? `até ${dataBRA(m.validade)}` : 'ok'; };
+  const tit = titulo || 'Documentos dos alunos';
+  // capa: lista dos alunos
+  if (capa) {
+    let pg = pdf.addPage([W, H]), y = M + 8;
+    const topo = cont => { pg.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: corEsc }); escrever(pg, escola, M, y + 4, { f: FB, tam: 10, cor: cinza }); y += 26;
+      escrever(pg, cont ? `${tit} (continuação)` : tit, M, y, { f: FB, tam: 18 }); y += 18; escrever(pg, `${alids.length} aluno${alids.length === 1 ? '' : 's'} · gerado em ${geradoEm}`, M, y, { tam: 9.5, cor: cinza }); y += 22;
+      escrever(pg, 'ALUNO(A)', M, y, { f: FB, tam: 8, cor: cinza }); escrever(pg, 'NASCIMENTO', W - M - 90, y, { f: FB, tam: 8, cor: cinza }); y += 6; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.6, color: linhaC }); y += 14; };
+    topo(false);
+    alids.forEach((id, i) => {
+      const linhas = tids.map(t => `${tipoDoc(t).nome}: ${statusTxt(id, t)}`), alto = 14 + Math.ceil(linhas.length / 2) * 12 + 8;
+      if (y + alto > H - M) { pg = pdf.addPage([W, H]); y = M + 8; topo(true); }
+      escrever(pg, `${i + 1}. ${(S.alunas[id] || {}).nome || ''}`, M, y, { f: FB, tam: 11, max: W - 2 * M - 100 }); escrever(pg, nasc(id), W - M - 90, y, { tam: 10.5 }); y += 14;
+      linhas.forEach((l, k) => { const col = k % 2, falta = /: falta$|: venceu/.test(l); escrever(pg, l, M + 14 + col * ((W - 2 * M - 14) / 2), y, { tam: 9, cor: falta ? L.rgb(0.7, 0.15, 0.1) : cinza, max: (W - 2 * M - 14) / 2 - 8 }); if (col === 1 || k === linhas.length - 1) y += 12; });
+      y += 4; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.4, color: linhaC }); y += 14;
+    });
+  }
+  // um cabeçalho em cada página de documento: quem é e que documento é
+  const cab = (pg, id, t, extra) => { const m = metaJunta(id, t); pg.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: corEsc });
+    escrever(pg, `${(S.alunas[id] || {}).nome || ''} · ${tipoDoc(t).nome}`, M, M + 10, { f: FB, tam: 12 });
+    escrever(pg, [`Nascimento ${nasc(id)}`, m && m.validade ? `válido até ${dataBRA(m.validade)}` : '', extra || '', escola].filter(Boolean).join(' · '), M, M + 25, { tam: 9, cor: cinza }); };
+  const TOPO = M + 38, caixaH = H - TOPO - M;
+  const lista = []; for (const id of alids) for (const t of tids) if (metaJunta(id, t)) lista.push([id, t]);
+  let n = 0;
+  for (const [id, t] of lista) {
+    progresso(`Juntando ${++n} de ${lista.length}…`);
+    const f = await arquivosDoc(id, t);
+    if (!f || !(f.arquivos || []).length) { const pg = pdf.addPage([W, H]); cab(pg, id, t); escrever(pg, 'Não deu para abrir este arquivo no app.', M, TOPO + 20, { cor: cinza }); continue; }
+    if (f.formato === 'pdf') {
+      try {
+        const orig = await L.PDFDocument.load(bytesDe(f.arquivos[0]), { ignoreEncryption: true }), pags = await pdf.embedPdf(orig, orig.getPageIndices());
+        pags.forEach((p, k) => { const pg = pdf.addPage([W, H]); cab(pg, id, t, pags.length > 1 ? `página ${k + 1} de ${pags.length}` : '');
+          const e = Math.min((W - 2 * M) / p.width, caixaH / p.height), w = p.width * e, h = p.height * e;
+          pg.drawPage(p, { x: (W - w) / 2, y: H - TOPO - h, width: w, height: h }); });
+      } catch (e) { const pg = pdf.addPage([W, H]); cab(pg, id, t); escrever(pg, 'Este PDF é protegido e não deu para juntar. Mande-o à parte.', M, TOPO + 20, { cor: cinza }); }
+      continue;
+    }
+    // fotos: uma ocupa a página; frente e verso dividem a página
+    const pg = pdf.addPage([W, H]); cab(pg, id, t);
+    const ims = []; for (const u of f.arquivos) { try { ims.push(await pdf.embedJpg(bytesDe(u))); } catch (e) { try { ims.push(await pdf.embedPng(bytesDe(u))); } catch (e2) { } } }
+    const vao = 12, cada = (caixaH - vao * (ims.length - 1)) / Math.max(1, ims.length);
+    ims.forEach((im, k) => { const e = Math.min((W - 2 * M) / im.width, cada / im.height), w = im.width * e, h = im.height * e, topo = TOPO + k * (cada + vao);
+      pg.drawImage(im, { x: (W - w) / 2, y: H - topo - h, width: w, height: h }); });
+  }
+  if (!pdf.getPageCount()) throw new Error('Nenhum dos alunos marcados tem esses documentos no app.');
+  pdf.setTitle(pdfTxt(tit)); pdf.setProducer('Turma em Dia'); pdf.setCreator('Turma em Dia');
+  progresso('Finalizando…');
+  return pdf.save();
+}
 
 // enviar (família) ou anexar o atestado recebido em papel (administração)
 function sheetEnviarAtestado(alid, op = {}) {
@@ -3398,6 +3738,7 @@ async function apagarDadosPessoais(alids, pedidoId) {
   for (const alid of alids) { const a = S.alunas[alid]; if (!a) continue; if (a.responsavelId) rids.add(a.responsavelId);
     ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${alid}`, d: { nome: 'Aluno(a) removido(a)', nascimento: null, responsavelId: a.responsavelId || null, turmas: a.turmas || [], desc: null, inicio: a.inicio || null, fim: mesMais(mesHoje(), -1), ativa: false, anonimizadoEm: Date.now() } });
     ops.push({ op: 'del', p: `escolas/${S.eid}/saude/${alid}` }, { op: 'del', p: `escolas/${S.eid}/atestados/${alid}` });
+    ops.push(...opsApagarDocs(alid));
     for (const [g, G] of Object.entries(S.grupos)) if ((G.alunas || []).includes(alid)) ops.push({ op: 'merge', p: `escolas/${S.eid}/grupos/${g}`, d: { alunas: G.alunas.filter(x => x !== alid) } });
   }
   // responsável só é apagado se não tiver outro aluno ativo
@@ -3519,6 +3860,7 @@ function sheetAjustes() {
     <section><h2>Aparência</h2>
       <button type="button" class="linha-botao" id="japar">${c.logo ? `<img src="${esc(c.logo)}" alt="" class="mini-logo">` : '<span class="mini-logo vazio">Logo</span>'}<span class="grow"><b>Cor e logo da escola</b><span class="s">Toque para mudar</span></span><span class="cor-amostra" style="background:${hexOk(c.cor) ? c.cor : COR_PADRAO}"></span><span aria-hidden="true">›</span></button>
     </section>
+    <section><h2>Documentos dos alunos</h2><button type="button" class="linha-botao" id="jdocs"><span class="grow"><b>Tipos de documento</b><span class="s">${esc(tiposDoc().map(t => t.nome).join(', ') || 'Nenhum')}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
     <div class="err" id="jerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="jok">Salvar ajustes</button></div>
     <section><h2>Conta</h2><div class="sub">${esc(EU.nome || '')} · ${esc(EU.email || '')}</div>
@@ -3527,6 +3869,7 @@ function sheetAjustes() {
     if ($('jsimv')) { const verJ = ligarSimTaxa('jsim', () => $('jrep').checked); $('jrep').addEventListener('change', verJ); }
     const err = m => $('jerr').textContent = m;
     if ($('jnotas')) $('jnotas').onclick = () => abrirDe(sheetAjustes, sheetNotasEscola);
+    $('jdocs').onclick = () => abrirDe(sheetAjustes, () => sheetTiposDoc(sheetAjustes));
     ligarNotasPlataforma(sheetAjustes);
     $('japar').onclick = () => abrirDe(sheetAjustes, sheetAparencia);
     $('jmsgs').onclick = () => abrirDe(sheetAjustes, () => sheetModelos());
@@ -3678,6 +4021,20 @@ async function semearMock() {
   const nao = { coracao: false, esforco: false, desmaio: false, doenca: false, ossos: false, outro: false };
   await set(`${p}/saude/al4`, { responsavelId: 'r3', respostas: { ...nao, doenca: true }, detalhes: 'Asma leve, usa bombinha antes de esforço intenso.', alergias: '', remedios: 'Bombinha (salbutamol) se precisar', plano: '', emergencia: { nome: 'Carla Andrade', telefone: '(81) 97777-3003', parentesco: 'mãe' }, primeirosSocorros: true, imagem: true, assinatura: { nome: 'Carla Andrade' }, em: Date.now() - 20 * 864e5, versao: 1, atestado: { pedidoEm: Date.now() - 20 * 864e5 } });
   await set(`${p}/saude/al3`, { responsavelId: 'r2', respostas: nao, detalhes: '', alergias: 'Dipirona', remedios: '', plano: 'Hapvida', emergencia: { nome: 'Roberto Melo', telefone: '(81) 98888-2002', parentesco: 'pai' }, primeirosSocorros: true, imagem: false, assinatura: { nome: 'Roberto Melo' }, em: Date.now() - 60 * 864e5, versao: 1, atestado: null });
+  // documentos de exemplo: Sofia em dia, Luíza com o parecer vencido, Ana Beatriz com o parecer vencendo
+  const docFalso = (titulo, nome, w = 900, h = 1200) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+    g.fillStyle = '#fbfaf6'; g.fillRect(0, 0, w, h); g.fillStyle = '#222'; g.font = `bold ${Math.round(w / 22)}px sans-serif`; g.fillText(titulo, w * 0.08, h * 0.1);
+    g.font = `${Math.round(w / 32)}px sans-serif`; g.fillText('Nome: ' + nome, w * 0.08, h * 0.17); g.fillStyle = '#c9c4ba';
+    for (let k = 0, y = h * 0.24; y < h * 0.78; k++, y += h * 0.045) g.fillRect(w * 0.08, y, w * (0.55 + (k * 37 % 30) / 100), h * 0.014);
+    g.strokeStyle = '#2a3a6a'; g.lineWidth = 3; g.beginPath(); g.moveTo(w * 0.55, h * 0.9); g.bezierCurveTo(w * 0.65, h * 0.83, w * 0.72, h * 0.95, w * 0.88, h * 0.87); g.stroke(); return c.toDataURL('image/jpeg', 0.7); };
+  const diaM = n => isoDe(new Date(Date.now() + n * 864e5));
+  const docM = async (alid, rid, tid, arquivos, data, validade, familia) => { const em = Date.now() - 20 * 864e5;
+    await set(`${p}/documentos/${alid}__${tid}`, { alid, tipo: tid, responsavelId: rid, formato: 'img', arquivos, nome: tid + '.jpg', tam: 95000 * arquivos.length, em });
+    return [tid, { em, familia, data, validade, formato: 'img', paginas: arquivos.length, tam: 95000 * arquivos.length }]; };
+  await set(`${p}/docsAlunos/al1`, { responsavelId: 'r1', docs: Object.fromEntries([await docM('al1', 'r1', 'cardio', [docFalso('PARECER CARDIOLÓGICO', 'Sofia Lins')], diaM(-90), maisMeses(diaM(-90), 12), true),
+    await docM('al1', 'r1', 'ident', [docFalso('CERTIDÃO DE NASCIMENTO', 'Sofia Lins', 1200, 800), docFalso('CERTIDÃO · VERSO', 'Sofia Lins', 1200, 800)], null, null, true)]) });
+  await set(`${p}/docsAlunos/al3`, { responsavelId: 'r2', docs: Object.fromEntries([await docM('al3', 'r2', 'cardio', [docFalso('PARECER CARDIOLÓGICO', 'Luíza Melo')], diaM(-377), diaM(-12), false)]) });
+  await set(`${p}/docsAlunos/al4`, { responsavelId: 'r3', docs: Object.fromEntries([await docM('al4', 'r3', 'cardio', [docFalso('PARECER CARDIOLÓGICO', (alunas.al4 || {}).nome || 'Aluno')], diaM(-345), diaM(20), false)]) });
   await set(`${p}/membros/${uF}/vinculos/r1`, { codigo: 'K7Q2MX' });
   await set('users/' + uA, { escolas: { [eid]: { nome: 'Escolinha Movimento', papel: 'admin' } } });
   // ?mock=1&duas=1: a administração também está numa segunda escola (para ver a escolha na abertura)
