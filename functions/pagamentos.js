@@ -56,6 +56,8 @@ function motivoMP(status, j, nomeRec) {
 }
 
 module.exports = db => {
+  // ganchos de outros módulos (nota fiscal para as famílias, em notaFamilia.js)
+  const ganchos = {};
   const erro = (m, http) => Object.assign(new Error(m), { http });
   const ler = async p => { const s = await db.doc(p).get(); return s.exists ? s.data() : null; };
   const mapa = async p => Object.fromEntries((await db.collection(p).get()).docs.map(d => [d.id, d.data()]));
@@ -141,7 +143,7 @@ module.exports = db => {
       const por = {};
       for (const i of itens) for (const [rec, v] of Object.entries(i.partes || { escola: i.v })) {
         const L = por[rec] = por[rec] || { rec, base: 0, itens: [] };
-        L.base = C.r2(L.base + v); L.itens.push({ k: i.k, tipo: i.tipo, alid: i.alid, mes: i.mes || null, xid: i.xid || null, aid: i.aid || null, n: i.n || null, v: C.r2(v), total: i.v, recs: Object.keys(i.partes || { escola: 1 }), desc: i.desc, nome: i.nome });
+        L.base = C.r2(L.base + v); L.itens.push({ k: i.k, tipo: i.tipo, alid: i.alid, mes: i.mes || null, xid: i.xid || null, aid: i.aid || null, n: i.n || null, v: C.r2(v), total: i.v, recs: Object.keys(i.partes || { escola: 1 }), desc: i.desc, nome: i.nome, detalhe: i.detalhe || null, enc: i.enc ? { base: i.enc.base, multa: i.enc.multa || 0, juros: i.enc.juros || 0 } : null });
       }
       // quem paga cobre a taxa: escolha da escola, ou do evento para inscrição e taxas de evento
       for (const L of Object.values(por)) L.baseRep = C.baseRepasse(L.itens, cfg, extras);
@@ -243,7 +245,8 @@ module.exports = db => {
       if (!cob || (cob.rec || 'escola') !== rec) return res.status(200).send('ok');
       if (cob.mpId && cob.mpId !== String(p.id) && cob.status === 'approved') return res.status(200).send('ok');
       await cobRef.set({ status: p.status, mpId: String(p.id), atualizadoEm: Date.now(), ...(p.status === 'approved' && !cob.pagoEm ? { pagoEm: Date.parse(p.date_approved || '') || Date.now() } : {}) }, { merge: true });
-      if (p.status === 'approved') { await darBaixa(eid, cob, p.id); logger.info('pago', eid, chave, p.id); }
+      if (p.status === 'approved') { await darBaixa(eid, cob, p.id); logger.info('pago', eid, chave, p.id);
+        if (ganchos.aposPix && cob.status !== 'approved') await ganchos.aposPix(eid, chave, cob); }
       res.status(200).send('ok');
     } catch (e) { logger.error(e); res.status(200).send('ok'); }
   });
@@ -403,5 +406,5 @@ module.exports = db => {
     return { mes, linhas, total: Math.round(linhas.reduce((s, l) => s + l.total, 0) * 100) / 100 };
   }
 
-  return { criarPix, mpWebhook, mpConectar, mpRetorno, mpLigar, vinculos, interno: { comissoesDoMes, usuario } };
+  return { criarPix, mpWebhook, mpConectar, mpRetorno, mpLigar, vinculos, interno: { comissoesDoMes, usuario, ganchos } };
 };

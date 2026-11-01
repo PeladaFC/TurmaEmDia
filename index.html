@@ -152,6 +152,18 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 .checks input{width:20px;height:20px;accent-color:var(--accent);flex:none}
 .check{display:flex;align-items:center;gap:10px;font-weight:600}
 .check input{width:20px;height:20px;accent-color:var(--accent)}
+.liga{display:flex;align-items:center;gap:12px;padding:11px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);cursor:pointer;margin:0 0 12px}
+.liga .grow{display:flex;flex-direction:column;gap:2px;min-width:0}.liga b{font-size:.92rem}.liga .s{font-size:.8rem;color:var(--muted);line-height:1.3}
+.liga input{position:absolute;opacity:0;width:1px;height:1px}
+.liga .trilho{flex:none;width:44px;height:26px;border-radius:13px;background:var(--line);position:relative;transition:background .18s}
+.liga .trilho::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s}
+.liga input:checked+.trilho{background:#34C759}.liga input:checked+.trilho::after{transform:translateX(18px)}
+.liga input:focus-visible+.trilho{outline:2px solid var(--accent);outline-offset:2px}
+.nf-ajuda{background:var(--surface2);border-radius:12px;padding:12px 14px;font-size:.88rem;line-height:1.45}
+.nf-ajuda h4{margin:10px 0 4px;font-size:.92rem}.nf-ajuda h4:first-child{margin-top:0}.nf-ajuda ol,.nf-ajuda ul{margin:4px 0;padding-left:20px}.nf-ajuda li{margin:3px 0}
+.nf-acoes{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.nf-st{display:inline-block;font-size:.74rem;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--surface2);color:var(--muted)}
+.nf-st.ok{background:var(--in-soft);color:var(--in)}.nf-st.erro{background:var(--out-soft);color:var(--out)}.nf-st.esp{background:var(--warn-soft);color:var(--warn)}
 .tot{display:flex;justify-content:space-between;align-items:baseline;font-weight:700}
 .tot b{font-family:var(--f-display);font-size:1.6rem}
 .qrbox{background:#fff;border-radius:5px;padding:12px;align-self:center;width:min(260px,100%)}

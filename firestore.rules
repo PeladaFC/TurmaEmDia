@@ -118,6 +118,8 @@ service cloud.firestore {
       }
 
       match /segredos/{doc} { allow read, write: if false; }
+      // notas fiscais emitidas para as famílias: só o servidor grava; a administração lê (família e professor pelo servidor)
+      match /notasFamilia/{nid} { allow read: if admin(eid); allow write: if false; }
       match /config/mp {
         allow read: if admin(eid);
         allow update: if admin(eid) && soMuda(['confirmada']);

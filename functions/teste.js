@@ -367,6 +367,80 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.ok(!S.has('escolas/e7/equipe/cam')); assert.ok(!(S.get('users/cam').escolas || {}).e7); assert.ok(!(S.get('convitesProf/cam_at_x_com') || {})['e7_p1']);
     r = resp(); await PR.professor(req({ acao: 'painel', eid: 'e7' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 403);
   });
+  /* ---------- nota fiscal da escola e dos professores para as famílias ---------- */
+  const EMITIDAS = [];
+  const libFalsa = async () => ({
+    Ambiente: { Producao: 'P', ProducaoRestrita: 'R' },
+    parsePfx: (buf, senha) => { if (senha !== 'certa') throw new Error('senha'); return { subject: 'CN=ESCOLINHA GOL LTDA:11444777000161', expiresOn: new Date(Date.now() + 300 * 864e5) }; },
+    NfseClient: class { constructor(o) { this.o = o; } async emitir(p) { EMITIDAS.push(p); return { status: 'ok', nfse: { chaveAcesso: 'CH' + EMITIDAS.length, idDps: 'D' + EMITIDAS.length, xmlNfse: '<x/>' } }; }
+      async cancelar() { return { status: 'ok' }; } async consultarAliquota() { return { aliquotas: { '060401': [{ aliquota: 5 }] } }; } async replayPendingEvents() { return []; } },
+    gerarDanfse: async () => Buffer.from('%PDF'), parseNfseXml: x => x
+  });
+  const NF = require('./notaFamilia')(db, P.interno, { lib: libFalsa });
+  const s8 = (k, v) => S.set('escolas/e8/' + k, v);
+  S.set('escolas/e8', { nome: 'Escolinha Gol', admins: ['adm8'] }); s8('config/geral', { cidade: 'Recife', uf: 'PE' });
+  s8('turmas/t1', { nome: 'Sub-9', preco: 150 }); s8('turmas/t2', { nome: 'Goleiros', preco: 100, recebedor: 'p8' }); s8('turmas/t3', { nome: 'Recreação', preco: 80, nota: false });
+  s8('extras/x1', { tipo: 'taxa', nome: 'Uniforme', v: 90, nota: false }); s8('extras/x2', { tipo: 'evento', nome: 'Copa Recife', v: 60 });
+  s8('responsaveis/r1', { nome: 'Kate Lima', cpf: '529.982.247-25', email: 'kate@x.com' }); s8('responsaveis/r2', { nome: 'Rui', cpf: '' });
+  s8('alunas/a1', { nome: 'Davi Lima', responsavelId: 'r1', turmas: ['t1', 't2'], inicio: '2026-01' }); s8('alunas/a2', { nome: 'Leo', responsavelId: 'r2', turmas: ['t1'], inicio: '2026-01' });
+  s8('professoras/p8', { nome: 'Rafa', emailApp: 'rafa@x.com' }); s8('equipe/rafa', { pid: 'p8' });
+  s8('membros/kate/vinculos/r1', { em: 1 });
+  const nf = async (body, tok) => { const r = resp(); await NF.notaFiscal(req({ eid: 'e8', ...body }, tok), r); return r; };
+  const CFG = { cnpj: '11.444.777/0001-61', regime: 'simples', cTribNac: '060401', aliqIss: '5', pTrib: '6', modo: 'todas', ambiente: 'restrita' };
+  await t('nota para famílias: só liga com certificado e dados completos; certificado com senha errada não entra', async () => {
+    let r = await nf({ acao: 'salvar', cfg: { ...CFG, ligado: true } }, 'ok:adm8'); assert.strictEqual(r.code, 412); assert.match(r.body.erro, /certificado/);
+    r = await nf({ acao: 'certificado', pfx: Buffer.alloc(900, 1).toString('base64'), senha: 'errada' }, 'ok:adm8'); assert.strictEqual(r.code, 400);
+    r = await nf({ acao: 'certificado', pfx: Buffer.alloc(900, 1).toString('base64'), senha: 'certa' }, 'ok:adm8'); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.cert.doc, '11444777000161');
+    assert.ok(!JSON.stringify(r.body).includes('certa'), 'a senha nunca volta para o app');
+    r = await nf({ acao: 'salvar', cfg: { ...CFG, regime: 'simples', aliqIss: '', ligado: true } }, 'ok:adm8'); assert.strictEqual(r.code, 412); assert.match(r.body.erro, /ISS/);
+    r = await nf({ acao: 'salvar', cfg: { ...CFG, ligado: true } }, 'ok:adm8'); assert.strictEqual(r.code, 200, JSON.stringify(r.body)); assert.deepStrictEqual(r.body.falta, []);
+    r = await nf({ acao: 'aliquota', cTribNac: '060401' }, 'ok:adm8'); assert.strictEqual(r.body.aliquota, 5);
+    r = await nf({ acao: 'estado' }, 'ok:kate'); assert.strictEqual(r.code, 400); // família não mexe na configuração
+  });
+  await t('nota no Pix: só o que tem nota ligada, sem multa e juros, no CPF do responsável; nunca duas vezes', async () => {
+    const cob = { rec: 'escola', rids: ['r1'], status: 'pending', itens: [
+      { k: 'm:2026-10:a1', tipo: 'm', alid: 'a1', mes: '2026-10', v: 153, desc: 'Mensalidade de outubro', detalhe: 'Sub-9', enc: { base: 150, multa: 3, juros: 0 } },
+      { k: 'x:x1:a1', tipo: 'x', alid: 'a1', xid: 'x1', v: 90, desc: 'Uniforme' }, { k: 'x:x2:a1', tipo: 'x', alid: 'a1', xid: 'x2', v: 60, desc: 'Copa Recife' }] };
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c1', cob), 'ok');
+    const p = EMITIDAS.at(-1); assert.strictEqual(p.valores.vServ, 210); assert.deepStrictEqual(p.tomador.documento, { CPF: '52998224725' });
+    assert.strictEqual(p.emitente.regime.opSimpNac, '3'); assert.strictEqual(p.valores.pTotTribSN, 6); assert.strictEqual(p.servico.cTribNac, '060401');
+    assert.ok(!/Uniforme/.test(p.servico.descricao) && /Copa Recife/.test(p.servico.descricao));
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c1', cob), 'pulou'); assert.strictEqual(EMITIDAS.length, 1);
+    // só taxa sem nota: não emite nada
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c2', { rec: 'escola', rids: ['r1'], itens: [{ k: 'x:x1:a1', tipo: 'x', alid: 'a1', xid: 'x1', v: 90 }] }), 'sem_itens');
+  });
+  await t('nota: família que dispensou não recebe; "só quem pedir" emite só para quem pediu; sem CPF fica esperando', async () => {
+    const cob = id => ({ rec: 'escola', rids: [id], itens: [{ k: 'x:x2:a1', tipo: 'x', alid: id === 'r1' ? 'a1' : 'a2', xid: 'x2', v: 60, desc: 'Copa' }] });
+    let r = await nf({ acao: 'famPref', rid: 'r1', quer: false }, 'ok:kate'); assert.strictEqual(r.code, 200);
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c3', cob('r1')), 'familia_nao');
+    await nf({ acao: 'salvar', cfg: { ...CFG, modo: 'pedido', ligado: true } }, 'ok:adm8');
+    await nf({ acao: 'famPref', rid: 'r1', quer: true }, 'ok:kate');
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c4', cob('r1')), 'ok');
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c5', cob('r2')), 'nao_pediu');
+    await nf({ acao: 'salvar', cfg: { ...CFG, modo: 'todas', ligado: true } }, 'ok:adm8');
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c6', cob('r2')), 'sem_dados');
+    s8('responsaveis/r2', { nome: 'Rui Alves', cpf: '111.444.777-35' });
+    r = await nf({ acao: 'retentar', nid: 'pix_c6' }, 'ok:adm8'); assert.strictEqual(r.body.status, 'ok'); assert.strictEqual(EMITIDAS.at(-1).tomador.nome, 'Rui Alves');
+  });
+  await t('nota no dinheiro: cada um emite a sua parte; professor sem certificado não emite', async () => {
+    s8('pagamentos/a1', { mens: { '2026-09': { s: 'pago', d: '2026-10-10', v: 250, via: 'dinheiro' } } });
+    const r = await nf({ acao: 'baixa', alid: 'a1', chaves: ['m:2026-09:a1'] }, 'ok:adm8');
+    assert.deepStrictEqual(r.body.res, { escola: 'ok', p8: 'desligado' });
+    assert.strictEqual(EMITIDAS.at(-1).valores.vServ, 150);
+    let r2 = await nf({ acao: 'baixa', alid: 'a1', chaves: ['m:2026-09:a1'] }, 'ok:rafa:v'); assert.strictEqual(r2.code, 403);
+    // o professor tem a configuração dele, separada da escola
+    r2 = await nf({ acao: 'estado' }, 'ok:rafa:v'); assert.strictEqual(r2.body.papel, 'prof'); assert.ok(!r2.body.cert);
+    S.set('escolas/e8/segredos/nfseCfg_p8', { ...CFG, cnpj: '11444777000161', ligado: true });
+    assert.strictEqual(await NF.interno.emitir('e8', 'p8', { nid: 'x', rid: 'r1', itens: [], origem: 'pix' }), 'sem_certificado');
+  });
+  await t('nota: a família vê e baixa só as próprias; a escola cancela', async () => {
+    let r = await nf({ acao: 'famNotas' }, 'ok:kate'); assert.ok(r.body.notas.length >= 2); assert.ok(r.body.notas.every(n => n.rid === 'r1'));
+    r = await nf({ acao: 'famPdf', nid: 'pix_c6' }, 'ok:kate'); assert.strictEqual(r.code, 404);
+    r = await nf({ acao: 'famPdf', nid: 'pix_c1' }, 'ok:kate'); assert.strictEqual(r.code, 200); assert.ok(r.body.pdf);
+    r = await nf({ acao: 'cancelar', nid: 'pix_c1', motivo: 'Emitida por engano' }, 'ok:rafa:v'); assert.strictEqual(r.code, 404);
+    r = await nf({ acao: 'cancelar', nid: 'pix_c1', motivo: 'Emitida por engano' }, 'ok:adm8'); assert.strictEqual(r.body.status, 'cancelada');
+    assert.strictEqual(await NF.interno.aposPix('e8', 'c1', { rec: 'escola', rids: ['r1'], itens: [] }), 'sem_itens');
+  });
   Date.now = realNow;
   console.log(`\n${n} testes passaram.`);
 })().catch(e => { console.error('✗', e); process.exit(1); });

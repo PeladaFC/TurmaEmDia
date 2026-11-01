@@ -32,6 +32,11 @@ exports.espelharProf = E.espelharProf;
 const PR = require('./professor')(db);
 exports.professor = PR.professor;
 
+/* Nota fiscal da escola e dos professores para as famílias (cada um com o próprio CNPJ e certificado) */
+const NF = require('./notaFamilia')(db, P.interno);
+exports.notaFiscal = NF.notaFiscal;
+P.interno.ganchos.aposPix = NF.interno.aposPix;
+
 /* Notas fiscais da comissão: relatório da empresa, emissão automática no Emissor Nacional e PDF para a escola */
 const N = require('./nfse')(db, P.interno);
 exports.notasPlataforma = N.notasPlataforma;

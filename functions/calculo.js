@@ -26,6 +26,12 @@
   function mesMais(m, n) { let [y, mm] = String(m).split('-').map(Number); mm += n; while (mm < 1) { mm += 12; y--; } while (mm > 12) { mm -= 12; y++; } return `${y}-${pad(mm)}`; }
   function stPag(x) { if (!x) return null; if (x === true) return { s: 'pago' }; return x.s === 'pago' ? x : null; }
   const soDigitos = s => String(s || '').replace(/\D/g, '');
+  // CPF com os dois dígitos verificadores certos (11 números, não todos iguais)
+  function cpfValido(c) {
+    const d = soDigitos(c); if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+    const dv = n => { let s = 0; for (let i = 0; i < n; i++) s += Number(d[i]) * (n + 1 - i); const r = (s * 10) % 11; return r === 10 ? 0 : r; };
+    return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
+  }
   // telefone sem DDI, para comparar "(81) 99999-0000" com "+55 81 999990000"
   const telNorm = s => { const d = soDigitos(s); return d.length > 11 && d.startsWith('55') ? d.slice(2) : d; };
 
@@ -88,6 +94,14 @@
     const tot = ts.reduce((s, t) => s + (Number(t.preco) || 0), 0); let resto = r2(v);
     ts.forEach((t, i) => { const w = tot ? (Number(t.preco) || 0) / tot : 1 / ts.length, val = i === ts.length - 1 ? resto : r2(v * w); resto = r2(resto - val); por[recDe(t)] = r2((por[recDe(t)] || 0) + val); });
     return por;
+  }
+  // nota fiscal: cada turma, taxa e evento diz se emite nota (padrão: sim). Mensalidade: vale a turma de quem recebe;
+  // acordo: segue as mensalidades (emite). Devolve true/false para a parte deste recebedor no item.
+  function emiteNota(i, rec, a, turmas, extras) {
+    if (i.tipo === 'x') { const x = (extras || {})[i.xid]; return !(x && x.nota === false); }
+    if (i.tipo === 'm') { const ts = ((a && a.turmas) || []).map(t => (turmas || {})[t]).filter(Boolean).filter(t => recDe(t) === rec);
+      return !ts.length || ts.some(t => t.nota !== false); }
+    return true;
   }
   // parcela de acordo: divide entre os recebedores na mesma proporção das cobranças que entraram no acordo
   function partesAcordo(A, v) {
@@ -246,5 +260,5 @@
     alunos.sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
     return { turmas: minhas, alunos, rec: rec.sort(ord), atr: atr.sort(ord), ven: ven.sort(ord), totais: { recebido: soma(rec), atrasado: soma(atr), aVencer: soma(ven) } };
   }
-  return { repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
+  return { cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
 });

@@ -35,7 +35,8 @@ th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.0
 <tr><td>Documentos dos alunos</td><td>Se a escola pedir: foto ou PDF de documentos como parecer cardiológico, documento de identidade ou certidão de nascimento, com a data e a validade. O parecer cardiológico é <b>dado de saúde (sensível)</b>. Só a administração da escola e a família do aluno veem.</td></tr>
 <tr><td>Foto e notas da equipe</td><td>Se a escola quiser: uma foto pequena do aluno, para a equipe reconhecer quem é. Notas que a equipe da escola escreve sobre o aluno (evolução, comportamento, cuidados), com o nome de quem escreveu e a data. A família não vê as notas.</td></tr>
 <tr><td>Professores com acesso ao app</td><td>E-mail que a escola cadastra para o(a) professor(a) entrar. O(a) professor(a) vê só os alunos das turmas dele(a) (nome, idade, turmas, grupos e foto), as notas da equipe sobre esses alunos e a parte dele(a) nos pagamentos. Não vê telefone, CPF, dados de saúde nem documentos das famílias.</td></tr>
-<tr><td>Responsáveis</td><td>Nome, WhatsApp e, se a escola quiser, CPF (usado só para identificar irmãos e evitar cadastro em dobro).</td></tr>
+<tr><td>Responsáveis</td><td>Nome, WhatsApp, CPF e e-mail. O CPF é obrigatório: vai na nota fiscal dos pagamentos e também serve para identificar irmãos e evitar cadastro em dobro. O responsável escolhe no app se quer ou não receber nota fiscal.</td></tr>
+<tr><td>Notas fiscais para as famílias</td><td>Se a escola ou o(a) professor(a) ligar: para cada pagamento, a nota fiscal de serviço com o nome, o CPF e o e-mail do responsável, os nomes dos alunos, o que foi pago e o valor. O certificado digital e a senha de quem emite ficam só no servidor, protegidos; ninguém da escola nem das famílias consegue ler.</td></tr>
 <tr><td>Professores</td><td>Nome, WhatsApp, e-mail ou CPF da conta do Mercado Pago e chave Pix (para conferência e para o relatório).</td></tr>
 <tr><td>Pagamentos</td><td>Valores, vencimentos, datas e forma de pagamento (Pix ou dinheiro). Os dados do cartão ou da conta bancária de quem paga <b>não</b> passam pelo app; ficam com o Mercado Pago.</td></tr>
 <tr><td>Escola</td><td>Nome, cidade e estado, logo, cor, chave Pix, ajustes de cobrança e lançamentos do caixa.</td></tr>
@@ -58,6 +59,7 @@ th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.0
 <li>Preparar mensagens de cobrança que <b>a própria escola</b> envia pelo WhatsApp (o app só abre a conversa com o texto pronto; quem envia é a escola);</li>
 <li>Avisar a escola sobre mudança de faixa etária dos alunos;</li>
 <li>Guardar os documentos que a escola pede de cada aluno, avisar quando vão vencer e juntá-los num PDF quando a escola precisar mandar a uma competição;</li>
+<li>Emitir, quando a escola ou o(a) professor(a) ligar, a nota fiscal de serviço dos pagamentos das famílias, no nome e CPF do responsável, como exige a lei;</li>
 <li>Emitir a nota fiscal da comissão do app (1% dos Pix) no nome e CPF ou CNPJ do dono da conta do Mercado Pago que recebe os pagamentos (a escola ou o professor), como exige a lei;</li>
 <li>Encontrar e corrigir falhas do app, pelo registro técnico de erros (só a empresa do app vê; as escolas não);</li>
 <li>Manter o app seguro e funcionando, e cumprir obrigações legais.</li>
@@ -71,13 +73,13 @@ th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.0
 <li><b>Google Firebase</b> (Google Cloud): hospeda o banco de dados e o login. Os servidores podem ficar fora do Brasil; o Google adota as cláusulas e garantias exigidas para transferência internacional de dados.</li>
 <li><b>Mercado Pago</b>: processa os pagamentos por Pix. Recebe o valor, a descrição da cobrança e os dados de quem paga, conforme a política de privacidade do próprio Mercado Pago.</li>
 <li><b>WhatsApp</b>: só quando a escola toca em “Abrir no WhatsApp”. A mensagem é enviada pela conta da escola, no aparelho dela.</li>
-<li><b>Prefeitura e Receita (Emissor Nacional da NFS-e)</b>: recebem o nome, o CPF ou CNPJ e o valor da comissão de quem recebe os Pix, para a nota fiscal.</li>
+<li><b>Prefeitura e Receita (Emissor Nacional da NFS-e)</b>: recebem o nome, o CPF ou CNPJ e o valor da comissão de quem recebe os Pix, para a nota fiscal. Se a escola ou o(a) professor(a) ligar a nota para as famílias, recebem também o nome, o CPF e o e-mail do responsável, o que foi pago e o valor.</li>
 <li><b>Autoridades</b>: quando a lei exigir.</li>
 </ul>
 <p>Não vendemos nem alugamos dados pessoais.</p>
 
 <h2>7. Por quanto tempo guardamos</h2>
-<p>Enquanto a escola usar o app. Quando um aluno sai ou quando o responsável pede a exclusão, a escola apaga os dados pessoais dele (nome, nascimento, contato). Os <b>registros de pagamento</b> podem ser mantidos, sem identificar a pessoa, pelo prazo exigido em lei (em geral, 5 anos para registros financeiros e fiscais). Se a escola encerrar a conta, os dados são apagados em até 90 dias, salvo o que a lei obriga a guardar.</p>
+<p>Enquanto a escola usar o app. Quando um aluno sai ou quando o responsável pede a exclusão, a escola apaga os dados pessoais dele (nome, nascimento, contato). Os <b>registros de pagamento</b> podem ser mantidos, sem identificar a pessoa, pelo prazo exigido em lei (em geral, 5 anos para registros financeiros e fiscais). As notas fiscais emitidas ficam guardadas por esse mesmo prazo. Se a escola encerrar a conta, os dados são apagados em até 90 dias, salvo o que a lei obriga a guardar.</p>
 <p>O <b>registro técnico de erros</b> é apagado automaticamente depois de <b>90 dias</b>.</p>
 
 <h2>8. Seus direitos</h2>
