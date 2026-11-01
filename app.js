@@ -699,7 +699,7 @@ async function abrirEscola(eid, tab) {
     OUV.push(col(MOCK ? 'professoras' : 'profsPublico', 'profs'));
     carregarPainelProf();
   } else if (admin) {
-    OUV.push(col('acordos', 'acordos')); OUV.push(col('contratos', 'contratos'));
+    OUV.push(col('acordos', 'acordos')); OUV.push(col('contratos', 'contratos')); OUV.push(col('destratos', 'destratos'));
     OUV.push(col('professoras', 'profs')); OUV.push(col('profsPublico', 'profsPub')); OUV.push(col('responsaveis', 'resps')); OUV.push(col('alunas', 'alunas')); OUV.push(col('pagamentos', 'pags'));
     if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
   } else {
@@ -714,7 +714,8 @@ async function abrirEscola(eid, tab) {
       for (const alid of Object.keys(S.alunas)) if (!porAluna[alid]) { const u1 = B.ouvirDoc(`${p}/pagamentos/${alid}`, d => { S.pags[alid] = d || {}; agendar(); }, () => { });
         // contratos assinados deste aluno (a família só lê os dos filhos dela)
         const u2 = B.ouvirCol(`${p}/contratos`, docs => { S.contratos = { ...Object.fromEntries(Object.entries(S.contratos || {}).filter(([, c]) => c.alid !== alid)), ...Object.fromEntries(docs.map(x => [x.id, x.data])) }; agendar(); }, () => { }, ['alid', alid]);
-        porAluna[alid] = () => { u1(); u2(); }; }
+        const u3 = B.ouvirCol(`${p}/destratos`, docs => { S.destratos = { ...Object.fromEntries(Object.entries(S.destratos || {}).filter(([, c]) => c.alid !== alid)), ...Object.fromEntries(docs.map(x => [x.id, x.data])) }; agendar(); }, () => { }, ['alid', alid]);
+        porAluna[alid] = () => { u1(); u2(); u3(); }; }
       for (const alid of Object.keys(porAluna)) if (!S.alunas[alid]) { porAluna[alid](); delete porAluna[alid]; delete S.pags[alid]; }
     };
     OUV.push(B.ouvirCol(`${p}/membros/${EU.uid}/vinculos`, docs => {
@@ -1122,7 +1123,7 @@ function tCobrancas(v) {
   }
   const ext = Object.entries(S.extras).filter(([, x]) => !eventoNovo(x) || pelaEscola(x)).sort((a, b) => String(b[1].venc).localeCompare(String(a[1].venc)));
   const fil = (k, n) => `<button class="pick" data-fl="${k}" aria-pressed="${filtro === k}">${n} <span class="num">${cont[k]}</span></button>`;
-  v.innerHTML = `${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}
+  v.innerHTML = `${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}
     <div class="hero">
       <div><div class="label">Recebido em ${esc(C.nomeMes(mes))}</div><div class="big num">${cur(rec)}</div>
         <div class="sub num">de ${cur(tot.esp)} previstos${tot.esp ? ` · ${Math.round(pc(rec))}%` : ''}</div></div>
@@ -2092,6 +2093,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     <div class="two"><div class="field"><label for="aini">Cobrar a partir de</label><input id="aini" type="month" value="${esc(a ? a.inicio || mes : mes)}"></div>
     <div class="field" id="afimw"><label for="afim">Último mês cobrado</label><input id="afim" type="month" value="${esc(a && a.fim ? a.fim : mesMais(mes, -1))}"></div></div>
     ${ed ? `<label class="check"><input type="checkbox" id="aativa" ${ativa ? 'checked' : ''}> Aluno(a) ativo(a)</label>` : ''}
+    ${!ed && adm && ((S.cfg.matricula || {}).valor > 0) ? `<label class="check" style="font-weight:500"><input type="checkbox" id="amat" checked> Cobrar a taxa de matrícula (${brl(S.cfg.matricula.valor)})</label>` : ''}
     <div class="err" id="aerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="aok">Salvar</button></div>
     ${ed && adm ? `<div class="actions"><button class="btn ghost" id="acob">Ver cobranças</button><button class="btn ghost" id="adel" style="color:var(--out)">Excluir aluno(a)</button></div>${a && !a.anonimizadoEm ? '<button class="btn ghost" id="aanon" style="color:var(--out)">Apagar dados pessoais (LGPD)</button>' : ''}` : ''}`, s => {
@@ -2170,6 +2172,9 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         if (S.docs[id] && S.docs[id].responsavelId !== r) ops.push({ op: 'merge', p: `escolas/${S.eid}/docsAlunos/${id}`, d: { responsavelId: r } });
         for (const [g, G] of Object.entries(S.grupos)) { const tem = (G.alunas || []).includes(id); if (tem !== meusG.has(g)) ops.push({ op: 'merge', p: `escolas/${S.eid}/grupos/${g}`, d: { alunas: meusG.has(g) ? [...(G.alunas || []), id] : (G.alunas || []).filter(x => x !== id) } }); }
         if (novaFoto) ops.push({ op: 'set', p: `escolas/${S.eid}/fotosAlunos/${id}`, d: { foto: novaFoto, responsavelId: r, em: Date.now(), por: 'escola' } });
+        // aluno novo: taxa de matrícula (uma cobrança extra só dele, vence em 7 dias)
+        if ($('amat') && $('amat').checked) { const d7 = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+          ops.push({ op: 'set', p: `escolas/${S.eid}/extras/${novoId()}`, d: { tipo: 'taxa', matricula: true, nome: 'Taxa de matrícula', v: C.r2(S.cfg.matricula.valor), venc: d7, alunas: [id], valores: {}, grupos: [], turmas: [], recebedor: 'escola', nota: false, criadoEm: Date.now() } }); }
         await B.lote(ops); if (novaFoto) FOTOS[id] = novaFoto; fecharSheet(); aviso(ed ? 'Aluno(a) atualizado(a)' : 'Aluno(a) cadastrado(a)');
       } catch (e) { err(msgErro(e)); $('aok').disabled = false; }
     };
@@ -2241,7 +2246,7 @@ function sheetPerfilAluno(alid, volta) {
       </div>
     </div>
     ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
-    ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${(() => { const ok = ctAssinado(alid), ult = ok || ctUltimo(alid); if (!ult && !ctPede()) return '';
+    ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${linhaMatricula(alid, true)}${(() => { const ok = ctAssinado(alid), ult = ok || ctUltimo(alid); if (!ult && !ctPede()) return '';
       return `<button type="button" class="plinha" ${ult ? `data-pvct="${esc(alid)}"` : 'disabled'}><span class="grow">Contrato</span>${ok ? `<span class="chip pago">Assinado em ${dataBR(new Date(ok.em).toISOString().slice(0, 10))}</span>` : '<span class="chip vencido">Falta assinar</span>'}<span class="seta" aria-hidden="true">${ult ? '›' : ''}</span></button>`; })()}${docsDoAluno(alid).map(t => { const d = docDe(alid, t);
       return `<button type="button" class="plinha" data-adoc="${esc(t)}"><span class="grow">${esc(tipoDoc(t).nome)}</span>${chipDoc(d)}<span class="seta" aria-hidden="true">›</span></button>`; }).join('') || '<div class="plinha sub">Nenhum documento. Toque em "+ Documento".</div>'}</div></section>` : ''}
     <section class="psec"><div class="psec-cab"><h2>Notas da equipe</h2><button type="button" class="pacao pacao-forte" id="pnova">+ Nota</button></div>
@@ -2994,7 +2999,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoEventosFamilia()}${avisoTermos()}${avisoContratos()}
+    ${avisoEventosFamilia()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
       ${totVenc > 0 ? `<div style="text-align:right"><div class="label">Vencido</div><div class="num" style="font-weight:800;font-size:1.15rem;color:var(--out)">${brl(totVenc)}</div></div>` : ''}</div>
@@ -3048,6 +3053,7 @@ function tFilhas(v) {
             return linha('Contrato', ctAssinado(id) ? `<span class="dd-col"><span class="chip pago">Assinado em ${dataBR(new Date(ct.em).toISOString().slice(0, 10))}</span><button type="button" class="link" data-vct="${esc(id)}">Ver contrato</button></span>`
               : `<span class="dd-col"><span class="chip vencido">Falta assinar</span><button type="button" class="link" data-ctass="${esc(id)}">Assinar</button>${ct ? `<button type="button" class="link" data-vct="${esc(id)}">Ver o anterior</button>` : ''}</span>`); })()}
           ${linha('Grupos', gs.length ? gs.map(g => `<span class="chip">${esc(g)}</span>`).join(' ') : '')}
+          ${linha('Matrícula', linhaMatricula(id, false))}
         </dl>
         ${ts.map(t => `<div class="filha-turma"><div class="label">Turma</div><div class="t">${esc(t.nome)}</div>
           <dl class="dl">${linha('Dias e horário', esc(t.horario || '—'))}${linha('Local', esc(localDe(t) || '—'))}${linha('Professor(a)', esc(profNome(t) || '—'))}${linha('Faixa etária', esc(C.faixaTxt(t)))}${linha('Valor', `<span class="num">${brl(t.preco)}</span> <span class="sub">por mês</span>`)}</dl></div>`).join('') || '<div class="sub">Sem turma</div>'}
@@ -3853,7 +3859,7 @@ porNome(S.alunas).map(([id, a]) => ({ id, a, x: termoDe(id) })).filter(r => r.x.
    (contratos/{alid}_v{versão}). Sem assinar, a família usa o app normalmente: só aparece o aviso. */
 const CAMPOS_CONTRATO = [['escola', 'Nome da escola'], ['cnpj_escola', 'CNPJ da escola'], ['endereco_escola', 'Endereço da escola'], ['responsavel', 'Responsável'], ['cpf', 'CPF do responsável'],
   ['endereco_responsavel', 'Endereço do responsável'], ['telefone', 'WhatsApp'], ['email', 'E-mail'], ['aluno', 'Aluno(a)'], ['nascimento', 'Nascimento'], ['turmas', 'Turmas'], ['horarios', 'Dias e horários'],
-  ['mensalidade', 'Mensalidade'], ['vencimento', 'Dia do vencimento'], ['multa', 'Multa por atraso'], ['juros', 'Juros ao mês'], ['cidade', 'Cidade'], ['data', 'Data de hoje']];
+  ['mensalidade', 'Mensalidade'], ['matricula', 'Taxa de matrícula'], ['vencimento', 'Dia do vencimento'], ['aviso_previo', 'Aviso prévio'], ['multa_cancelamento', 'Multa de cancelamento'], ['multa', 'Multa por atraso'], ['juros', 'Juros ao mês'], ['cidade', 'Cidade'], ['data', 'Data de hoje']];
 const MODELO_CONTRATO = `CONTRATO DE PRESTAÇÃO DE SERVIÇOS ESPORTIVOS
 
 CONTRATADA: {escola}, CNPJ {cnpj_escola}, com endereço em {endereco_escola}.
@@ -3862,13 +3868,13 @@ CONTRATANTE: {responsavel}, CPF {cpf}, residente em {endereco_responsavel}, What
 
 1. OBJETO. A CONTRATADA oferece ao(à) aluno(a) aulas de {turmas}, nos dias e horários {horarios}, conforme o calendário da escola.
 
-2. VALOR E PAGAMENTO. A mensalidade é de {mensalidade}, com vencimento todo dia {vencimento} de cada mês, paga pelo aplicativo Turma em Dia ou diretamente na escola.
+2. VALOR E PAGAMENTO. A taxa de matrícula é de {matricula}, paga uma vez, no ato da matrícula. A mensalidade é de {mensalidade}, com vencimento todo dia {vencimento} de cada mês, paga pelo aplicativo Turma em Dia ou diretamente na escola.
 
 3. ATRASO. Em caso de atraso, incidem multa de {multa} e juros de {juros} ao mês.
 
 4. TAXAS E EVENTOS. Uniforme, inscrições em competições, eventos e outras taxas não estão incluídos na mensalidade e são informados com antecedência.
 
-5. CANCELAMENTO. O CONTRATANTE pode cancelar a matrícula a qualquer momento, avisando a escola com 30 dias de antecedência. As mensalidades já vencidas continuam devidas.
+5. CANCELAMENTO. O CONTRATANTE pode cancelar a matrícula a qualquer momento, pelo aplicativo ou na escola, com aviso prévio de {aviso_previo}. São devidas as mensalidades que vencerem até o fim do aviso e as que já estiverem em atraso. Multa por cancelamento: {multa_cancelamento}.
 
 6. FALTAS. Aulas perdidas pelo(a) aluno(a) não geram desconto. A reposição fica a critério da escola.
 
@@ -3895,9 +3901,14 @@ function preencherContrato(texto, alid) {
     endereco_responsavel: r.endereco || '', telefone: r.telefone ? foneBR(r.telefone) : '', email: r.email || '', aluno: a.nome || '', nascimento: nasc, turmas: ts.map(t => t.nome).join(', '),
     horarios: ts.map(t => t.horario).filter(Boolean).join('; '), mensalidade: m ? brl(m.v) : '', vencimento: String(Number(cfg.vencDia) || 10),
     multa: at.ativo ? `${String(Math.min(Number(at.multa) || 0, 2)).replace('.', ',')}%` : '0%', juros: at.ativo ? `${String(Math.min(Number(at.juros) || 0, 1)).replace('.', ',')}%` : '0%',
+    matricula: (cfg.matricula || {}).valor > 0 ? brl(cfg.matricula.valor) : 'isenta (R$ 0,00)',
+    aviso_previo: `${Number(c.avisoDias ?? 30)} dias`, multa_cancelamento: textoMultaCancel(c),
     cidade: [cfg.cidade, cfg.uf].filter(Boolean).join('/'), data: `${d.getDate()} de ${C.MESES[d.getMonth()]} de ${d.getFullYear()}` };
   return String(texto || '').replace(/\{([a-z_]+)\}/g, (x, k) => k in v ? (v[k] || '______') : x);
 }
+// multa por cancelamento antes do período mínimo (o CDC proíbe multa abusiva: o app limita a 20% do que faltaria)
+const textoMultaCancel = c => { const m = (c || {}).multaCancel || {};
+  return m.ativo && m.pct > 0 && m.meses > 0 ? `${String(m.pct).replace('.', ',')}% do valor das mensalidades que faltarem para completar ${m.meses} meses de matrícula, cobrada só se o cancelamento for antes desse prazo` : 'não há'; };
 const textoContratoHTML = t => `<div class="ct-texto">${esc(t).replace(/\n/g, '<br>')}</div>`;
 
 // administração: o modelo, os dados da escola e quem já assinou
@@ -3917,6 +3928,11 @@ function sheetContratoModelo(volta) {
       <div class="chips ct-campos">${CAMPOS_CONTRATO.map(([k, n]) => `<button type="button" class="pick" data-ctc="${k}">${esc(n)}</button>`).join('')}</div>
       <textarea id="cttxt" rows="14" class="ct-edit">${esc(c.texto || MODELO_CONTRATO)}</textarea>
       <div class="actions"><button type="button" class="btn ghost" id="ctver" ${al.length ? '' : 'disabled'}>Ver como fica</button><button type="button" class="btn ghost" id="ctpadrao">Voltar ao modelo pronto</button></div></section>
+    <section><h2>Cancelamento</h2>
+      <div class="two"><div class="field"><label for="ctaviso">Aviso prévio (dias)</label><input id="ctaviso" type="number" min="0" max="90" inputmode="numeric" value="${esc(c.avisoDias ?? 30)}"></div><div></div></div>
+      <label class="liga"><span class="grow"><b>Multa se cancelar antes de um período mínimo</b><span class="s">Fica escrita no contrato. Pela lei, multa abusiva é proibida: o app aceita até 20% do que faltaria; o comum é 10%.</span></span><input type="checkbox" role="switch" id="ctmulta" ${(c.multaCancel || {}).ativo ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+      <div class="two" id="ctmultaw" ${(c.multaCancel || {}).ativo ? '' : 'hidden'}><div class="field"><label for="ctmpct">Multa (%)</label><input id="ctmpct" inputmode="decimal" value="${esc(String((c.multaCancel || {}).pct ?? 10).replace('.', ','))}"></div>
+        <div class="field"><label for="ctmmes">Período mínimo (meses)</label><input id="ctmmes" type="number" min="1" max="24" inputmode="numeric" value="${esc((c.multaCancel || {}).meses ?? 6)}"></div></div></section>
     <label class="liga"><span class="grow"><b>Pedir a assinatura das famílias</b><span class="s">Ligado: aparece "Assinar o contrato" para cada família que ainda não assinou.</span></span><input type="checkbox" role="switch" id="ctativo" ${c.ativo ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
     ${c.texto ? `<section><h2>Assinaturas <span class="sub num">${ass.length} de ${al.length}</span></h2>
       ${falta.length ? `<div class="note">Faltam: ${esc(falta.map(([, a]) => primeiro(a.nome)).join(', '))}.</div>` : '<div class="note">Todos assinaram.</div>'}
@@ -3929,11 +3945,15 @@ function sheetContratoModelo(volta) {
       t.value = t.value.slice(0, i) + ins + t.value.slice(j); t.focus(); t.selectionStart = t.selectionEnd = i + ins.length; cur = [i + ins.length, i + ins.length]; });
     $('ctcnpj').oninput = () => { const v = fmtCnpj($('ctcnpj').value); if (v !== $('ctcnpj').value) $('ctcnpj').value = v; };
     $('ctpadrao').onclick = () => confirmar('Voltar ao modelo pronto?', 'O texto que você escreveu é trocado pelo modelo do app.', 'Voltar', () => { $('cttxt').value = MODELO_CONTRATO; });
-    const dados = () => ({ razao: $('ctraz').value.trim(), cnpj: C.soDigitos($('ctcnpj').value), endereco: $('ctend').value.trim(), texto: $('cttxt').value.trim(), ativo: $('ctativo').checked });
+    $('ctmulta').onchange = () => { $('ctmultaw').hidden = !$('ctmulta').checked; };
+    const dados = () => ({ razao: $('ctraz').value.trim(), cnpj: C.soDigitos($('ctcnpj').value), endereco: $('ctend').value.trim(), texto: $('cttxt').value.trim(), ativo: $('ctativo').checked,
+      avisoDias: Math.max(0, Math.min(90, parseInt($('ctaviso').value, 10) || 0)), multaCancel: { ativo: $('ctmulta').checked, pct: parseValor($('ctmpct').value) || 0, meses: parseInt($('ctmmes').value, 10) || 0 } });
     $('ctver').onclick = () => { const d = dados(), salvo = S.contratoCfg; CT_RASC = d; S.contratoCfg = { ...c, ...d }; const t = preencherContrato(d.texto, al[0][0]); S.contratoCfg = salvo;
       abrirDe(() => sheetContratoModelo(volta), () => sheet(`<h3>Como fica</h3><div class="sub">Com os dados de ${esc(al[0][1].nome)}. Os campos sem dado aparecem como ______.</div>${textoContratoHTML(t)}<button class="btn ghost" id="ctvolta" style="width:100%">Voltar ao modelo</button>`, () => { $('ctvolta').onclick = () => sheetContratoModelo(volta); })); };
     const salvar = async extra => { const d = dados(); if (d.ativo && d.texto.length < 50) return $('cterr').textContent = 'Escreva o contrato antes de pedir a assinatura.';
       if (d.cnpj && d.cnpj.length !== 14) return $('cterr').textContent = 'O CNPJ tem 14 números.';
+      if (d.multaCancel.ativo && !(d.multaCancel.pct > 0 && d.multaCancel.pct <= 20)) return $('cterr').textContent = 'A multa de cancelamento vai de 1% a 20%.';
+      if (d.multaCancel.ativo && !(d.multaCancel.meses >= 1)) return $('cterr').textContent = 'Informe o período mínimo em meses.';
       await B.set(`escolas/${S.eid}/config/contrato`, { ...d, versao: ver, ...extra, atualizadoEm: Date.now(), atualizadoPor: EU.nome || EU.email || '' }, { merge: true }); };
     $('ctok').onclick = async () => { $('ctok').disabled = true; try { if (await salvar({}) === undefined) { aviso('Contrato salvo'); volta ? volta() : fecharSheet(); } else $('ctok').disabled = false; } catch (e) { $('cterr').textContent = msgErro(e); $('ctok').disabled = false; } };
     if ($('ctnova')) $('ctnova').onclick = () => confirmar('Pedir nova assinatura?', 'Todas as famílias vão ver "Assinar o contrato" de novo. Os contratos já assinados continuam guardados.', 'Pedir de novo', async () => {
@@ -3996,6 +4016,157 @@ function avisoContratos() {
   if (!ctPede()) return '';
   return porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && !ctAssinado(id)).map(([id, a]) => `<button class="faixa-resumo" data-ctass="${esc(id)}"><span class="grow"><b>Assinar o contrato de ${esc(primeiro(a.nome))}</b><span class="s">Leia e aceite pelo app, leva um minuto</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
 }
+/* ================= Cancelamento da matrícula (destrato) =================
+   A família pede pelo app (ou a escola registra em nome dela). O fim sai do aviso prévio do contrato; são devidas as
+   mensalidades que vencem até o último dia e o que já está atrasado; multa só se o contrato tiver e a escola cobrar.
+   A escola confirma (pode dispensar o aviso e a multa), a família assina o termo no app e o aluno fica inativo.
+   Sem a assinatura, a escola pode encerrar assim mesmo: fica registrado que a família pediu.
+   Cada pedido: escolas/{eid}/destratos/{alid}_{ms}. */
+const MOTIVOS_CANCEL = [['mudanca', 'Mudança de cidade ou bairro'], ['horario', 'Horário'], ['financeiro', 'Financeiro'], ['saude', 'Saúde'], ['outra', 'Outra atividade'], ['outro', 'Outro motivo']];
+const dtrDe = alid => Object.entries(S.destratos || {}).filter(([, d]) => d.alid === alid && d.status !== 'desistiu').sort((a, b) => (b[1].pedidoEm || 0) - (a[1].pedidoEm || 0))[0] || null;
+const isoDia = ms => new Date(ms - 3 * 36e5).toISOString().slice(0, 10);
+const somaDias = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+// o que fica valendo num cancelamento pedido em "pedidoEm" (ms), com ou sem o aviso prévio e a multa
+function contaCancel(alid, pedidoEm, op = {}) {
+  const a = S.alunas[alid] || {}, c = ctCfg(), aviso = op.semAviso ? 0 : Number(c.avisoDias ?? 30), ultimo = somaDias(isoDia(pedidoEm), aviso);
+  let fim = ultimo.slice(0, 7); if (C.vencMens(fim, S.cfg) > ultimo) fim = C.mesMais(fim, -1);
+  if (a.inicio && fim < a.inicio) fim = C.mesMais(a.inicio, -1);
+  const devidas = itensDe(alid).filter(i => !i.pago && i.venc <= ultimo), totalDevido = C.r2(devidas.reduce((x, i) => x + i.v, 0));
+  const m = c.multaCancel || {}; let multa = 0, meses = 0;
+  if (!op.semMulta && m.ativo && m.pct > 0 && m.meses > 0 && a.inicio) {
+    const [y0, m0] = a.inicio.split('-').map(Number), [y1, m1] = fim.split('-').map(Number); meses = Math.max(0, (y1 - y0) * 12 + (m1 - m0) + 1);
+    const falta = Math.max(0, m.meses - meses), mens = (C.mensalidade(S.alunas, alid, mesHoje(), S.turmas, S.cfg) || {}).v || 0;
+    multa = C.r2(falta * mens * m.pct / 100);
+  }
+  return { aviso, ultimo, fim, devidas, totalDevido, multa, meses };
+}
+const resumoCancelHTML = (alid, k) => `<div class="items">
+    <div class="item"><span>Último dia de aulas</span><b class="num">${dataBR(k.ultimo)}/${k.ultimo.slice(0, 4)}</b></div>
+    <div class="item"><span>Última mensalidade</span><b>${esc(C.nomeMes(k.fim))}</b></div>
+    ${k.devidas.length ? `<div class="item"><span>Ainda a pagar (${k.devidas.length} cobrança${k.devidas.length > 1 ? 's' : ''})</span><b class="num">${brl(k.totalDevido)}</b></div>` : '<div class="item"><span>Ainda a pagar</span><b>nada</b></div>'}
+    ${k.multa > 0 ? `<div class="item"><span>Multa de cancelamento</span><b class="num">${brl(k.multa)}</b></div>` : ''}</div>
+  <div class="note">Aviso prévio de ${k.aviso} dia${k.aviso === 1 ? '' : 's'}. ${k.multa > 0 ? `A multa vale porque a matrícula tem ${k.meses} ${k.meses === 1 ? 'mês' : 'meses'}, menos que o mínimo do contrato.` : ''}</div>`;
+function termoDestrato(alid, d) {
+  const a = S.alunas[alid] || {}, r = respDe(alid) || {}, c = ctCfg(), esc0 = c.razao || S.escola.nome || '';
+  return `TERMO DE CANCELAMENTO DE MATRÍCULA (DESTRATO)
+
+CONTRATADA: ${esc0}${c.cnpj ? ', CNPJ ' + fmtCnpj(c.cnpj) : ''}.
+CONTRATANTE: ${r.nome || ''}${r.cpf ? ', CPF ' + fmtCpf(r.cpf) : ''}, responsável pelo(a) aluno(a) ${a.nome || ''}.
+
+1. O CONTRATANTE pediu o cancelamento da matrícula em ${dataBR(isoDia(d.pedidoEm))}/${isoDia(d.pedidoEm).slice(0, 4)}${d.motivo ? `, pelo motivo: ${(MOTIVOS_CANCEL.find(m => m[0] === d.motivo) || [, d.motivo])[1]}${d.obs ? ' (' + d.obs + ')' : ''}` : ''}.
+2. O último dia de aulas é ${dataBR(d.ultimo)}/${d.ultimo.slice(0, 4)}${d.dispensouAviso ? ', com o aviso prévio dispensado pela escola' : ''}. A última mensalidade é a de ${C.nomeMes(d.fim)}.
+3. Ficam devidos ${brl(d.totalDevido || 0)} em cobranças que vencem até o último dia ou já estão em atraso${d.multa > 0 ? `, mais ${brl(d.multa)} de multa de cancelamento, conforme o contrato` : ''}. Nada mais é cobrado depois disso.
+4. Pagos esses valores, as partes dão quitação do contrato de prestação de serviços, sem mais nada a reclamar.
+
+${[S.cfg.cidade, S.cfg.uf].filter(Boolean).join('/')}${S.cfg.cidade ? ', ' : ''}${new Date().getDate()} de ${C.MESES[new Date().getMonth()]} de ${new Date().getFullYear()}.`;
+}
+
+// família (ou escola em nome dela): pedir o cancelamento
+function sheetPedirCancel(alid, pelaEscola) {
+  const a = S.alunas[alid], k = contaCancel(alid, Date.now()); let motivo = '';
+  sheet(`<h3>Cancelar a matrícula de ${esc(primeiro(a.nome))}</h3>
+    <div class="sub">${pelaEscola ? 'Registre o pedido que a família fez por WhatsApp ou pessoalmente. Ela recebe o termo para assinar no app.' : 'O pedido vai para a escola. Até o último dia, as aulas continuam normalmente.'}</div>
+    <div class="field"><span class="lb">Motivo</span><div class="chips" id="pcmot">${MOTIVOS_CANCEL.map(([k2, n]) => `<button type="button" class="pick" data-mot="${k2}">${esc(n)}</button>`).join('')}</div></div>
+    <div class="field"><label for="pcobs">Quer contar mais? (opcional)</label><textarea id="pcobs" rows="2" maxlength="300"></textarea></div>
+    ${resumoCancelHTML(alid, k)}
+    <div class="err" id="pcerr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Voltar</button><button class="btn" id="pcok">Pedir cancelamento</button></div>`, s => {
+    s.querySelectorAll('[data-mot]').forEach(b => b.onclick = () => { motivo = b.dataset.mot; s.querySelectorAll('[data-mot]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+    $('pcok').onclick = () => { if (!motivo) return $('pcerr').textContent = 'Escolha o motivo.';
+      duploToque($('pcok'), async () => { $('pcok').disabled = true; const em = Date.now(), k2 = contaCancel(alid, em);
+        try { await B.set(`escolas/${S.eid}/destratos/${alid}_${em}`, { alid, rid: a.responsavelId || null, motivo, obs: $('pcobs').value.trim(), pedidoEm: em, status: 'pedido',
+            pedidoPor: { uid: EU.uid, nome: EU.nome || EU.email || '', quem: pelaEscola ? 'escola' : 'familia' }, aviso: k2.aviso, ultimo: k2.ultimo, fim: k2.fim, multa: k2.multa, totalDevido: k2.totalDevido });
+          aviso(pelaEscola ? 'Pedido registrado' : 'Pedido enviado à escola'); fecharSheet(); }
+        catch (e) { $('pcerr').textContent = msgErro(e); $('pcok').disabled = false; } }, 'Toque de novo para confirmar'); };
+  });
+}
+// escola: ver, confirmar, dispensar aviso/multa, encerrar
+function sheetDestrato(did) {
+  const d = (S.destratos || {})[did]; if (!d) return; const a = S.alunas[d.alid] || {}, nm = esc(a.nome || 'Aluno(a)');
+  const mot = (MOTIVOS_CANCEL.find(m => m[0] === d.motivo) || [, d.motivo || ''])[1];
+  const st = { pedido: 'Pedido · falta a escola confirmar', confirmado: d.assinatura ? 'Confirmado · termo assinado' : 'Confirmado · falta a família assinar o termo', encerrado: 'Matrícula encerrada', desistiu: 'A família desistiu' }[d.status];
+  let semAviso = !!d.dispensouAviso, semMulta = d.multa === 0 && d.status !== 'pedido';
+  const corpo = () => { const k = d.status === 'pedido' ? contaCancel(d.alid, d.pedidoEm, { semAviso, semMulta }) : { aviso: d.aviso, ultimo: d.ultimo, fim: d.fim, devidas: [], totalDevido: d.totalDevido, multa: d.multa, meses: 0 };
+    return { k, html: resumoCancelHTML(d.alid, d.status === 'pedido' ? k : { ...k, meses: d.meses || 0, devidas: k.totalDevido ? [{}] : [] }) }; };
+  const desenhar = () => { const { html } = corpo();
+    sheet(`<h3>Cancelamento · ${nm}</h3>
+    <div class="banner ${d.status === 'encerrado' ? 'ok' : ''}"><span><b>${esc(st)}</b><br>Pedido ${d.pedidoPor && d.pedidoPor.quem === 'escola' ? `registrado pela escola (${esc(d.pedidoPor.nome || '')})` : 'pela família'} em ${dataBR(isoDia(d.pedidoEm))}. Motivo: ${esc(mot)}${d.obs ? ` · “${esc(d.obs)}”` : ''}</span></div>
+    ${html}
+    ${d.status === 'pedido' ? `<label class="liga"><span class="grow"><b>Dispensar o aviso prévio</b><span class="s">A matrícula acaba hoje, sem cobrar o período do aviso.</span></span><input type="checkbox" role="switch" id="dsaviso" ${semAviso ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+      ${(ctCfg().multaCancel || {}).ativo ? `<label class="liga"><span class="grow"><b>Não cobrar a multa</b><span class="s">Mesmo que o contrato preveja.</span></span><input type="checkbox" role="switch" id="dsmulta" ${semMulta ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>` : ''}
+      <div class="actions"><button class="btn ghost" id="dsrec">Não confirmar</button><button class="btn" id="dsok">Confirmar cancelamento</button></div>` : ''}
+    ${d.status === 'confirmado' ? `<div class="actions"><button class="btn ghost" id="dsver">Ver o termo</button><button class="btn" id="dsenc">Encerrar a matrícula</button></div>
+      ${d.assinatura ? '' : '<div class="note">A família ainda não assinou. Dá para encerrar assim mesmo: fica registrado que ela pediu pelo app.</div>'}` : ''}
+    ${d.status === 'encerrado' ? `<button class="btn ghost" id="dsver" style="width:100%">Ver o termo${d.assinatura ? ' assinado' : ''}</button>` : ''}
+    <div class="err" id="dserr" role="alert"></div><button class="btn ghost" data-fechar>Fechar</button>`, s => {
+      if ($('dsaviso')) $('dsaviso').onchange = () => { semAviso = $('dsaviso').checked; desenhar(); };
+      if ($('dsmulta')) $('dsmulta').onchange = () => { semMulta = $('dsmulta').checked; desenhar(); };
+      if ($('dsrec')) $('dsrec').onclick = () => confirmar('Não confirmar o pedido?', 'O pedido fica como "a família desistiu". Use quando conversaram e a família vai continuar.', 'Não confirmar', async () => {
+        await B.set(`escolas/${S.eid}/destratos/${did}`, { status: 'desistiu', desistiuEm: Date.now(), desistiuPor: EU.nome || EU.email || '' }, { merge: true }); aviso('Pedido encerrado'); fecharSheet(); });
+      if ($('dsok')) $('dsok').onclick = () => duploToque($('dsok'), async () => { const { k } = corpo(), dd = { ...d, ultimo: k.ultimo, fim: k.fim, multa: k.multa, totalDevido: k.totalDevido, dispensouAviso: semAviso };
+        const ops = [{ op: 'merge', p: `escolas/${S.eid}/destratos/${did}`, d: { status: 'confirmado', confirmadoEm: Date.now(), confirmadoPor: EU.nome || EU.email || '', ultimo: k.ultimo, fim: k.fim, aviso: k.aviso, multa: k.multa, meses: k.meses, totalDevido: k.totalDevido, dispensouAviso: semAviso, termo: termoDestrato(d.alid, dd) } },
+          // a última mensalidade é a do fim do aviso: daí em diante o app não cobra mais
+          { op: 'merge', p: `escolas/${S.eid}/alunas/${d.alid}`, d: { fim: k.fim, saida: k.ultimo } }];
+        if (k.multa > 0) ops.push({ op: 'set', p: `escolas/${S.eid}/extras/${novoId()}`, d: { tipo: 'taxa', nome: 'Multa de cancelamento', v: k.multa, venc: somaDias(hoje(), 7), alunas: [d.alid], valores: {}, grupos: [], turmas: [], recebedor: 'escola', nota: false, cancelamento: did, criadoEm: Date.now() } });
+        try { await B.lote(ops); aviso('Cancelamento confirmado. A família assina o termo no app.'); setTimeout(() => sheetDestrato(did), 80); } catch (e) { $('dserr').textContent = msgErro(e); } }, 'Toque de novo para confirmar');
+      if ($('dsenc')) $('dsenc').onclick = () => duploToque($('dsenc'), async () => {
+        try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/destratos/${did}`, d: { status: 'encerrado', encerradoEm: Date.now(), encerradoPor: EU.nome || EU.email || '', semAssinatura: !d.assinatura } },
+          { op: 'merge', p: `escolas/${S.eid}/alunas/${d.alid}`, d: { ativa: false, fim: d.fim, saida: d.ultimo } }]); aviso('Matrícula encerrada'); setTimeout(() => sheetDestrato(did), 80); } catch (e) { $('dserr').textContent = msgErro(e); } }, 'Toque de novo para encerrar');
+      if ($('dsver')) $('dsver').onclick = () => abrirDe(() => sheetDestrato(did), () => sheetVerDestrato(did));
+    }); };
+  desenhar();
+}
+// o termo (para a família assinar ou para ver depois) e o PDF
+function sheetVerDestrato(did, assinar) {
+  const d = (S.destratos || {})[did]; if (!d || !d.termo) return; const a = S.alunas[d.alid] || {}, r = respDe(d.alid) || {}, as = d.assinatura;
+  sheet(`<h3>Termo de cancelamento</h3>
+    ${as ? `<div class="banner ok"><span>Assinado por <b>${esc(as.nome)}</b>${as.cpf ? `, CPF ${esc(fmtCpf(as.cpf))}` : ''}, em ${esc(new Date(as.em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }))}.</span></div>` : d.semAssinatura ? '<div class="banner"><span>Encerrado pela escola sem a assinatura do termo. A família pediu o cancelamento pelo app.</span></div>' : ''}
+    ${textoContratoHTML(d.termo)}
+    ${assinar && !as ? `<div class="field"><label for="dtnome">Seu nome completo</label><input id="dtnome" maxlength="80" value="${esc(r.nome || '')}"></div>
+      <label class="check aceite"><input type="checkbox" id="dtok"><span>Li e concordo com o cancelamento da matrícula de ${esc(a.nome || '')}.</span></label>
+      <div class="err" id="dterr" role="alert"></div>
+      <div class="actions"><button class="btn ghost" data-fechar>Depois</button><button class="btn" id="dtass">Assinar</button></div>`
+      : `<div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="dtpdf">Baixar PDF</button></div>`}`, () => {
+    if ($('dtpdf')) $('dtpdf').onclick = async () => { try { baixarPdf(await pdfContrato({ ...(as || {}), nome: as ? as.nome : '(sem assinatura)', cpf: as ? as.cpf : '', em: as ? as.em : d.encerradoEm || d.confirmadoEm, email: as ? as.email : '', uid: as ? as.uid : '', versao: 1, texto: d.termo, alid: d.alid })); } catch (e) { aviso(msgErro(e)); } };
+    if ($('dtass')) $('dtass').onclick = () => { const nome = $('dtnome').value.trim();
+      if (nome.split(/\s+/).length < 2) return $('dterr').textContent = 'Digite o seu nome completo.'; if (!$('dtok').checked) return $('dterr').textContent = 'Marque que leu e concorda.';
+      duploToque($('dtass'), async () => { try { await B.set(`escolas/${S.eid}/destratos/${did}`, { assinatura: { nome, cpf: C.soDigitos(r.cpf), uid: EU.uid, email: EU.email || '', em: Date.now() } }, { merge: true }); aviso('Termo assinado'); fecharSheet(); }
+        catch (e) { $('dterr').textContent = msgErro(e); } }, 'Toque de novo para assinar'); };
+  });
+}
+// avisos: para a escola (pedidos a confirmar) e para a família (termo a assinar)
+const DTR_AUTO = new Set();
+function avisoDestratosAdm() {
+  if (!S.admin) return '';
+  // passou o último dia de um cancelamento confirmado: o aluno fica inativo sozinho (fica registrado se foi sem assinatura)
+  Object.entries(S.destratos || {}).filter(([did, d]) => d.status === 'confirmado' && d.ultimo < hoje() && !DTR_AUTO.has(did)).forEach(([did, d]) => { DTR_AUTO.add(did);
+    B.lote([{ op: 'merge', p: `escolas/${S.eid}/destratos/${did}`, d: { status: 'encerrado', encerradoEm: Date.now(), encerradoPor: 'automático (fim do aviso)', semAssinatura: !d.assinatura } },
+      { op: 'merge', p: `escolas/${S.eid}/alunas/${d.alid}`, d: { ativa: false, fim: d.fim, saida: d.ultimo } }]).catch(() => DTR_AUTO.delete(did)); });
+  return Object.entries(S.destratos || {}).filter(([, d]) => d.status === 'pedido' || (d.status === 'confirmado' && d.ultimo < hoje())).map(([did, d]) => { const a = S.alunas[d.alid] || {};
+    return `<button class="faixa-resumo alerta" data-dtr="${esc(did)}"><span class="grow"><b>${d.status === 'pedido' ? `Pedido de cancelamento: ${esc(a.nome || '')}` : `Encerrar a matrícula de ${esc(primeiro(a.nome || ''))}`}</b><span class="s">${d.status === 'pedido' ? `Pedido em ${dataBR(isoDia(d.pedidoEm))} · confirme ou converse com a família` : `O último dia foi ${dataBR(d.ultimo)}`}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`; }).join('');
+}
+function avisoDestratosFam() {
+  return porNome(S.alunas).map(([id, a]) => { const x = dtrDe(id); return x && x[1].status === 'confirmado' && !x[1].assinatura ? `<button class="faixa-resumo" data-dtrass="${esc(x[0])}"><span class="grow"><b>Assinar o cancelamento de ${esc(primeiro(a.nome))}</b><span class="s">A escola confirmou. Último dia: ${dataBR(x[1].ultimo)}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : ''; }).join('');
+}
+// linha "Matrícula" em Meus filhos e no perfil do aluno
+function linhaMatricula(id, adm) {
+  const x = dtrDe(id), d = x && x[1];
+  if (!d) return adm ? `<button type="button" class="plinha" data-dtrnovo="${esc(id)}"><span class="grow">Cancelar matrícula</span><span class="seta" aria-hidden="true">›</span></button>`
+    : `<span class="dd-col"><span class="chip pago">Ativa</span><button type="button" class="link" data-dtrpedir="${esc(id)}">Pedir cancelamento</button></span>`;
+  const txt = d.status === 'pedido' ? 'Cancelamento pedido' : d.status === 'confirmado' ? `Cancelada · até ${dataBR(d.ultimo)}` : `Encerrada ${dataBR(d.ultimo)}`;
+  if (adm) return `<button type="button" class="plinha" data-dtr="${esc(x[0])}"><span class="grow">Matrícula</span><span class="chip ${d.status === 'encerrado' ? '' : 'vencido'}">${txt}</span><span class="seta" aria-hidden="true">›</span></button>`;
+  return `<span class="dd-col"><span class="chip ${d.status === 'encerrado' ? '' : 'vencido'}">${txt}</span>${d.status === 'pedido' ? `<button type="button" class="link" data-dtrdesiste="${esc(x[0])}">Desistir do cancelamento</button>` : ''}${d.status === 'confirmado' && !d.assinatura ? `<button type="button" class="link" data-dtrass="${esc(x[0])}">Assinar o termo</button>` : ''}${d.termo && (d.assinatura || d.status === 'encerrado') ? `<button type="button" class="link" data-dtrver="${esc(x[0])}">Ver o termo</button>` : ''}</span>`;
+}
+// cliques dos botões de cancelamento (em qualquer tela)
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-dtr],[data-dtrass],[data-dtrpedir],[data-dtrnovo],[data-dtrdesiste],[data-dtrver]'); if (!b || !S) return;
+  if (b.dataset.dtr) return sheetDestrato(b.dataset.dtr);
+  if (b.dataset.dtrass) return sheetVerDestrato(b.dataset.dtrass, true);
+  if (b.dataset.dtrver) return sheetVerDestrato(b.dataset.dtrver);
+  if (b.dataset.dtrpedir) return sheetPedirCancel(b.dataset.dtrpedir);
+  if (b.dataset.dtrnovo) return sheetPedirCancel(b.dataset.dtrnovo, true);
+  if (b.dataset.dtrdesiste) return confirmar('Desistir do cancelamento?', 'A matrícula continua normalmente.', 'Desistir', async () => { await B.set(`escolas/${S.eid}/destratos/${b.dataset.dtrdesiste}`, { status: 'desistiu', desistiuEm: Date.now() }, { merge: true }); aviso('Pronto: a matrícula continua'); });
+});
 function avisoTermos() {
   const pend = porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && termoDe(id).st !== 'ok');
   const atest = porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && termoDe(id).st === 'ok' && ['falta', 'recusado'].includes(termoDe(id).as));
@@ -4878,7 +5049,9 @@ function sheetAjustes() {
       <div class="field"><label for="jnome">Nome da escola</label><input id="jnome" maxlength="60" value="${esc(S.escola.nome || '')}"></div>
       <div class="two"><div class="field"><label for="juf">Estado</label><select id="juf"><option value="">Escolha</option>${UFS.map(u => `<option ${c.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
       <div class="field"><label for="jcid">Cidade</label><select id="jcid" ${c.uf ? '' : 'disabled'}>${c.cidade ? `<option selected>${esc(c.cidade)}</option>` : `<option value="">${c.uf ? 'Carregando…' : 'Escolha o estado'}</option>`}</select></div></div>
-      <div class="two"><div class="field"><label for="jvenc">Vencimento (dia)</label><input id="jvenc" type="number" min="1" max="28" value="${esc(c.vencDia || 10)}"></div><div></div></div>
+      <div class="two"><div class="field"><label for="jvenc">Vencimento (dia)</label><input id="jvenc" type="number" min="1" max="28" value="${esc(c.vencDia || 10)}"></div>
+      <div class="field"><label for="jmatv">Taxa de matrícula (R$)</label><input id="jmatv" inputmode="decimal" value="${esc((c.matricula || {}).valor ? fmtValor(c.matricula.valor) : '')}" placeholder="0,00 = não cobra"></div></div>
+      <div class="note" style="margin-top:-6px;margin-bottom:12px">Com valor, ao cadastrar um aluno novo o app já lança a taxa de matrícula (dá para desmarcar na hora). Ela aparece no contrato.</div>
       <div class="two"><div class="field"><label for="jirm">Desconto de irmãos (%)</label><input id="jirm" type="number" min="0" max="100" value="${esc(Math.round((Number(c.descIrmas) || 0) * 100))}"></div>
       <div class="field"><label for="jmul">Mais de uma atividade (%)</label><input id="jmul" type="number" min="0" max="100" value="${esc(Math.round((Number(c.descMulti) || 0) * 100))}"></div></div>
       <div class="note">Estes são os percentuais dos botões rápidos. O desconto só vale para o(a) aluno(a) em que você escolher, no cadastro dele(a).</div>
@@ -4931,11 +5104,12 @@ function sheetAjustes() {
       const nome = $('jnome').value.trim(), venc = Number($('jvenc').value), irm = Number($('jirm').value), mul = Number($('jmul').value);
       if (!nome) return err('Digite o nome da escola.'); if (!(venc >= 1 && venc <= 28)) return err('O vencimento vai do dia 1 ao 28.');
       if (!(irm >= 0 && irm <= 100) || !(mul >= 0 && mul <= 100)) return err('Os descontos vão de 0 a 100%.');
-      const aMul = parseValor($('jamul').value), aJur = parseValor($('jajur').value);
+      const aMul = parseValor($('jamul').value), aJur = parseValor($('jajur').value), matV = $('jmatv').value.trim() ? parseValor($('jmatv').value) : 0;
+      if (!(matV >= 0)) return err('Confira o valor da taxa de matrícula, como 100,00.');
       if (!(aMul >= 0) || aMul > MULTA_MAX) return err('A multa por atraso pode ser de no máximo 2%, pela lei.');
       if (!(aJur >= 0) || aJur > JUROS_MAX) return err('Os juros por atraso podem ser de no máximo 1% ao mês, pela lei.');
       $('jok').disabled = true;
-      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
+      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, matricula: { valor: C.r2(matV) }, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
       catch (e) { err(msgErro(e)); $('jok').disabled = false; }
     };
   });

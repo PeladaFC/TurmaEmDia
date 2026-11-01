@@ -133,6 +133,17 @@ service cloud.firestore {
         allow read: if admin(eid) || membro(eid);
         allow write: if adminDepois(eid);
       }
+      // cancelamento de matrícula: a família pede, desiste (enquanto é só pedido) e assina o termo; o resto é da escola
+      match /destratos/{did} {
+        allow read: if admin(eid) || minhaAluna(eid, resource.data.alid);
+        allow create: if adminDepois(eid) || (minhaAluna(eid, request.resource.data.alid) && request.resource.data.status == 'pedido'
+          && request.resource.data.pedidoPor.uid == request.auth.uid && request.resource.data.pedidoPor.quem == 'familia');
+        allow update: if adminDepois(eid) || (minhaAluna(eid, resource.data.alid) && (
+          (resource.data.status == 'pedido' && request.resource.data.status == 'desistiu' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'desistiuEm']))
+          || (resource.data.status in ['confirmado', 'encerrado'] && !('assinatura' in resource.data) && request.resource.data.assinatura.uid == request.auth.uid
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assinatura']))));
+        allow delete: if false;
+      }
       // contratos assinados (um por aluno e versão): a família assina uma vez e ninguém muda depois
       match /contratos/{cid} {
         allow read: if admin(eid) || minhaAluna(eid, resource.data.alid);
