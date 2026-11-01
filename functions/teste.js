@@ -433,7 +433,17 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     // o professor tem a configuração dele, separada da escola
     r2 = await nf({ acao: 'estado' }, 'ok:rafa:v'); assert.strictEqual(r2.body.papel, 'prof'); assert.ok(!r2.body.cert);
     S.set('escolas/e8/segredos/nfseCfg_p8', { ...CFG, cnpj: '11444777000161', ligado: true });
-    assert.strictEqual(await NF.interno.emitir('e8', 'p8', { nid: 'x', rid: 'r1', itens: [], origem: 'pix' }), 'sem_certificado');
+    // o professor decide a nota das turmas dele, independente da escola: a turma t2 tem nota ligada pela escola, mas vale a escolha dele
+    S.set('escolas/e8/segredos/nfseCert_p8', { pfx: 'eA==', senha: 'certa', validade: Date.now() + 9e9 });
+    r2 = await nf({ acao: 'estado' }, 'ok:rafa:v'); assert.deepStrictEqual(r2.body.meus.map(x => [x.id, x.nota]), [['t2', false]]);
+    const itM = [{ k: 'm:2026-09:a1', tipo: 'm', alid: 'a1', mes: '2026-09', v: 100, desc: 'Mensalidade' }];
+    assert.strictEqual(await NF.interno.emitir('e8', 'p8', { nid: 'p8a', rid: 'r1', itens: itM, origem: 'pix' }), 'sem_itens');
+    r2 = await nf({ acao: 'salvar', cfg: { ...CFG, ligado: true, itens: { t2: true, t1: true } } }, 'ok:rafa:v'); assert.strictEqual(r2.code, 200, JSON.stringify(r2.body));
+    assert.deepStrictEqual(S.get('escolas/e8/segredos/nfseCfg_p8').itens, { t2: true }); // t1 é da escola: o professor não mexe
+    assert.strictEqual(await NF.interno.emitir('e8', 'p8', { nid: 'p8b', rid: 'r1', itens: itM, origem: 'pix' }), 'ok');
+    assert.strictEqual(EMITIDAS.at(-1).valores.vServ, 100);
+    S.delete('escolas/e8/segredos/nfseCert_p8'); // sem certificado, o professor não emite (nem se tiver ligado)
+    assert.strictEqual(await NF.interno.emitir('e8', 'p8', { nid: 'x', rid: 'r1', itens: itM, origem: 'pix' }), 'sem_certificado');
   });
   await t('nota: a família vê e baixa só as próprias; a escola cancela', async () => {
     let r = await nf({ acao: 'famNotas' }, 'ok:kate'); assert.ok(r.body.notas.length >= 2); assert.ok(r.body.notas.every(n => n.rid === 'r1'));

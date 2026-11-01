@@ -72,7 +72,19 @@ module.exports = (db, PAG, op = {}) => {
     const cfg = (await ler(`escolas/${eid}/segredos/nfseCfg_${rec}`)) || {}, cert = await ler(certPath(eid, rec));
     const c = cert && cert.pfx ? { titular: cert.titular || '', doc: cert.doc || '', validade: cert.validade || null, vencido: !!(cert.validade && cert.validade < Date.now()) } : null;
     const codMun = await codMunDe(eid), f = falta(cfg, c); if (!codMun) f.push('cidade e estado da escola (em Ajustes)');
-    return { cfg: { modo: 'todas', ambiente: 'restrita', ...cfg }, cert: c, falta: f, codMun, servicos: SERVICOS };
+    return { cfg: { modo: 'todas', ambiente: 'restrita', ...cfg }, cert: c, falta: f, codMun, servicos: SERVICOS, ...(rec === 'escola' ? {} : { meus: await meusItens(eid, rec, cfg) }) };
+  }
+  // professor: as turmas, taxas e eventos cujo dinheiro cai para ele. Quem liga ou desliga a nota deles é o professor, não a escola.
+  async function meusItens(eid, rec, cfg) {
+    const [turmas, extras] = await Promise.all([mapa(`escolas/${eid}/turmas`), mapa(`escolas/${eid}/extras`)]), it = (cfg && cfg.itens) || {};
+    return [...Object.entries(turmas).filter(([, t]) => C.recDe(t) === rec).map(([id, t]) => ({ id, nome: t.nome || 'Turma', tipo: 'turma', nota: it[id] === true })),
+      ...Object.entries(extras).filter(([, x]) => x.recebedor === rec && !(x.tipo === 'evento' && x.cobranca !== 'app')).map(([id, x]) => ({ id, nome: x.nome || 'Cobrança', tipo: x.tipo === 'taxa' ? 'taxa' : 'evento', nota: it[id] === true }))];
+  }
+  // a chave de cada item: da escola, o que está na turma/taxa; do professor, o que ele escolheu
+  function comChaves(rec, cfg, turmas, extras) {
+    if (rec === 'escola') return { turmas, extras };
+    const it = (cfg && cfg.itens) || {}, troca = m => Object.fromEntries(Object.entries(m).map(([id, x]) => [id, C.recDe(x) === rec ? { ...x, nota: it[id] === true } : x]));
+    return { turmas: troca(turmas), extras: troca(extras) };
   }
   function falta(cfg, cert) {
     const f = [];
@@ -163,8 +175,8 @@ module.exports = (db, PAG, op = {}) => {
     };
   }
   // o que entra na nota de quem recebe (rec), a partir dos itens pagos: só o que tem nota ligada, sem multa e juros
-  async function montar(eid, rec, itens) {
-    const [turmas, extras] = await Promise.all([mapa(`escolas/${eid}/turmas`), mapa(`escolas/${eid}/extras`)]);
+  async function montar(eid, rec, itens, cfg) {
+    const [t0, x0] = await Promise.all([mapa(`escolas/${eid}/turmas`), mapa(`escolas/${eid}/extras`)]), { turmas, extras } = comChaves(rec, cfg, t0, x0);
     const alunos = {}, porAl = {};
     let valor = 0;
     for (const i of itens) {
@@ -190,7 +202,7 @@ module.exports = (db, PAG, op = {}) => {
     const r = rid ? (await ler(`escolas/${eid}/responsaveis/${rid}`)) || {} : {};
     if (r.nota === 'nao') return 'familia_nao';
     if (cfg.modo === 'pedido' && r.nota !== 'sim') return 'nao_pediu';
-    const m = await montar(eid, rec, itens || []);
+    const m = await montar(eid, rec, itens || [], cfg);
     if (!(m.valor > 0)) return 'sem_itens';
     const escola = (await ler(`escolas/${eid}`)) || {}, geral = (await ler(`escolas/${eid}/config/geral`)) || {};
     const extra = cfg.descricao ? cfg.descricao + '. ' : '';
@@ -310,7 +322,9 @@ module.exports = (db, PAG, op = {}) => {
         const antes = (await ler(`escolas/${eid}/segredos/nfseCfg_${rec}`)) || {}, novo = limparCfg(b.cfg || {}, antes);
         const ligar = !!(b.cfg || {}).ligado, E0 = await estado(eid, rec), f = falta(novo, E0.cert).concat(E0.codMun ? [] : ['cidade e estado da escola (em Ajustes)']);
         if (ligar && f.length) throw erro('Para ligar, falta: ' + f.join(', ') + '.', 412);
-        await cfgRef(eid, rec).set({ ...novo, codMun: E0.codMun || null, ligado: ligar }, { merge: true }); await publicar(eid, rec, ligar, novo.modo);
+        // professor: liga/desliga de cada turma, taxa e evento dele (só os que são dele)
+        const itens = rec === 'escola' ? null : Object.fromEntries((E0.meus || []).map(x => [x.id, !!((b.cfg || {}).itens || {})[x.id]]));
+        await cfgRef(eid, rec).set({ ...novo, ...(itens ? { itens } : {}), codMun: E0.codMun || null, ligado: ligar }, { merge: true }); await publicar(eid, rec, ligar, novo.modo);
         return res.json(await estado(eid, rec));
       }
       if (a === 'certificado') { await guardarCert(eid, rec, b.pfx, b.senha); return res.json(await estado(eid, rec)); }

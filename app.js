@@ -1608,7 +1608,7 @@ function sheetExtra(xid, op = {}) {
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
     ${!legado && evsTaxa.length ? `<div class="field"><label for="xev">É de um evento?</label><select id="xev"><option value="">Não, taxa avulsa</option>${evsTaxa.map(([id, e]) => `<option value="${esc(id)}" ${id === evento ? 'selected' : ''}>${esc(e.nome)} · ${esc(periodoTxt(e))}</option>`).join('')}</select>
       <span class="sub" id="xevnota"></span></div>` : ''}
-    ${ligaNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.')}
+    ${blocoNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.', x && x.recebedor)}
     <div class="field"><span class="lb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
     <div class="xresumo" id="xcont"></div>
     <div class="err" id="xerr" role="alert"></div>
@@ -1634,6 +1634,7 @@ function sheetExtra(xid, op = {}) {
         $('xnome').placeholder = `Ex.: Ajuda de custo · ${e.nome}`; }
       else if ($('xevnota')) $('xevnota').textContent = '';
       sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
+    ligarBlocoNota('xnota', 'xrec');
     if ($('xev')) $('xev').onchange = () => { evento = $('xev').value || null; escolherEvento(true); };
     if (evento) setTimeout(() => escolherEvento(false), 0);
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'evento') sheetEvento(null); });
@@ -1649,7 +1650,7 @@ function sheetExtra(xid, op = {}) {
       const valores = {}; for (const id of ids) if (vals[id] != null && C.r2(vals[id]) !== C.r2(v)) { if (!(vals[id] > 0)) return err(`Confira o valor de ${S.alunas[id].nome}.`); valores[id] = C.r2(vals[id]); }
       $('xok').disabled = true;
       const base = legado ? { tipo: x.tipo, data: x.data || null, dataFim: x.dataFim || null, local: x.local || null } : { tipo: 'taxa' };
-      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { ...base, nome, v, venc, nota: $('xnota').checked, alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
+      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { ...base, nome, v, venc, nota: notaSalvar('xnota', 'xrec', x && x.nota === true), alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
       catch (e) { err(msgErro(e)); $('xok').disabled = false; }
     };
     if ($('xdel')) $('xdel').onclick = () => temPag ? ($('xerr').textContent = 'Esta cobrança já tem pagamentos e não pode ser excluída. Desmarque os alunos que não vão participar.') : confirmar('Excluir cobrança?', `"${esc(x.nome)}" sai da lista de todos os alunos.`, 'Excluir', () => B.del(`escolas/${S.eid}/extras/${xid}`));
@@ -1685,7 +1686,7 @@ function sheetEvento(xid) {
     <div id="eappw">
     <label class="check"><input type="checkbox" id="erep" ${x && x.pixRepassa === true ? 'checked' : ''}> <span class="grow">Quem paga cobre a taxa do Pix (${TAXA_TRANSACAO()}%)<span class="s" style="display:block;color:var(--muted);font-size:.82rem">Vale para a inscrição e para as taxas deste evento.</span></span></label>
     ${simTaxaHTML('esim', 0, true)}
-    ${ligaNota('enota', !!(x && x.nota === true), 'Vale para a inscrição paga pelo app. Se for só repasse ao organizador, deixe desligado.')}</div>
+    ${blocoNota('enota', !!(x && x.nota === true), 'Vale para a inscrição paga pelo app. Se for só repasse ao organizador, deixe desligado.', x && x.recebedor)}</div>
     <div class="field"><span class="lb">Fotos do evento</span><span class="sub">Cartaz, regulamento, horários. Os responsáveis veem junto com o evento. Até ${FOTOS_EV_MAX} fotos.</span>
       <div class="ev-fotos" id="efotos"></div><input type="file" id="efoto" accept="image/*" hidden><div class="err" id="eferr" role="alert"></div></div>
     <div class="field"><span class="lb">Quem pode ir? Os responsáveis recebem o convite no app</span><div id="equadros"></div></div>
@@ -1718,6 +1719,7 @@ function sheetEvento(xid) {
     $('efoto').onchange = async () => { const f = $('efoto').files[0]; $('efoto').value = ''; $('eferr').textContent = ''; if (!f) return;
       try { fotos.push({ src: await fotoReduzida(f), em: Date.now() }); fotosMudou = true; verFotos(); } catch (e) { $('eferr').textContent = msgErro(e); } };
     // quanto a família paga e a escola recebe pela inscrição, conforme a caixa da taxa (só quando a inscrição é paga pelo app)
+    ligarBlocoNota('enota', 'erec');
     const verSim = ligarSimTaxa('esim', () => $('erep').checked, () => parseValor($('einsc').value));
     $('erep').addEventListener('change', verSim); $('einsc').addEventListener('input', verSim);
     $('eok').onclick = async () => {
@@ -1737,7 +1739,7 @@ function sheetEvento(xid) {
       if (linksOk.some(l => !l.v)) { $('eok').disabled = false; return err('Falta o link, telefone ou informação de um dos itens em "Links e contatos".'); }
       if (linksOk.some(l => !l.d)) { $('eok').disabled = false; return err('Dê uma descrição curta para cada item em "Links e contatos".'); }
       const id = xid || novoId();
-      try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', nota: $('enota').checked, fotos: fotos.length, endereco: $('eend').value.trim() || null, links: linksOk, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
+      try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', nota: S.admin ? notaSalvar('enota', 'erec', x && x.nota === true) : !!(x && x.nota === true), fotos: fotos.length, endereco: $('eend').value.trim() || null, links: linksOk, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
           valorInscricao: !app && insc > 0 ? C.r2(insc) : null, prazo: $('eprazo').value || null, convidados: ids, origem: sel.origem(), part,
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         if (fotosMudou && (fotos.length || (x && x.fotos))) { // sem foto nenhuma, antes e agora: nada a guardar
@@ -2614,6 +2616,10 @@ function sheetConta(pid) {
 }
 // liga/desliga "Emitir nota fiscal" de cada turma, taxa e evento (padrão: desligado; a escola liga o que quiser)
 const ligaNota = (id, on, dica) => `<label class="liga"><span class="grow"><b>Emitir nota fiscal</b><span class="s">${dica || 'Ligue se esta cobrança leva nota.'}</span></span><input type="checkbox" role="switch" id="${id}" ${on === true ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`;
+// nota da turma/taxa/evento: se o dinheiro vai para um professor, quem liga ou desliga é ele (na área dele)
+const blocoNota = (id, on, dica, rec) => `<div data-notaw="${id}" ${rec && rec !== 'escola' ? 'hidden' : ''}>${ligaNota(id, on, dica)}</div><div class="note" data-notap="${id}" ${rec && rec !== 'escola' ? '' : 'hidden'} style="margin-bottom:12px">A nota fiscal desta cobrança é de quem recebe: o(a) professor(a) liga ou desliga em <b>Minha nota fiscal</b>, na área dele(a).</div>`;
+const ligarBlocoNota = (id, sel) => { const s = $(sel); if (!s) return; s.addEventListener('change', () => { const p = s.value && s.value !== 'escola'; document.querySelector(`[data-notaw="${id}"]`).hidden = p; document.querySelector(`[data-notap="${id}"]`).hidden = !p; }); };
+const notaSalvar = (id, sel, antes) => { const s = $(sel), rec = s ? s.value : 'escola'; return rec && rec !== 'escola' ? !!antes : $(id).checked; };
 function sheetTurma(tid, depois) {
   const novoTid = tid || novoId(), t = tid ? S.turmas[tid] : null, n = tid ? Object.values(S.alunas).filter(a => (a.turmas || []).includes(tid)).length : 0, todas = t ? C.todasIdades(t) : false;
   sheetSimples({ titulo: t ? 'Editar turma' : 'Nova turma',
@@ -2630,9 +2636,9 @@ function sheetTurma(tid, depois) {
       <div class="field"><label for="thor">Dias e horário</label><input id="thor" maxlength="60" value="${esc(t ? t.horario || '' : '')}" placeholder="Ex.: Seg e Qua, 17h às 18h"></div>
       <div class="field"><label for="trec">A mensalidade vai para</label><select id="trec">${opcoesRec(t && t.recebedor)}</select>
         <div class="note">O Pix da mensalidade cai direto na conta do Mercado Pago de quem você escolher aqui.</div></div>
-      ${ligaNota('tnota', !!(t && t.nota === true), 'A nota sai no nome de quem recebe a mensalidade, quando o pagamento entra.')}
+      ${blocoNota('tnota', !!(t && t.nota === true), 'A nota sai no nome da escola, quando o pagamento entra.', t && t.recebedor)}
       ${n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'} nesta turma. Mudar o valor vale para os meses que ainda não foram pagos.</div>` : ''}`,
-    montar: () => { $('ttodas').onchange = e => { $('tmin').disabled = $('tmax').disabled = e.target.checked; }; if (!t) $('tprof').onchange = e => { if (e.target.value) $('trec').value = e.target.value; }; },
+    montar: () => { ligarBlocoNota('tnota', 'trec'); $('ttodas').onchange = e => { $('tmin').disabled = $('tmax').disabled = e.target.checked; }; if (!t) $('tprof').onchange = e => { if (e.target.value) $('trec').value = e.target.value; }; },
     salvar: async () => {
       const nome = $('tnome').value.trim(), preco = parseValor($('tpreco').value), todasN = $('ttodas').checked;
       const mn = $('tmin').value === '' ? null : Number($('tmin').value), mx = $('tmax').value === '' ? null : Number($('tmax').value);
@@ -2640,7 +2646,7 @@ function sheetTurma(tid, depois) {
       if (!todasN && mn == null && mx == null) return 'Informe a faixa etária ou marque "Todas as faixas etárias".';
       if (!todasN && mn != null && mx != null && mn > mx) return 'A idade inicial não pode ser maior que a final.';
       if (!(preco >= 0)) return 'Informe o valor mensal da turma, como 150,00.';
-      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: $('tnota').checked, horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
+      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
     },
     depois: depois ? () => depois(novoTid) : null,
     excluir: tid && (() => B.del(`escolas/${S.eid}/turmas/${tid}`)), bloqueio: n ? 'Esta turma tem alunos. Tire os alunos da turma antes de excluir.' : null });
@@ -3311,7 +3317,9 @@ async function nfMock(acao, d) {
   const estado = async r => { const cfg = (await ler(`${p}/segredos/nfseCfg_${r}`)) || {}, c = await ler(`${p}/segredos/nfseCert_${r}`);
     const f = []; if (!c) f.push('certificado digital A1'); if (!/^\d{14}$/.test(cfg.cnpj || '')) f.push('CNPJ'); if (!cfg.regime) f.push('tipo de empresa (MEI, Simples ou outro)');
     if (!/^\d{6}$/.test(cfg.cTribNac || '')) f.push('código do serviço'); if (cfg.regime && cfg.regime !== 'mei' && !(cfg.aliqIss > 0)) f.push('alíquota do ISS'); if (cfg.regime && cfg.regime !== 'mei' && !(cfg.pTrib > 0)) f.push('percentual aproximado de tributos');
-    return { cfg: { modo: 'todas', ambiente: 'restrita', ...cfg }, cert: c ? { titular: c.titular, doc: c.doc, validade: c.validade } : null, falta: f, papel: S.admin ? 'admin' : 'prof' }; };
+    const it = cfg.itens || {}, meus = r === 'escola' ? undefined : [...Object.entries(S.turmas).filter(([, t]) => C.recDe(t) === r).map(([id, t]) => ({ id, nome: t.nome, tipo: 'turma', nota: it[id] === true })),
+      ...Object.entries((await colMock(`${p}/extras`))).filter(([, x]) => x.recebedor === r && !(x.tipo === 'evento' && x.cobranca !== 'app')).map(([id, x]) => ({ id, nome: x.nome, tipo: x.tipo === 'taxa' ? 'taxa' : 'evento', nota: it[id] === true }))];
+    return { cfg: { modo: 'todas', ambiente: 'restrita', ...cfg }, cert: c ? { titular: c.titular, doc: c.doc, validade: c.validade } : null, falta: f, meus, papel: S.admin ? 'admin' : 'prof' }; };
   const publicar = async (r, ligado, modo) => { const v = { ligado, modo: modo || 'todas' };
     if (r === 'escola') await B.set(`${p}/config/geral`, { nfFam: v }, { merge: true }); else { await B.set(`${p}/profsPublico/${r}`, { nf: v }, { merge: true }); await B.set(`${p}/professoras/${r}`, { nf: v }, { merge: true }); } };
   if (acao === 'estado') return estado(rec);
@@ -3348,7 +3356,9 @@ async function nfMockEmitir(rec, nid, rid, itens, origem) {
   const r = (await B.get(`${p}/responsaveis/${rid}`)) || {}; if (r.nota === 'nao') return 'familia_nao'; if (cfg.modo === 'pedido' && r.nota !== 'sim') return 'nao_pediu';
   const ja = await B.get(`${p}/notasFamilia/${nid}`); if (ja && ja.status !== 'erro') return 'pulou';
   let valor = 0; const porAl = {};
-  for (const i of itens) { const a = S.alunas[i.alid] || {}; if (!C.emiteNota(i, rec, a, S.turmas, S.extras)) continue;
+  const it = cfg.itens || {}, troca = m => rec === 'escola' ? m : Object.fromEntries(Object.entries(m || {}).map(([id, x]) => [id, C.recDe(x) === rec ? { ...x, nota: it[id] === true } : x]));
+  const TT = troca(S.turmas), XX = troca(S.extras);
+  for (const i of itens) { const a = S.alunas[i.alid] || {}; if (!C.emiteNota(i, rec, a, TT, XX)) continue;
     const f = i.enc && i.enc.base > 0 ? i.enc.base / (i.enc.base + (i.enc.multa || 0) + (i.enc.juros || 0)) : 1; valor = C.r2(valor + C.r2(i.v * f)); (porAl[a.nome || ''] = porAl[a.nome || ''] || []).push(i.desc); }
   const lin = Object.entries(porAl).map(([n, l]) => `${n}: ${l.join(', ')}`);
   if (!(valor > 0)) return 'sem_itens';
@@ -3382,7 +3392,7 @@ function ajudaNF(prof) {
       <li>Se não for MEI, toque em <b>Buscar na prefeitura</b> para preencher a alíquota do ISS, e coloque o percentual de tributos que o contador informar.</li>
       <li>Deixe em <b>Teste</b> primeiro: as notas saem sem valor fiscal, para conferir. Quando estiver tudo certo, mude para <b>Valendo</b>.</li>
       <li>Ligue <b>Emitir notas automaticamente</b> e salve.</li>
-      <li>Ligue o <b>Emitir nota fiscal</b> nas turmas (e nas taxas e eventos que levam nota).</li></ol>
+      <li>${prof ? 'Em <b>O que leva nota</b>, ligue as suas turmas (e taxas ou eventos) que levam nota. Quem decide é você, não a escola.' : 'Ligue o <b>Emitir nota fiscal</b> nas turmas (e nas taxas e eventos que levam nota). Nas turmas em que o dinheiro cai para um professor, quem decide é ele.'}</li></ol>
     <h4>Depois de ligado</h4><ul>
       <li><b>Pix pelo app</b>: a nota sai sozinha quando o pagamento entra.</li>
       <li><b>Dinheiro</b>: com a nota ligada, "Recebi em dinheiro" também emite. A caixinha "Emitir nota fiscal" já vem marcada; desmarque se não quiser naquela vez.</li>
@@ -3426,6 +3436,8 @@ async function sheetNotaFiscal(volta) {
     <div class="note" id="nfmei" hidden>MEI não preenche ISS nem tributos: o imposto já está na guia fixa do mês.</div>
     <div class="field"><label for="nfim">Inscrição municipal (opcional)</label><input id="nfim" inputmode="numeric" maxlength="15" value="${esc(c.im || '')}"></div>
     <div class="field"><label for="nfdesc">Texto no começo da descrição (opcional)</label><input id="nfdesc" maxlength="120" value="${esc(c.descricao || '')}" placeholder="Ex.: Aulas de futebol"></div>
+    ${prof ? `<div class="field"><span class="lb">O que leva nota</span><span class="sub">Só as cobranças que caem para você. Você liga e desliga aqui, sem depender da escola.</span>
+      ${(E.meus || []).length ? E.meus.map(m => ligaNota('nfi_' + m.id, m.nota, m.tipo === 'turma' ? 'Mensalidade da turma' : m.tipo === 'taxa' ? 'Taxa' : 'Inscrição do evento').replace('<b>Emitir nota fiscal</b>', `<b>${esc(m.nome)}</b>`)).join('') : '<div class="note">Nenhuma turma ou cobrança cai para você ainda.</div>'}</div>` : ''}
     <div class="field"><span class="lb">Emitir para</span><div class="opcoes" id="nfmodo">${[['todas', 'Todas'], ['pedido', 'Só quem pedir']].map(([k, n]) => `<button type="button" class="pick" data-md="${k}" aria-pressed="${modo === k}">${n}</button>`).join('')}</div>
       <div class="note" id="nfmodonota"></div></div>
     <div class="field"><span class="lb">Ambiente</span><div class="opcoes" id="nfamb">${[['restrita', 'Teste'], ['producao', 'Valendo']].map(([k, n]) => `<button type="button" class="pick" data-am="${k}" aria-pressed="${amb === k}">${n}</button>`).join('')}</div>
@@ -3465,7 +3477,8 @@ async function sheetNotaFiscal(volta) {
     };
     $('nfok').onclick = async () => {
       const cod = codigo(); if (serv === 'outro' && !/^\d{6}$/.test(cod)) return err('O código do serviço tem 6 números, como 060401.');
-      const cfg = { cnpj: $('nfcnpj').value, regime, cTribNac: cod, aliqIss: $('nfiss').value, pTrib: $('nftrib').value, im: $('nfim').value, descricao: $('nfdesc').value, modo, ambiente: amb, ligado: $('nfligado').checked };
+      const cfg = { cnpj: $('nfcnpj').value, regime, cTribNac: cod, aliqIss: $('nfiss').value, pTrib: $('nftrib').value, im: $('nfim').value, descricao: $('nfdesc').value, modo, ambiente: amb, ligado: $('nfligado').checked,
+        ...(prof ? { itens: Object.fromEntries((E.meus || []).map(m => [m.id, !!($('nfi_' + m.id) || {}).checked])) } : {}) };
       if (cfg.ligado && amb === 'producao' && c.ambiente !== 'producao') { const ok = await new Promise(r => confirmar('Emitir notas valendo?', 'A partir de agora as notas têm valor fiscal e geram imposto. Fez o teste antes?', 'Sim, valendo', () => r(true))); if (!ok) return; }
       $('nfok').disabled = true;
       try { await nfServidor('salvar', { cfg }); aviso(cfg.ligado ? 'Nota fiscal ligada' : 'Salvo'); if (volta) volta(); else fecharSheet(); }
