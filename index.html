@@ -766,14 +766,21 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 .resp-fone{font-size:.88rem;color:var(--muted);white-space:nowrap}
 .resp-cod{letter-spacing:.12em;font-size:.68rem;padding:3px 8px}
 
-/* botões das janelas: menores, do tamanho do texto (não precisam encher a tela) */
-.sheet .btn{font-size:.88rem;padding:9px 18px;line-height:1.15;white-space:nowrap}
-.sheet .btn.btn-mini{font-size:.82rem;padding:6px 12px}
-.sheet .actions{justify-content:flex-end;align-items:center}
-.sheet .actions>.btn{flex:0 0 auto;min-width:112px}
-.sheet>.btn,.sheet>section>.btn{align-self:center;min-width:150px}
+/* janelas: botões mais baixos e TODOS alinhados às bordas dos campos */
+.sheet .btn{font-size:.86rem;padding:0 14px;min-height:42px;line-height:1.15;white-space:normal;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.sheet .btn.btn-mini{min-height:32px;font-size:.78rem;padding:0 10px;display:inline-flex}
 .sheet .btn-ico svg{width:16px;height:16px}
-.sheet .hero .actions{justify-content:flex-start}
+.sheet .actions{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px}
+.sheet .actions>.btn{width:100%;min-width:0}
+.sheet>.btn,.sheet>section>.btn,.sheet>label.btn,.sheet>a.btn{align-self:stretch;width:100%;min-width:0}
+.sheet h2{font-size:1.15rem}
+.sheet .tile{min-height:70px;justify-content:space-between}
+.sheet .tile .lbl{font-size:.7rem;line-height:1.1}
+.sheet .tile b{font-size:1.35rem}
+
+/* lista de atletas do evento: o nome com espaço; as ações numa linha embaixo, à direita */
+.sheet .list li:has(> .ev-acoes){flex-wrap:wrap}
+.sheet .list li > .ev-acoes{max-width:none;flex:1 0 100%;justify-content:flex-end;padding-top:2px}
 </style>
 </head>
 <body>
