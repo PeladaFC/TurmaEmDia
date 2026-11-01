@@ -197,8 +197,6 @@ module.exports = (db, PAG, op = {}) => {
   async function emitir(eid, rec, { nid, rid, itens, origem, data }) {
     const cfg = (await ler(`escolas/${eid}/segredos/nfseCfg_${rec}`)) || {};
     if (!cfg.ligado) return 'desligado';
-    // professor só emite se a escola deu autonomia (cadastro do professor → "Emite a própria nota fiscal")
-    if (rec !== 'escola') { const P = await ler(`escolas/${eid}/professoras/${rec}`); if (!P || P.nfAutonomia !== true) return 'sem_autonomia'; }
     const cert = await ler(certPath(eid, rec));
     if (!cert || !cert.pfx) return 'sem_certificado'; // sem certificado, não emite (e não incomoda ninguém)
     const r = rid ? (await ler(`escolas/${eid}/responsaveis/${rid}`)) || {} : {};
@@ -319,7 +317,6 @@ module.exports = (db, PAG, op = {}) => {
         throw erro('Pedido inválido.', 400);
       }
       const rec = Q.rec;
-      if (Q.papel === 'prof' && !(Q.P && Q.P.nfAutonomia === true)) throw erro('A escola não liberou a nota fiscal própria para você. Fale com a administração.', 403);
       if (a === 'estado') return res.json({ ...(await estado(eid, rec)), papel: Q.papel });
       if (a === 'salvar') {
         const antes = (await ler(`escolas/${eid}/segredos/nfseCfg_${rec}`)) || {}, novo = limparCfg(b.cfg || {}, antes);

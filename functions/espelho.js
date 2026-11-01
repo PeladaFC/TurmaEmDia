@@ -22,7 +22,7 @@ module.exports = db => {
       if (e1) await db.doc(`convitesProf/${chaveEmail(e1)}`).set({ [`${eid}_${pid}`]: { eid, pid, em: Date.now() } }, { merge: true });
     }
     if (!d) return ref.delete();
-    return ref.set({ nome: d.nome || '', mpConectadoEm: d.mpConectadoEm || null, nfAutonomia: d.nfAutonomia === true }, { merge: true }); // merge: guarda a situação da nota fiscal (nf)
+    return ref.set({ nome: d.nome || '', mpConectadoEm: d.mpConectadoEm || null }, { merge: true }); // merge: guarda a situação da nota fiscal (nf)
   });
   return { espelharProf };
 };
