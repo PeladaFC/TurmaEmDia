@@ -683,7 +683,7 @@ async function abrirEscola(eid, tab) {
   let prof = null;
   // professor(a) com acesso ao app: o servidor criou escolas/{eid}/equipe/{uid} quando ele(a) entrou com o e-mail cadastrado
   if (!admin) { const eq = await B.get(`escolas/${eid}/equipe/${EU.uid}`).catch(() => null); if (eq && eq.pid) prof = eq.pid; }
-  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['pturmas', 'palunos', 'pfin'], f: ['pagar', 'filhas'] }[papel];
+  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['pturmas', 'palunos', 'pfin'], f: ['pagar', 'feventos', 'filhas'] }[papel];
   ls.set('escolinha.ultima', eid);
   S = { eid, admin, prof, papel, escola, mes: mesHoje(), tab: tab || ls.get('escolinha.tab.' + papel) || ABAS_OK[0],
     cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, docs: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
@@ -1008,7 +1008,7 @@ function render() {
   const adm = S.admin, abas = {
     a: [['cobr', 'Cobranças', 'cobr'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
     p: [['pturmas', 'Turmas', 'escola'], ['palunos', 'Alunos', 'alunas'], ['pfin', 'Financeiro', 'caixa']],
-    f: [['pagar', 'Pagar', 'cobr'], ['filhas', 'Meus filhos', 'filhas']] }[S.papel];
+    f: [['pagar', 'Pagar', 'cobr'], ['feventos', 'Eventos', 'evento'], ['filhas', 'Meus filhos', 'filhas']] }[S.papel];
   const comMes = (adm && ['cobr', 'fin'].includes(S.tab)) || (S.papel === 'p' && S.tab === 'pfin');
   const titulo = adm ? 'Administração' : S.prof ? 'Professor(a) ' + ((S.profs[S.prof] || {}).nome || '') : (Object.values(S.resps)[0] || {}).nome || 'Responsável';
   const foco = document.activeElement && document.activeElement.id, selS = foco && document.activeElement.selectionStart;
@@ -1033,7 +1033,7 @@ function render() {
   const v = $('tela');
   if (S.plano && sitPlano().fase === 'suspensa') return telaPlanoParado(v);
   if (S.papel === 'f' && S.eu && !S.eu.consentimento) return telaConsentimento(v);
-  ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar, pturmas: tPTurmas, palunos: tPAlunos, pfin: tPFin })[S.tab](v);
+  ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar, pturmas: tPTurmas, palunos: tPAlunos, feventos: tFEventos, pfin: tPFin })[S.tab](v);
   pedirFotos();
   if (foco && $(foco) && $(foco).tagName === 'INPUT' && $(foco).type !== 'checkbox') { $(foco).focus(); try { $(foco).setSelectionRange(selS, selS); } catch (e) { } }
 }
@@ -3367,13 +3367,51 @@ function docsFilhaHTML(id) {
   if (ct || ctPede()) out.push(ctAssinado(id) ? lin(`data-vct="${esc(id)}"`, 'Contrato', `<span class="chip pago">Assinado</span>`, `Em ${dataBR(new Date(ct.em).toISOString().slice(0, 10))}`) : lin(`data-ctass="${esc(id)}"`, 'Contrato', '<span class="chip vencido">Assinar</span>', ''));
   return out.join('');
 }
+// respostas "vai / não vai / já fiz a inscrição" da família
+function ligarRespostas(v) {
+  v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;
+    aviso(f === 'inscrito' ? 'Inscrição confirmada. A escola já está sabendo.' : f === 'nao' ? 'Resposta enviada' : m === 'app' ? 'Combinado! A inscrição já está na tela Pagar.' : m === 'familia' ? 'Combinado! Faça a inscrição com quem organiza e depois toque em "Já fiz a inscrição".' : 'Combinado! A escola vai cuidar da inscrição.'); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
+}
+// família: aba Eventos. Em cima, os eventos dos filhos (para responder); embaixo, o calendário da escola, só para ver.
+// Os eventos com os filhos ficam em destaque, com o nome de quem vai.
+function tFEventos(v) {
+  const ano = S.evAno || Number(hoje().slice(0, 4)), L = eventosDoAno(ano), h = hoje(), porMes = {};
+  // na aba da família, conta como "com seus filhos" todo evento em que eles foram chamados (menos quem já disse que não vai)
+  L.forEach(c => { c.meus = convidadosDe(c.x).filter(id => S.alunas[id]); c.meu = c.meus.some(id => partDe(c.x, id) !== 'nao'); });
+  L.forEach(c => { for (let m = 1; m <= 12; m++) { const pm = `${ano}-${String(m).padStart(2, '0')}`; if (c.x.data <= pm + '-31' && fimDe(c.x) >= pm + '-01') (porMes[m] = porMes[m] || []).push(c); } });
+  const nomeM = m => { const n = C.MESES[m - 1]; return n[0].toUpperCase() + n.slice(1); }, mesAtual = h.startsWith(String(ano)) ? Number(h.slice(5, 7)) : 0, nMeus = L.filter(c => c.meu).length;
+  const linha = c => { const d = new Date(c.x.data + 'T12:00'), passou = fimDe(c.x) < h;
+    const quem = c.meu ? c.meus.map(id => { const st = partDe(c.x, id), nm = esc(primeiro((S.alunas[id] || {}).nome)); return `<span class="chip ${st === 'inscrito' || st === 'interesse' || !eventoNovo(c.x) ? 'pago' : st === 'nao' ? '' : 'aberto'}">${nm}: ${st === 'inscrito' ? 'inscrito(a)' : st === 'nao' ? 'não vai' : st === 'interesse' || !eventoNovo(c.x) ? 'vai' : 'falta responder'}</span>`; }).join(' ') : '';
+    return `<li class="cal-ev tap ${c.meu ? 'meu' : 'outro'}" data-fev="${esc(c.xid)}" style="${passou ? 'opacity:.6' : ''}"><div class="cal-dia"><b class="num">${d.getDate()}</b><span>${DIAS_SEM[d.getDay()]}</span></div>
+      <div class="grow"><div class="t">${esc(c.x.nome)}</div>${linhas(fimDe(c.x) !== c.x.data ? `<span class="num">${esc(periodoTxt(c.x))}</span>` : '', c.x.local ? esc(c.x.local) : '')}${quem ? `<div class="ev-quem">${quem}</div>` : ''}</div><span class="seta" aria-hidden="true">›</span></li>`; };
+  v.innerHTML = `<h2>Eventos</h2>
+    ${blocoEventosFamilia().replace('<section><h2>Eventos</h2>', '<section><h2 class="sec-peq">Com seus filhos</h2>')}
+    <section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Ano anterior">‹</button><h2 style="margin:0">Calendário da escola · ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo ano">›</button></div>
+      <div class="sub">${!L.length ? 'Nenhum evento neste ano.' : `${L.length} evento${L.length === 1 ? '' : 's'} da escola${nMeus ? `. Em destaque, ${nMeus === 1 ? 'o que tem' : `os ${nMeus} que têm`} seus filhos` : ''}.`}</div>
+      ${L.length ? `<div class="cal-legenda"><span><i class="lg-meu"></i>Com seus filhos</span><span><i class="lg-outro"></i>Outros eventos da escola</span></div>` : ''}
+      <div class="cal-grade">${C.MESES.map((_, i) => { const m = i + 1, l = porMes[m] || [], meus = l.filter(c => c.meu).length; return `<button type="button" class="cal-mes ${meus ? 'tem' : l.length ? 'outros' : ''} ${m === mesAtual ? 'atual' : ''}" data-fcm="${m}"><span>${nomeM(m).slice(0, 3)}</span><b class="num">${l.length || '·'}</b></button>`; }).join('')}</div>
+      ${Object.keys(porMes).map(Number).sort((a, b) => a - b).map(m => `<section id="fem${m}"><h2 class="sec-peq">${nomeM(m)}</h2><ul class="list">${porMes[m].map(linha).join('')}</ul></section>`).join('')}</section>
+    <div class="note">O calendário é da escola: só ela muda os eventos. Dúvidas, fale com a escola.</div>`;
+  $('feant').onclick = () => { S.evAno = ano - 1; render(); }; $('feprox').onclick = () => { S.evAno = ano + 1; render(); };
+  v.querySelectorAll('[data-fcm]').forEach(b => b.onclick = () => { const el = $('fem' + b.dataset.fcm); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); else aviso('Nenhum evento neste mês.'); });
+  v.querySelectorAll('[data-fev]').forEach(li => li.onclick = () => sheetEventoFam(li.dataset.fev));
+  ligarRespostas(v); ligarFotos(v);
+}
+// família: o evento, só para ver (e responder, se for com os filhos)
+function sheetEventoFam(xid) {
+  const x = S.extras[xid]; if (!x) return;
+  const ids = convidadosDe(x).filter(id => S.alunas[id]);
+  sheet(`<h3>${esc(x.nome)}</h3>
+    ${ids.length ? `<div class="banner ok"><span><b>${ids.map(id => esc(primeiro(S.alunas[id].nome))).join(' e ')}</b> ${ids.length > 1 ? 'participam' : 'participa'} deste evento.</span></div>` : '<div class="sub">Evento da escola. Seus filhos não estão neste.</div>'}
+    ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
+    ${localEventoHTML(x)}
+    ${ids.length ? ids.map(id => respFamilia(xid, x, id)).join('') : ''}
+    <button class="btn ghost" data-fechar>Fechar</button>`, sh => { ligarRespostas(sh); });
+}
 function tFilhas(v) {
   const mes = mesHoje(), al = porNome(S.alunas);
   const linha = (rot, val) => val ? `<dt>${esc(rot)}</dt><dd>${val}</dd>` : '';
-  const evs = eventosDoAno(), nComp = evs.filter(c => c.meu && fimDe(c.x) >= hoje()).length;
   v.innerHTML = `<h2>Meus filhos</h2>
-    ${blocoEventosFamilia()}
-    ${evs.length ? `<button class="faixa-resumo neutra" id="fcal"><span class="grow"><b>Calendário de eventos</b><span class="s">${nComp ? `${nComp} com seus filhos` : 'Ver os eventos da escola'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : ''}
     ${al.length ? al.map(([id, a]) => { const ts = (a.turmas || []).map(t => S.turmas[t]).filter(Boolean), m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), gs = Object.values(S.grupos).filter(g => (g.alunas || []).includes(id)).map(g => g.nome);
       return `<div class="filha">
         <div class="filha-topo"><label class="filha-foto" aria-label="${FOTOS[id] ? 'Trocar a foto' : 'Adicionar uma foto'} de ${esc(primeiro(a.nome))}">${FOTOS[id] ? `<img src="${FOTOS[id]}" alt="">` : `<span>${esc(iniciais(a.nome))}</span>`}<span class="filha-cam" aria-hidden="true">${ICO_CAM}</span><input type="file" accept="image/*" data-ffoto="${esc(id)}" hidden></label><div class="grow"><div class="t" style="font-size:1.05rem">${esc(a.nome)}</div>${C.ativaNoMes(a, mes) ? '' : '<span class="chip">Inativo(a)</span>'}</div></div>
@@ -3403,8 +3441,7 @@ function tFilhas(v) {
     catch (er) { aviso(msgErro(er)); } });
   if ($('fcal')) $('fcal').onclick = () => sheetCalendario();
   ligarFotos(v);
-  v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;
-    aviso(f === 'inscrito' ? 'Inscrição confirmada. A escola já está sabendo.' : f === 'nao' ? 'Resposta enviada' : m === 'app' ? 'Combinado! A inscrição já está na tela Pagar.' : m === 'familia' ? 'Combinado! Faça a inscrição com quem organiza e depois toque em "Já fiz a inscrição".' : 'Combinado! A escola vai cuidar da inscrição.'); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
+  ligarRespostas(v);
 }
 /* ================= Calendário anual de eventos ================= */
 const DIAS_SEM = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
