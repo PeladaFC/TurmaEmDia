@@ -705,7 +705,7 @@ async function abrirEscola(eid, tab) {
   const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['pturmas', 'palunos', 'pfin'], f: ['pagar', 'feventos', 'filhas'] }[papel];
   ls.set('escolinha.ultima', eid);
   S = { eid, admin, prof, papel, escola, mes: mesHoje(), tab: tab || ls.get('escolinha.tab.' + papel) || ABAS_OK[0],
-    cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, docs: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
+    cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, fixas: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, docs: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
   if (!ABAS_OK.includes(S.tab)) S.tab = ABAS_OK[0];
   const p = `escolas/${eid}`;
   const col = (nome, chave, onde) => B.ouvirCol(`${p}/${nome}`, docs => { S[chave] = Object.fromEntries(docs.map(d => [d.id, d.data])); S.carregado.add(chave); agendar(); }, e => console.warn(nome, e), onde);
@@ -722,7 +722,7 @@ async function abrirEscola(eid, tab) {
   } else if (admin) {
     OUV.push(col('acordos', 'acordos')); OUV.push(col('contratos', 'contratos')); OUV.push(col('destratos', 'destratos'));
     OUV.push(col('professoras', 'profs')); OUV.push(col('profsPublico', 'profsPub')); OUV.push(col('responsaveis', 'resps')); OUV.push(col('alunas', 'alunas')); OUV.push(col('pagamentos', 'pags'));
-    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
+    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('fixas', 'fixas')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
   } else {
     // a família só vê o nome de cada professor(a) (profsPublico, copiado pelo servidor); telefone e chave Pix ficam com a escola
     OUV.push(col(MOCK ? 'professoras' : 'profsPublico', 'profs'));
@@ -3542,6 +3542,7 @@ function finEscola(v) {
   const ls_ = Object.entries(S.lanc).filter(([, l]) => String(l.data).slice(0, 7) === mes).sort((a, b) => String(b[1].data).localeCompare(String(a[1].data)));
   const outras = C.r2(ls_.filter(([, l]) => l.tipo === 'entrada').reduce((s, [, l]) => s + l.v, 0)), sai = C.r2(ls_.filter(([, l]) => l.tipo === 'saida').reduce((s, [, l]) => s + l.v, 0));
   const ent = C.r2(pix + din + outras), saldo = C.r2(ent - sai), conta = (S.mpc || {}).conta;
+  const fx = fixasDoMes(mes), fxFalta = C.r2(fx.filter(f => !f.pago).reduce((s, f) => s + f.v, 0));
   const porCat = {}; ls_.filter(([, l]) => l.tipo === 'saida').forEach(([, l]) => porCat[l.cat] = (porCat[l.cat] || 0) + l.v);
   const cats = Object.entries(porCat).sort((a, b) => b[1] - a[1]), maxC = cats.length ? cats[0][1] : 1;
   v.innerHTML = `<div class="hero">
@@ -3552,6 +3553,7 @@ function finEscola(v) {
         ${contaL('Outras entradas', brl(outras))}
         ${contaL(`Saídas (${ls_.filter(([, l]) => l.tipo === 'saida').length} lançamento${ls_.filter(([, l]) => l.tipo === 'saida').length === 1 ? '' : 's'})`, '− ' + brl(sai), 'saida')}
         ${contaL('<b>Saldo do mês</b>', `<b>${brl(saldo)}</b>`, 'total')}
+        ${fxFalta ? contaL('Despesas fixas ainda a pagar', '− ' + brl(fxFalta), 'saida') + contaL('<b>Saldo previsto</b>', `<b>${brl(C.r2(saldo - fxFalta))}</b>`, 'total') : ''}
       </div>
       <div class="note">Só o que é da escola: o que os professores recebem direto fica na aba Professores.</div>
     </div>
@@ -3561,11 +3563,15 @@ function finEscola(v) {
     ${rs.length ? `<details class="dica"><summary class="headrow" style="cursor:pointer"><h2>Entradas da escola</h2><span class="sub">${rs.length} pagamento${rs.length === 1 ? '' : 's'} · ver ›</span></summary>
       <ul class="list" style="margin-top:10px">${rs.map(r => `<li><div class="grow"><div class="t">${esc(r.aluna)}</div>${linhas(esc(r.cobranca), `<span class="num">${esc(r.forma)} em ${esc(r.data)}</span>`)}</div>${valorCol(brl(r.v), '', 'in')}</li>`).join('')}</ul></details>` : ''}
     <section><h2>Para onde foi o dinheiro</h2>${cats.length ? `<div class="bars">${cats.map(([c, x]) => `<div class="bar"><div class="row1"><span>${esc(c)}</span><b class="num">${brl(x)}</b></div><div class="track"><i class="late" style="width:${Math.max(3, x / maxC * 100)}%"></i></div></div>`).join('')}</div>` : '<div class="sub">Nenhuma saída registrada neste mês.</div>'}</section>
+    ${blocoFixas(fx, mes)}
     <section><div class="headrow"><h2>Lançamentos</h2><button class="add" id="cnl">+ Lançamento</button></div>
       ${ls_.length ? `<ul class="list">${ls_.map(([id, l]) => `<li class="tap" data-l="${esc(id)}"><div class="grow"><div class="t">${esc(l.desc || l.cat)}</div>${linhas(esc(l.cat), `<span class="num">${dataBR(l.data)}${l.localId && S.locais[l.localId] ? ' · ' + esc(S.locais[l.localId].nome) : ''}</span>`)}</div>${valorCol(`${l.tipo === 'entrada' ? '+' : '−'} ${brl(l.v)}`, '', l.tipo === 'entrada' ? 'in' : 'out')}</li>`).join('')}</ul>`
         : `<div class="empty"><span>Registre aqui aluguel, salários, compra de aparelhos, inscrições, patrocínios. O que é pago pelo app entra sozinho.</span></div>`}
     </section>`;
   $('fcfg').onclick = () => sheetAjustes(); $('cnl').onclick = () => sheetLanc();
+  $('cnfx').onclick = () => sheetFixa();
+  v.querySelectorAll('[data-fx]').forEach(li => li.onclick = () => sheetFixa(li.dataset.fx));
+  v.querySelectorAll('[data-fxpg]').forEach(b => b.onclick = e => { e.stopPropagation(); sheetPagarFixa(b.dataset.fxpg, mes); });
   v.querySelectorAll('[data-l]').forEach(li => li.onclick = () => sheetLanc(li.dataset.l));
 }
 // a conta que recebe o Pix do(a) professor(a), em destaque: dá para adicionar, trocar ou tirar
@@ -3632,7 +3638,7 @@ function sheetEnviarRelatorio(pid, mes) {
 }
 
 /* ================= Caixa (administração) ================= */
-const CAT_SAI = ['Professores e equipe', 'Aluguel do espaço', 'Material esportivo', 'Uniforme e figurino', 'Competições e inscrições', 'Viagens', 'Taxas da federação', 'Material e manutenção', 'Outros'];
+const CAT_SAI = ['Professores e equipe', 'Aluguel do espaço', 'Material esportivo', 'Uniforme e figurino', 'Competições e inscrições', 'Viagens', 'Taxas da federação', 'Material e manutenção', 'Contas (água, luz, internet)', 'Contador e impostos', 'Outros'];
 const CAT_ENT = ['Patrocínio', 'Festival ou apresentação', 'Rifa ou evento', 'Venda de uniforme', 'Outros'];
 function tCaixa(v) {
   const mes = S.mes; let mens = 0, ext = 0, pix = 0;
@@ -3662,10 +3668,73 @@ function tCaixa(v) {
   $('cnl').onclick = () => sheetLanc();
   v.querySelectorAll('[data-l]').forEach(li => li.onclick = () => sheetLanc(li.dataset.l));
 }
+/* ---- Despesas fixas: aluguel, salários, internet… cadastradas uma vez e previstas em todo mês ----
+   escolas/{eid}/fixas/{fid} = { desc, cat, v, dia, localId, inicio: 'AAAA-MM', fim: 'AAAA-MM' | null }.
+   Pagar o mês cria o lançamento de saída fx_{fid}_{mes} (com o valor daquele mês), que entra no caixa. */
+const idPagFixa = (fid, mes) => `fx_${fid}_${mes}`;
+const diaFixa = (f, mes) => { const nd = new Date(Number(mes.slice(0, 4)), Number(mes.slice(5)), 0).getDate(); return `${mes}-${pad(Math.min(Number(f.dia) || 1, nd))}`; };
+function fixasDoMes(mes) {
+  return Object.entries(S.fixas || {}).filter(([, f]) => f && (!f.inicio || f.inicio <= mes) && (!f.fim || f.fim >= mes))
+    .map(([fid, f]) => { const l = S.lanc[idPagFixa(fid, mes)]; return { fid, f, venc: diaFixa(f, mes), v: l ? l.v : f.v, pago: !!l, l }; })
+    .sort((a, b) => a.venc.localeCompare(b.venc) || String(a.f.desc).localeCompare(b.f.desc));
+}
+function blocoFixas(fx, mes) {
+  const tot = C.r2(fx.reduce((s, x) => s + x.v, 0)), pg = C.r2(fx.filter(x => x.pago).reduce((s, x) => s + x.v, 0)), h = hoje();
+  return `<section><div class="headrow"><h2>Despesas fixas</h2><button class="add" id="cnfx">+ Despesa fixa</button></div>
+    ${fx.length ? `<div class="sub num" style="margin-bottom:8px">${brl(tot)} no mês · ${brl(pg)} pagos · <b>${brl(C.r2(tot - pg))} a pagar</b></div>
+      <ul class="list">${fx.map(x => `<li class="tap" data-fx="${esc(x.fid)}"><div class="grow"><div class="t">${esc(x.f.desc || x.f.cat)}</div>${linhas(esc(x.f.cat), `<span class="num">${x.pago ? 'Pago em ' + dataBR(x.l.pagoEm || x.l.data) : (x.venc < h ? 'Venceu ' : 'Vence ') + dataBR(x.venc)}</span>`)}</div>
+        ${valorCol(brl(x.v), x.pago ? '<span class="chip pago">Pago</span>' : `<button class="chip ${x.venc < h ? 'vencido' : 'aberto'}" data-fxpg="${esc(x.fid)}">Pagar</button>`, x.pago ? 'saida' : '')}</li>`).join('')}</ul>`
+      : `<div class="empty"><span>Cadastre uma vez o que se repete todo mês, como aluguel, salários e internet. Elas aparecem aqui em todos os meses para você marcar como pagas.</span></div>`}</section>`;
+}
+function sheetFixa(fid) {
+  const f = fid ? S.fixas[fid] : null, mes = S.mes;
+  sheet(`<h3>${f ? 'Despesa fixa' : 'Nova despesa fixa'}</h3>
+    <div class="sub">Se repete todo mês. Aparece em Despesas fixas para você marcar como paga.</div>
+    <div class="field"><label for="fxdesc">Descrição</label><input id="fxdesc" maxlength="100" value="${esc(f ? f.desc || '' : '')}" placeholder="Ex.: Aluguel da quadra"></div>
+    <div class="field"><label for="fxcat">Categoria</label><select id="fxcat">${CAT_SAI.map(c => `<option ${f && c === f.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="two"><div class="field"><label for="fxval">Valor por mês (R$)</label><input id="fxval" inputmode="decimal" value="${esc(fmtValor(f && f.v))}" placeholder="0,00"></div>
+    <div class="field"><label for="fxdia">Vence todo dia</label><select id="fxdia">${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${(f ? Number(f.dia) : 5) === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div></div>
+    <div class="two"><div class="field"><label for="fxini">Começa em</label><select id="fxini">${Array.from({ length: 15 }, (_, i) => mesMais(mesHoje(), i - 12)).map(m => `<option value="${m}" ${(f ? f.inicio : mes) === m ? 'selected' : ''}>${esc(nomeMesAno(m))}</option>`).join('')}</select></div>
+    <div class="field"><label for="fxloc">Local (opcional)</label><select id="fxloc"><option value="">Escola toda</option>${ordenar(S.locais).map(([lid, x]) => `<option value="${esc(lid)}" ${f && f.localId === lid ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></div></div>
+    ${f ? `<div class="note">Mudar o valor vale para os meses ainda não pagos. Para mudar só um mês, toque em Pagar e ajuste o valor daquele mês.${f.fim ? ` <b>Encerrada: a última foi ${esc(nomeMesAno(f.fim))}.</b>` : ''}</div>` : ''}
+    <div class="err" id="fxerr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="fxok">Salvar</button></div>
+    ${f && !f.fim ? `<button class="btn ghost" id="fxfim" style="color:var(--out)">Encerrar esta despesa fixa</button>` : f ? `<button class="btn ghost" id="fxvolta">Voltar a valer todo mês</button>` : ''}`, () => {
+    $('fxok').onclick = async () => {
+      const v = parseValor($('fxval').value), desc = $('fxdesc').value.trim();
+      if (!desc) return $('fxerr').textContent = 'Escreva a descrição, como "Aluguel da quadra".';
+      if (!(v > 0)) return $('fxerr').textContent = 'Informe o valor por mês, como 1.500,00.';
+      $('fxok').disabled = true;
+      try { await B.set(`escolas/${S.eid}/fixas/${fid || novoId()}`, { ...(f || {}), desc, cat: $('fxcat').value, v, dia: Number($('fxdia').value), inicio: $('fxini').value, localId: $('fxloc').value || null, fim: f ? f.fim || null : null, criadoEm: f ? f.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso('Despesa fixa salva'); }
+      catch (e) { $('fxerr').textContent = msgErro(e); $('fxok').disabled = false; } };
+    // encerrar: o mês atual continua se já foi pago; senão, a última é a do mês anterior
+    if ($('fxfim')) $('fxfim').onclick = () => duploToque($('fxfim'), async () => { const fim = S.lanc[idPagFixa(fid, mes)] ? mes : mesMais(mes, -1);
+      try { await B.set(`escolas/${S.eid}/fixas/${fid}`, { fim }, { merge: true }); fecharSheet(); aviso(`Encerrada. A última foi ${nomeMesAno(fim)}.`); } catch (e) { $('fxerr').textContent = msgErro(e); } }, 'Toque de novo para encerrar');
+    if ($('fxvolta')) $('fxvolta').onclick = async () => { try { await B.set(`escolas/${S.eid}/fixas/${fid}`, { fim: null }, { merge: true }); fecharSheet(); aviso('Voltou a valer todo mês'); } catch (e) { $('fxerr').textContent = msgErro(e); } };
+  });
+}
+// pagar a despesa fixa de um mês: vira um lançamento de saída (dá para ajustar o valor e a data só deste mês)
+function sheetPagarFixa(fid, mes) {
+  const f = S.fixas[fid]; if (!f) return;
+  sheet(`<h3>Pagar · ${esc(f.desc || f.cat)}</h3><div class="sub">${esc(nomeMesAno(mes))} · vence ${dataBR(diaFixa(f, mes))}</div>
+    <div class="two"><div class="field"><label for="pfval">Valor deste mês (R$)</label><input id="pfval" inputmode="decimal" value="${esc(fmtValor(f.v))}"></div>
+    <div class="field"><label for="pfdata">Pago em</label><input id="pfdata" type="date" value="${esc(mes === mesHoje() ? hoje() : diaFixa(f, mes))}"></div></div>
+    <div class="note">Entra nas saídas do caixa de ${esc(C.nomeMes(mes))}. Mudar o valor aqui vale só para este mês.</div>
+    <div class="err" id="pferr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="pfok">Marcar como pago</button></div>`, () => {
+    $('pfok').onclick = async () => { const v = parseValor($('pfval').value), data = $('pfdata').value;
+      if (!(v > 0)) return $('pferr').textContent = 'Informe o valor pago.';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return $('pferr').textContent = 'Escolha a data do pagamento.';
+      $('pfok').disabled = true;
+      // o lançamento fica no mês da despesa (para o caixa daquele mês), com a data em que foi pago
+      try { await B.set(`escolas/${S.eid}/lancamentos/${idPagFixa(fid, mes)}`, { tipo: 'saida', cat: f.cat, desc: f.desc, v, data: data.slice(0, 7) === mes ? data : diaFixa(f, mes), pagoEm: data, localId: f.localId || null, fixa: fid, mes }); fecharSheet(); aviso('Pago'); }
+      catch (e) { $('pferr').textContent = msgErro(e); $('pfok').disabled = false; } };
+  });
+}
 function sheetLanc(id) {
   const l = id ? S.lanc[id] : null; let tipo = l ? l.tipo : 'saida';
   const opts = (tp, sel) => (tp === 'entrada' ? CAT_ENT : CAT_SAI).map(c => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('');
-  sheet(`<h3>${l ? 'Editar lançamento' : 'Novo lançamento'}</h3>
+  sheet(`<h3>${l ? 'Editar lançamento' : 'Novo lançamento'}</h3>${l && l.fixa ? '<div class="note">Pagamento de uma despesa fixa. Excluir este lançamento volta a despesa para "a pagar".</div>' : ''}
     <div class="seg"><button type="button" data-t="saida" aria-pressed="${tipo === 'saida'}">Saída</button><button type="button" data-t="entrada" aria-pressed="${tipo === 'entrada'}">Entrada</button></div>
     <div class="field"><label for="lcat">Categoria</label><select id="lcat">${opts(tipo, l && l.cat)}</select></div>
     <div class="field"><label for="ldesc">Descrição</label><input id="ldesc" maxlength="100" value="${esc(l ? l.desc || '' : '')}" placeholder="Ex.: Salário do professor"></div>
@@ -6337,8 +6406,13 @@ async function semearMock() {
     if (alid === 'al4') up.extras.x2 = pago(40, 'pix', `${m}-05`);
     await set(`${p}/pagamentos/${alid}`, up);
   }
-  await set(`${p}/lancamentos/c1`, { tipo: 'saida', cat: 'Professores e equipe', desc: 'Professor de futebol', v: 1800, data: `${m}-05` });
-  await set(`${p}/lancamentos/c2`, { tipo: 'saida', cat: 'Aluguel do espaço', desc: 'Unidade Centro', v: 1200, data: `${m}-05`, localId: 'l1' });
+  // despesas fixas: professor e aluguel já pagos no mês; internet e contador a pagar
+  await set(`${p}/fixas/f1`, { desc: 'Professor de futebol', cat: 'Professores e equipe', v: 1800, dia: 5, inicio: mesMais(m, -6), fim: null });
+  await set(`${p}/fixas/f2`, { desc: 'Aluguel · Unidade Centro', cat: 'Aluguel do espaço', v: 1200, dia: 5, inicio: mesMais(m, -6), fim: null, localId: 'l1' });
+  await set(`${p}/fixas/f3`, { desc: 'Internet', cat: 'Contas (água, luz, internet)', v: 120, dia: 10, inicio: mesMais(m, -6), fim: null });
+  await set(`${p}/fixas/f4`, { desc: 'Contador', cat: 'Contador e impostos', v: 350, dia: 20, inicio: mesMais(m, -6), fim: null });
+  await set(`${p}/lancamentos/fx_f1_${m}`, { tipo: 'saida', cat: 'Professores e equipe', desc: 'Professor de futebol', v: 1800, data: `${m}-02`, fixa: 'f1', mes: m });
+  await set(`${p}/lancamentos/fx_f2_${m}`, { tipo: 'saida', cat: 'Aluguel do espaço', desc: 'Aluguel · Unidade Centro', v: 1200, data: `${m}-02`, localId: 'l1', fixa: 'f2', mes: m });
   await set(`${p}/lancamentos/c3`, { tipo: 'saida', cat: 'Material esportivo', desc: 'Bolas e cones', v: 320, data: `${m}-03` });
   await set(`${p}/membros/${uF}`, { codigo: 'K7Q2MX', nome: 'Patrícia Lins', email: 'familia@teste.com' });
   const nao = { coracao: false, esforco: false, desmaio: false, doenca: false, ossos: false, outro: false };

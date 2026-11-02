@@ -186,6 +186,8 @@ service cloud.firestore {
 
       // Caixa (entradas e saídas avulsas): só administração.
       match /lancamentos/{doc} { allow read: if admin(eid); allow write: if adminE(eid); }
+      // despesas fixas (aluguel, salários…): só a administração
+      match /fixas/{doc} { allow read: if admin(eid); allow write: if adminE(eid); }
 
       // Pedidos das famílias (LGPD): a família cria o próprio e vê; a administração responde.
       match /pedidos/{pid} {
