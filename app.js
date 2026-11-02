@@ -5778,6 +5778,39 @@ async function semearMock() {
   const nao = { coracao: false, esforco: false, desmaio: false, doenca: false, ossos: false, outro: false };
   await set(`${p}/saude/al4`, { responsavelId: 'r3', respostas: { ...nao, doenca: true }, detalhes: 'Asma leve, usa bombinha antes de esforço intenso.', alergias: '', remedios: 'Bombinha (salbutamol) se precisar', plano: '', emergencia: { nome: 'Carla Andrade', telefone: '(81) 97777-3003', parentesco: 'mãe' }, primeirosSocorros: true, imagem: true, assinatura: { nome: 'Carla Andrade' }, em: Date.now() - 20 * 864e5, versao: 1, atestado: { pedidoEm: Date.now() - 20 * 864e5 } });
   await set(`${p}/saude/al3`, { responsavelId: 'r2', respostas: nao, detalhes: '', alergias: 'Dipirona', remedios: '', plano: 'Hapvida', emergencia: { nome: 'Roberto Melo', telefone: '(81) 98888-2002', parentesco: 'pai' }, primeirosSocorros: true, imagem: false, assinatura: { nome: 'Roberto Melo' }, em: Date.now() - 60 * 864e5, versao: 1, atestado: null });
+  // turmas cheias da professora Juliana (demonstração): 5 turmas com cerca de 15 alunos; os "João" têm algo de saúde no termo
+  { const ano = Number(m.slice(0, 4)), novasT = {
+      t7: { nome: 'Ballet Infantil', idadeMin: 5, idadeMax: 7, professoraId: 'p1', recebedor: 'p1', localId: 'l2', horario: 'Seg e Qua, 15h às 16h', preco: 170, vagas: 16, ordem: 7 },
+      t8: { nome: 'GR Juvenil', idadeMin: 13, idadeMax: 17, professoraId: 'p1', recebedor: 'p1', localId: 'l1', horario: 'Ter e Qui, 19h às 20h30', preco: 240, vagas: 15, ordem: 8 },
+      t9: { nome: 'Jazz Kids', idadeMin: 8, idadeMax: 11, professoraId: 'p1', recebedor: 'p1', localId: 'l2', horario: 'Sex, 14h às 15h30', preco: 160, vagas: 15, ordem: 9 } };
+    for (const [k, v] of Object.entries(novasT)) await set(`${p}/turmas/${k}`, v);
+    const NOMES = ['Laura', 'Helena', 'Alice', 'Manuela', 'Valentina', 'Cecília', 'Lívia', 'Isadora', 'Antonella', 'Lorena', 'Heloísa', 'Clara', 'Beatriz', 'Mariana', 'Elisa', 'Rafaela', 'Yasmin', 'Lara', 'Melissa', 'Gabriela', 'Arthur', 'Davi', 'Gael', 'Theo', 'Heitor', 'Bernardo', 'Samuel', 'Benício', 'Lorenzo', 'Matheus', 'Isabela', 'Luna', 'Ayla', 'Vitória', 'Esther', 'Sarah', 'Olívia', 'Pietra', 'Bianca', 'Nina', 'Emanuelly', 'Catarina', 'Marina', 'Agatha', 'Allana', 'Liz', 'Maitê', 'Ana Júlia', 'Maria Eduarda', 'Maria Clara', 'Rebeca', 'Giovanna', 'Luiza', 'Stella', 'Milena', 'Joana', 'Carolina', 'Débora', 'Vitor', 'Enzo', 'Miguel', 'Noah', 'Ravi', 'Pedro', 'Lucas', 'Gustavo', 'Bento', 'Benjamin', 'Caio', 'Leonardo'];
+    const SOBRE = ['Silva', 'Santos', 'Oliveira', 'Souza', 'Lima', 'Pereira', 'Ferreira', 'Costa', 'Rodrigues', 'Almeida', 'Nascimento', 'Carvalho', 'Araújo', 'Ribeiro', 'Gomes', 'Barbosa', 'Cavalcanti', 'Monteiro', 'Teixeira', 'Freitas'];
+    const MAES = ['Ana', 'Juliana', 'Fernanda', 'Patrícia', 'Aline', 'Camila', 'Renata', 'Priscila', 'Vanessa', 'Tatiana', 'Luciana', 'Daniela', 'Roberta', 'Simone', 'Cristiane'];
+    // os João: um por turma, cada um com uma questão de saúde diferente
+    const JOAO = {
+      t1: ['João Pedro Silva', { doenca: true }, 'Asma. Usa bombinha antes de atividade intensa.', '', 'Bombinha (salbutamol) na mochila', true],
+      t2: ['João Lucas Ferreira', {}, '', 'Amendoim e castanhas (alergia grave). Tem caneta de adrenalina.', 'Caneta de adrenalina (EpiPen) na mochila', true],
+      t7: ['João Miguel Santos', { doenca: true }, 'Epilepsia controlada com remédio. Última crise há 2 anos.', '', 'Depakene 2x ao dia (em casa)', true],
+      t8: ['João Gabriel Costa', { coracao: true, esforco: true }, 'Sopro no coração. Faz atividade com liberação do cardiologista.', '', '', false],
+      t9: ['João Vitor Lima', { doenca: true }, 'Diabetes tipo 1. Mede a glicose antes da aula; se ficar tonto, dar suco.', 'Dipirona', 'Insulina (bomba)', true] };
+    let n = 0;
+    for (const [tid, t] of Object.entries({ t1: turmas.t1, t2: turmas.t2, ...novasT })) {
+      for (let i = 0; i < 15; i++) {
+        n++; const id = `d${n}`, rid = `rd${n}`, joao = i === 3 ? JOAO[tid] : null;
+        const nome = joao ? joao[0] : `${NOMES[(n * 7) % NOMES.length]} ${SOBRE[(n * 3) % SOBRE.length]}`, sob = nome.split(' ').pop();
+        const idadeA = t.idadeMin + (n % (t.idadeMax - t.idadeMin + 1)), nasc = `${ano - idadeA}-${pad(1 + (n % 12))}-${pad(1 + (n * 5) % 27)}`;
+        const mae = `${MAES[n % MAES.length]} ${sob}`, tel = `(81) 9${String(8100 + n).padStart(4, '0')}-${String(1000 + n * 37).slice(-4)}`;
+        await set(`${p}/responsaveis/${rid}`, { nome: mae, telefone: tel, cpf: '', codigo: 'D' + String(10000 + n) });
+        await set(`${p}/alunas/${id}`, { nome, nascimento: nasc, responsavelId: rid, turmas: [tid], inicio: mesMais(m, -3 - (n % 5)) });
+        // a maioria pagou o mês; alguns em aberto
+        if (n % 4) await set(`${p}/pagamentos/${id}`, { mens: { [m]: { s: 'pago', d: `${m}-0${1 + (n % 8)}`, v: t.preco, via: n % 3 ? 'pix' : 'dinheiro', rec: t.recebedor } } });
+        const resp = joao ? { ...nao, ...joao[1] } : nao;
+        await set(`${p}/saude/${id}`, { responsavelId: rid, respostas: resp, detalhes: joao ? joao[2] : '', alergias: joao ? joao[3] : '', remedios: joao ? joao[4] : '', plano: n % 2 ? 'Hapvida' : '',
+          emergencia: { nome: mae, telefone: tel, parentesco: 'mãe' }, primeirosSocorros: joao ? joao[5] : true, imagem: n % 6 !== 0, assinatura: { nome: mae }, em: Date.now() - (20 + n) * 864e5, versao: 1, atestado: joao && (joao[1].coracao || joao[1].doenca) ? { pedidoEm: Date.now() - 10 * 864e5 } : null });
+      }
+    }
+  }
   // documentos de exemplo: Sofia em dia, Luíza com o parecer vencido, Ana Beatriz com o parecer vencendo
   const docFalso = (titulo, nome, w = 900, h = 1200) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
     g.fillStyle = '#fbfaf6'; g.fillRect(0, 0, w, h); g.fillStyle = '#222'; g.font = `bold ${Math.round(w / 22)}px sans-serif`; g.fillText(titulo, w * 0.08, h * 0.1);
