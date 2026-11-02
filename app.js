@@ -2854,12 +2854,11 @@ function tPTurmas(v) {
     return `<div class="local turma-card">
       <div class="hd"><div class="grow"><div class="t">${esc(t.nome)}</div></div></div>
       <div class="turma-info">${ddl([['Dias e horário', esc(t.horario || '—')], ['Local', esc(localDe(t) || '—')], ['Faixa etária', esc(C.faixaTxt(t))], ['Alunos', `<span class="num">${alunosTxt}</span>`], nSaude && ['Saúde', `<span class="saude-ic">✚</span> ${nSaude} com atenção à saúde`]])}</div>
-      <button class="mostrar" data-cham="${esc(tid)}">✓ Fazer chamada<span aria-hidden="true">›</span></button>
+      ${t.chamada !== false ? `<button class="mostrar" data-cham="${esc(tid)}">✓ Fazer chamada<span aria-hidden="true">›</span></button>` : ''}
       <button class="mostrar" data-pabre="${esc(tid)}" aria-expanded="${aberta}">${aberta ? 'Esconder alunos' : `Mostrar alunos${n ? ` (${n})` : ''}`}<span aria-hidden="true">${aberta ? '▴' : '▾'}</span></button>
       ${aberta ? `<div class="ativ">${al.map(a => `<div class="turma" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}${((pp.saude || {})[a.id] || {}).alerta ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div></div>`).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}</div>` : ''}</div>`;
   };
-  const pend = chamadasPendentes(ts.map(([tid]) => tid));
-  v.innerHTML = `${pend.map(x => `<button class="faixa-resumo" data-cham="${esc(x.tid)}" data-chd="${esc(x.d)}"><span class="grow"><b>Falta a chamada: ${esc(x.t.nome)}</b><span class="s">${esc(diaLongo(x.d))}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('')}<div class="headrow"><h2>Minhas turmas</h2></div>
+  v.innerHTML = `<div class="headrow"><h2>Minhas turmas</h2></div>
     <div class="sub num">${ts.length} turma${ts.length === 1 ? '' : 's'} · ${ativos.length} aluno${ativos.length === 1 ? '' : 's'}</div>
     <div class="field"><input id="ppbusca" type="search" placeholder="Buscar aluno" aria-label="Buscar aluno" value="${esc(S.busca || '')}"></div>
     <div class="tree">${ts.map(([tid, t]) => cartao(tid, t)).join('') || (q ? '<div class="empty"><b>Nenhum aluno com esse nome.</b></div>' : '<div class="empty"><b>Nenhuma turma ainda.</b><span>A escola coloca você como professor(a) das turmas.</span></div>')}</div>
@@ -3039,14 +3038,6 @@ function sheetChamada(tid, data) {
     });
   }).catch(e => sheet(casca(`<div class="empty"><b>Não deu para abrir a chamada.</b><span>${esc(msgErro(e))}</span></div><button class="btn ghost" data-fechar>Fechar</button>`)));
 }
-// professor: as chamadas dos últimos dias de aula que ainda não foram feitas (até 7 dias, sem contar hoje)
-function chamadasPendentes(tids) {
-  const out = [], feitas = (S.pp && S.pp.chamadas) || {};
-  for (const tid of tids) { const t = S.turmas[tid]; if (!t || !t.chamadaObrig || !(t.dias || []).length) continue;
-    const desde = t.diasEm ? isoDe(new Date(t.diasEm)) : ''; // só lembra das aulas depois que a escola marcou os dias
-    for (let i = 1; i <= 7; i++) { const d = somaDias(hoje(), -i); if (d < desde) break; if (ehAula(t, d) && !(feitas[tid] || []).includes(d)) { out.push({ tid, t, d }); break; } } }
-  return out;
-}
 // frequência na ficha do aluno (escola e professor)
 async function freqAlunoHTML(alid) {
   const r = S.admin ? { chamadas: (await B.onde(`escolas/${S.eid}/chamadas`, 'alunos', 'array-contains', alid)).map(x => x.data) } : await profServidor('freq', { alid });
@@ -3073,7 +3064,7 @@ function cartaoTurma(tid, t) {
   return `<div class="local turma-card">
     <div class="hd"><div class="grow"><div class="t">${esc(t.nome)}</div></div>${S.admin ? `<button class="btn ghost btn-mini" data-et="${esc(tid)}">${ICO_EDIT} Editar</button>` : ''}</div>
     <div class="turma-info">${ddl([S.admin && ['Valor', `<b class="num">${brl(t.preco)}</b> <span class="sub">por mês</span>`], ['Faixa etária', esc(C.faixaTxt(t))], ['Professor(a)', esc(profNome(t) || '—')], ['Local', esc(localDe(t) || '—')], ['Dias e horário', esc(t.horario || '—')], S.admin && ['Pix vai para', esc(nomeRec(C.recDe(t)))], ['Alunos', `<span class="num">${alunosTxt}</span>${nFora ? ` <span class="chip vencido">${nFora} faixa etária</span>` : ''}`]])}</div>
-    <button class="mostrar" data-cham="${esc(tid)}">✓ Fazer chamada<span aria-hidden="true">›</span></button>
+    ${t.chamada !== false ? `<button class="mostrar" data-cham="${esc(tid)}">✓ Fazer chamada<span aria-hidden="true">›</span></button>` : ''}
     <button class="mostrar" data-abre="${esc(tid)}" aria-expanded="${aberta}">${aberta ? 'Esconder alunos' : `Mostrar alunos${n ? ` (${n})` : ''}`}<span aria-hidden="true">${aberta ? '▴' : '▾'}</span></button>
     ${aberta ? `<div class="ativ">${al.map(x => { const [id, a] = x;
       return `<div class="turma" data-al="${esc(id)}">${avatarAluno(id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), respDe(id).nome ? 'Responsável: ' + esc(respDe(id).nome) : '')}</div>${fora(x) ? '<span class="chip vencido">Faixa etária</span>' : ''}</div>`; }).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}
@@ -3268,8 +3259,8 @@ function sheetTurma(tid, depois) {
       <div class="field"><label for="tpreco">Valor mensal (R$)</label><input id="tpreco" inputmode="decimal" value="${esc(fmtValor(t && t.preco))}" placeholder="0,00"></div></div>
       <div class="field"><label for="tvag">Limite de alunos (opcional)</label><input id="tvag" type="number" min="0" value="${esc(t && t.vagas ? t.vagas : '')}"></div>
       <div class="field"><span class="lb">Dias de aula</span><div class="seg dias-seg" id="tdias">${[1, 2, 3, 4, 5, 6, 0].map(i => `<button type="button" data-dia="${i}" aria-pressed="${!!(t && (t.dias || []).includes(i))}">${C.DIAS_SEM[i]}</button>`).join('')}</div>
-        <span class="s">A chamada abre no dia da aula.</span></div>
-      <label class="liga"><span class="grow"><b>Chamada obrigatória</b><span class="s">O professor é lembrado no app quando faltar a chamada de uma aula. Desligada, a chamada fica disponível, mas é opcional.</span></span><input type="checkbox" role="switch" id="tcham" ${t && t.chamadaObrig ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+        <span class="s">A chamada abre no dia da aula mais recente.</span></div>
+      <label class="liga"><span class="grow"><b>Fazer chamada nesta turma</b><span class="s">Ligada, a turma tem o botão "Fazer chamada" para o professor e para a escola. Desligada, a turma fica sem chamada.</span></span><input type="checkbox" role="switch" id="tcham" ${!t || t.chamada !== false ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
       <div class="field"><label for="thor">Dias e horário</label><input id="thor" maxlength="60" value="${esc(t ? t.horario || '' : '')}" placeholder="Ex.: Seg e Qua, 17h às 18h"></div>
       <div class="field"><label for="trec">A mensalidade vai para</label><select id="trec">${opcoesRec(t && t.recebedor)}</select>
         <div class="note">O Pix da mensalidade cai direto na conta do Mercado Pago de quem você escolher aqui.</div></div>
@@ -3283,7 +3274,7 @@ function sheetTurma(tid, depois) {
       if (!todasN && mn == null && mx == null) return 'Informe a faixa etária ou marque "Todas as faixas etárias".';
       if (!todasN && mn != null && mx != null && mn > mx) return 'A idade inicial não pode ser maior que a final.';
       if (!(preco >= 0)) return 'Informe o valor mensal da turma, como 150,00.';
-      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...(() => { const dias = [...document.querySelectorAll('#tdias [data-dia][aria-pressed="true"]')].map(b => Number(b.dataset.dia)).sort(); const ob = $('tcham').checked, mudou = dias.join() !== ((t && t.dias) || []).join() || (ob && !(t && t.chamadaObrig)); return { dias, chamadaObrig: ob, diasEm: mudou ? Date.now() : (t && t.diasEm) || null }; })(), recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
+      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...(() => { const dias = [...document.querySelectorAll('#tdias [data-dia][aria-pressed="true"]')].map(b => Number(b.dataset.dia)).sort(); return { dias, chamada: $('tcham').checked }; })(), recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
     },
     depois: depois ? () => depois(novoTid) : null,
     excluir: tid && (() => B.del(`escolas/${S.eid}/turmas/${tid}`)), bloqueio: n ? 'Esta turma tem alunos. Tire os alunos da turma antes de excluir.' : null });
@@ -6156,7 +6147,7 @@ async function semearMock() {
   await set(`${p}/extras/x2`, { tipo: 'taxa', nome: 'Taxa da federação 2027', v: 40, venc: `${m}-12`, grupos: ['g2'], turmas: [], alunas: [], recebedor: 'escola' });
   // chamada: dias de aula, um 2º professor e as chamadas das últimas semanas da Iniciação (falta a mais recente)
   { const D = { t1: [1, 3], t2: [2, 4, 6], t3: [5], t4: [6], t5: [2, 4], t6: [1, 3], t7: [1, 3], t8: [2, 4], t9: [5] };
-    for (const [tid, d] of Object.entries(D)) if (await B.get(`${p}/turmas/${tid}`)) await B.set(`${p}/turmas/${tid}`, { dias: d, diasEm: Date.now() - 30 * 864e5, chamadaObrig: ['t1', 't2'].includes(tid) }, { merge: true });
+    for (const [tid, d] of Object.entries(D)) if (await B.get(`${p}/turmas/${tid}`)) await B.set(`${p}/turmas/${tid}`, { dias: d, chamada: tid !== 't9' }, { merge: true });
     await B.set(`${p}/turmas/t3`, { professoraIds: ['p1'] }, { merge: true });
     const t1 = Object.keys(alunas).filter(id => (alunas[id].turmas || []).includes('t1')), aulas = [];
     for (let i = 1; i <= 28; i++) { const d = somaDias(hoje(), -i); if ([1, 3].includes(diaSem(d))) aulas.push(d); }
