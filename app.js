@@ -1036,6 +1036,8 @@ function render() {
   ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar, pturmas: tPTurmas, palunos: tPAlunos, feventos: tFEventos, pfin: tPFin })[S.tab](v);
   pedirFotos();
   if (foco && $(foco) && $(foco).tagName === 'INPUT' && $(foco).type !== 'checkbox') { $(foco).focus(); try { $(foco).setSelectionRange(selS, selS); } catch (e) { } }
+  // a tela foi redesenhada com o campo (ou o seletor) em foco: se nada ficou em foco, a barra de abas volta
+  setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches('input:not([type=checkbox]):not([type=radio]),textarea,select'))) document.body.classList.remove('digitando'); }, 150);
 }
 function irPara(tab, extra) { if (S.tab !== tab) { S.hist = (S.hist || []).concat(S.tab).slice(-20); } S.tab = tab; Object.assign(S, extra || {}); ls.set('escolinha.tab.' + S.papel, tab); render(); scrollTo(0, 0); }
 function faixa() {
