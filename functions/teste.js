@@ -370,7 +370,9 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     // painel: Ana e Caio (turma dele); Bia não; nada da família
     r = resp(); await PR.professor(req({ acao: 'painel', eid: 'e7', mes }, 'ok:cam:v'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
     assert.deepStrictEqual(r.body.alunos.map(a => a.id), ['a1', 'a3']);
-    const txt = JSON.stringify(r.body); assert.ok(!/r1|9999|12345678901|responsavel/.test(txt), 'vazou dado da família');
+    // do responsável, só o nome e o WhatsApp (contato rápido do professor); nada de CPF nem do código do cadastro
+    const txt = JSON.stringify(r.body); assert.ok(!/"r1"|12345678901|responsavelId|cpf/.test(txt), 'vazou dado da família');
+    assert.deepStrictEqual(r.body.alunos[0].resp, { nome: 'Mãe da Ana', telefone: '81999990001' });
     const ana = r.body.alunos[0], caio = r.body.alunos[1];
     assert.deepStrictEqual([ana.mensal.st, ana.mensal.v], ['pago', 200]); assert.strictEqual(r.body.totais.recebido, 200);
     assert.strictEqual(caio.mensal.st, 'atrasado'); assert.ok(caio.mensal.v > 0 && caio.mensal.v < 300, 'parte do Caio: ' + caio.mensal.v);
