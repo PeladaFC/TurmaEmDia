@@ -286,8 +286,11 @@
   const maisDias = (dia, n) => new Date(Date.parse(dia + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
   // desconto que o dono do app deu para a escola: { pct } ou { valor } (por mês), até uma data (ate) ou sem prazo
   const descontoPlano = (p, hoje) => { const d = (p || {}).desconto; return d && (Number(d.pct) > 0 || Number(d.valor) >= 0 && d.valor != null) && (!d.ate || d.ate >= hoje) ? d : null; };
+  // plano escolhido pela escola (p.planoId); sem escolha, o menor que cabe os alunos. cabePlano: os alunos ativos cabem no plano?
+  const planoDe = (p, nAlunos) => PLANOS.find(x => x.id === (p || {}).planoId) || planoPara(nAlunos);
+  const cabePlano = (pl, n) => !pl || pl.ate == null || (Number(n) || 0) <= pl.ate;
   function precoPlano(nAlunos, ciclo, p, hoje) {
-    const pl = planoPara(nAlunos), meses = ciclo === 'anual' ? 10 : 1, cheio = pl.mes * meses, d = descontoPlano(p, hoje);
+    const pl = planoDe(p, nAlunos), meses = ciclo === 'anual' ? 10 : 1, cheio = pl.mes * meses, d = descontoPlano(p, hoje);
     const valor = !d ? cheio : d.valor != null ? Math.min(cheio, r2(Number(d.valor) * meses)) : r2(cheio * (1 - Math.min(100, Number(d.pct)) / 100));
     return { plano: pl, cheio, desconto: d, valor };
   }
@@ -317,5 +320,5 @@
     r.alerta = !!(itens.length || r.detalhes || r.alergias || r.remedios || r.semPrimeiros);
     return r;
   }
-  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
+  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
 });

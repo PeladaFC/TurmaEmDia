@@ -565,6 +565,16 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
       r = resp(); await AS.plano(req({ acao: 'documento', eid: 'e6', doc: '52998224725' }, 'ok:adm6'), r);
       assert.match(r.body.aviso, /já usou/); assert.strictEqual(r.body.plano.testeAte, H);
     });
+    await t('plano manual: a escola escolhe; só desce se os alunos couberem; o preço segue o plano escolhido', async () => {
+      assert.strictEqual(S2.get('escolas/e5/config/plano').planoId, 'inicial');
+      let r = resp(); await AS.plano(req({ acao: 'escolher', eid: 'e5', planoId: 'completo' }, 'ok:adm5'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+      assert.deepStrictEqual([r.body.plano.planoId, r.body.mensal.valor], ['completo', 129]);
+      for (let i = 0; i < 30; i++) S2.set('escolas/e5/alunas/z' + i, { nome: 'Z' + i, responsavelId: 'q9', turmas: ['t1'], inicio: '2026-09' });
+      r = resp(); await AS.plano(req({ acao: 'escolher', eid: 'e5', planoId: 'inicial' }, 'ok:adm5'), r); assert.strictEqual(r.code, 409); assert.match(r.body.erro, /32 alunos/);
+      for (let i = 0; i < 30; i++) S2.delete('escolas/e5/alunas/z' + i);
+      r = resp(); await AS.plano(req({ acao: 'escolher', eid: 'e5', planoId: 'inicial' }, 'ok:adm5'), r); assert.strictEqual(r.body.mensal.valor, 39);
+      r = resp(); await AS.plano(req({ acao: 'escolher', eid: 'e5', planoId: 'nada' }, 'ok:adm5'), r); assert.strictEqual(r.code, 400);
+    });
     await t('plano: Pix na conta da empresa estende um mês a partir do vencimento; atraso de 6 dias trava (só leitura)', async () => {
       S2.set('escolas/e6/config/plano', { ...S2.get('escolas/e6/config/plano'), testeAte: '2026-10-09' });
       let r = resp(); await AS.plano(req({ acao: 'estado', eid: 'e6' }, 'ok:adm6'), r); assert.strictEqual(S2.get('escolas/e6/config/plano').bloqueio, 'leitura');
@@ -597,7 +607,7 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
       r = resp(); await AS.plano(req({ acao: 'donoDesconto', eid: 'e5', valor: '25', ate: '2027-03-01' }, dono), r); assert.strictEqual(e5().valor, 25);
       r = resp(); await AS.plano(req({ acao: 'donoCortesia', eid: 'e5', meses: 3, motivo: 'indicação' }, dono), r);
       assert.strictEqual(e5().cortesiaAte, '2027-03-14'); assert.strictEqual(e5().fase, 'cortesia'); assert.strictEqual(prer.status, 'paused');
-      assert.deepStrictEqual(e5().historico.map(h => h.txt.split(':')[0].split(',')[0]), ['Desconto', 'Desconto', '3 meses grátis']);
+      assert.deepStrictEqual(e5().historico.map(h => h.txt.split(':')[0].split(',')[0]), ['Escola mudou para o plano Completo', 'Escola mudou para o plano Inicial', 'Desconto', 'Desconto', '3 meses grátis']);
       r = resp(); await AS.plano(req({ acao: 'donoTirarCortesia', eid: 'e5' }, dono), r); assert.strictEqual(prer.status, 'authorized');
     });
   }

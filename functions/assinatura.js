@@ -43,7 +43,7 @@ module.exports = (db, P) => {
   // cria o plano na primeira vez (teste de 30 dias a partir de hoje)
   async function garantir(eid) {
     const ref = planoRef(eid), s = await ref.get(); if (s.exists) return s.data();
-    const hoje = hojeRecife(), p = { inicio: hoje, testeAte: C.maisDias(hoje, 30), ciclo: 'mensal', criadoEm: Date.now(), bloqueio: null };
+    const hoje = hojeRecife(), p = { inicio: hoje, testeAte: C.maisDias(hoje, 30), ciclo: 'mensal', planoId: C.planoPara(await alunosAtivos(eid)).id, criadoEm: Date.now(), bloqueio: null };
     await ref.set(p); return p;
   }
   // grava a situação (e o bloqueio que as regras do Firestore conferem)
@@ -161,7 +161,18 @@ module.exports = (db, P) => {
       const escola = await ler(`escolas/${eid}`);
       if (!escola || !(escola.admins || []).includes(u.uid)) return res.status(403).json({ erro: 'Só a administração da escola pode fazer isso.' });
       let p = await garantir(eid);
+      // escola que já tinha plano antes da escolha manual: fica no menor que cabe os alunos de hoje
+      if (!p.planoId) p = await gravar(eid, { planoId: C.planoPara(await alunosAtivos(eid)).id });
       if (b.acao === 'estado') { p = await sincronizar(eid, p); return res.json(await publico(eid, p)); }
+      // a escola escolhe o plano; o novo vale a partir da próxima cobrança. Só desce se os alunos ativos couberem.
+      if (b.acao === 'escolher') {
+        const pl = C.PLANOS.find(x => x.id === b.planoId); if (!pl) return res.status(400).json({ erro: 'Plano inválido.' });
+        const n = await alunosAtivos(eid);
+        if (!C.cabePlano(pl, n)) return res.status(409).json({ erro: `A escola tem ${n} alunos ativos e o ${pl.nome} vai até ${pl.ate}. Desative alunos ou escolha um plano maior.` });
+        p = await gravar(eid, { planoId: pl.id, historico: [...(p.historico || []).slice(-30), { em: Date.now(), por: u.email, txt: `Escola mudou para o plano ${pl.nome}` }] });
+        p = await sincronizar(eid, p);
+        return res.json(await publico(eid, p));
+      }
       if (b.acao === 'documento') {
         const doc = C.soDigitos(b.doc);
         if (!(doc.length === 11 ? C.cpfValido(doc) : doc.length === 14)) return res.status(400).json({ erro: 'Confira o CPF ou CNPJ.' });

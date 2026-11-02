@@ -2413,6 +2413,8 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       if (!ts.length) return err('Escolha a turma do(a) aluno(a).');
       const ativaN = $('aativa') ? $('aativa').checked : true, ini = $('aini').value || mes, fim = ativaN ? null : ($('afim').value || mesMais(mes, -1));
       if (fim && fim < ini) return err('O último mês cobrado não pode ser antes do primeiro.');
+      const contava = a && a.ativa !== false && !a.anonimizadoEm && C.ativaNoMes(a, mesHoje()), lim = S.plano ? planoAtual() : null;
+      if (ativaN && !contava && ini <= mesHoje() && lim && !C.cabePlano(lim, ativosPlano() + 1)) return limitePlanoNoForm($('aerr'), () => $('aok').click());
       $('aok').disabled = true;
       try {
         const id = alid || novoId(), ops = []; let r = rid;
@@ -5405,11 +5407,23 @@ const chamarPlano = corpo => MOCK ? mockPlano(corpo) : servidor('plano', { eid: 
 // alunos ativos agora (o mesmo que o servidor conta para o preço do plano)
 const ativosPlano = () => Object.values(S.alunas || {}).filter(a => a.ativa !== false && !a.anonimizadoEm && C.ativaNoMes(a, mesHoje())).length;
 // perto do limite da faixa (90% ou mais): avisa quanto passa a custar ao mudar de faixa
+// o plano é escolhido pela escola (planoId); sem escolha ainda, vale a faixa dos alunos ativos
+const planoAtual = () => C.planoDe(S.plano, ativosPlano());
+const proxPlano = pl => C.PLANOS[C.PLANOS.indexOf(pl) + 1] || null;
 function avisoLimitePlano() {
   if (!S.admin || !S.plano) return '';
-  const n = ativosPlano(), pl = C.planoPara(n); if (!pl.ate || n < Math.ceil(pl.ate * 0.9)) return '';
-  const prox = C.PLANOS[C.PLANOS.indexOf(pl) + 1], falta = pl.ate - n;
-  return `<div class="banner"><span><b>Plano ${esc(pl.nome)} quase no limite:</b> ${n} de ${pl.ate} alunos${falta > 0 ? ` (falta${falta > 1 ? 'm' : ''} ${falta})` : ''}. Ao passar de ${pl.ate}, o plano muda sozinho para o <b>${esc(prox.nome)}</b>, de ${brl(prox.mes)} por mês.</span><button id="fplano2">Ver planos</button></div>`;
+  const n = ativosPlano(), pl = planoAtual(); if (!pl.ate || n < Math.ceil(pl.ate * 0.9)) return '';
+  const prox = proxPlano(pl), falta = Math.max(0, pl.ate - n);
+  return `<div class="banner"><span><b>Plano ${esc(pl.nome)} ${falta ? 'quase cheio' : 'cheio'}:</b> ${n} de ${pl.ate} alunos${falta ? ` (falta${falta > 1 ? 'm' : ''} ${falta})` : ''}. Para cadastrar mais de ${pl.ate}, mude para o <b>${esc(prox.nome)}</b>, de ${brl(prox.mes)} por mês.</span><button id="fplano2">Ver planos</button></div>`;
+}
+// cadastrar ou reativar acima do limite do plano escolhido: mostra o aviso com o botão de mudar (a ficha não se perde)
+function limitePlanoNoForm(box, depois) {
+  const pl = planoAtual(), prox = proxPlano(pl);
+  box.innerHTML = `<div class="pl-lim"><span><b>O plano ${esc(pl.nome)} vai até ${pl.ate} alunos ativos</b> e a escola já tem ${ativosPlano()}.${S.admin ? ` Para cadastrar mais, mude para o <b>${esc(prox.nome)}</b> (até ${prox.ate ? prox.ate + ' alunos' : 'quantos precisar'}, ${brl(prox.mes)} por mês). O novo valor vale a partir da próxima cobrança.` : ' Peça à administração da escola para mudar de plano.'}</span>
+    ${S.admin ? `<button type="button" class="btn" id="plmudar">Mudar para o ${esc(prox.nome)}</button>` : ''}</div>`;
+  if ($('plmudar')) $('plmudar').onclick = async () => { $('plmudar').disabled = true;
+    try { await chamarPlano({ acao: 'escolher', planoId: prox.id }); aviso(`Plano ${prox.nome} escolhido`); box.innerHTML = ''; depois(); }
+    catch (e) { box.textContent = msgErro(e); } };
 }
 function faixaPlano() {
   if (!S.admin || !S.plano) return '';
@@ -5430,7 +5444,7 @@ function telaPlanoParado(v) {
   $('spag').onclick = () => sheetPlano();
 }
 function sheetPlano() {
-  let R = null, ciclo = (S.plano && S.plano.ciclo) || 'mensal', pixAberto = false, parar = null;
+  let R = null, ciclo = (S.plano && S.plano.ciclo) || 'mensal', pixAberto = false, parar = null, escolha = null;
   const corpo = h => `<h3>Plano da escola</h3>${h}<button class="btn ghost" data-fechar style="width:100%;margin-top:8px">Fechar</button>`;
   const carregar = async () => { try { R = await chamarPlano({ acao: 'estado' }); ciclo = R.plano.ciclo || ciclo; desenhar(); } catch (e) { sheet(corpo(`<div class="empty"><b>Não deu para abrir o plano.</b><span>${esc(msgErro(e))}</span></div>`)); } };
   const desenhar = () => {
@@ -5440,12 +5454,17 @@ function sheetPlano() {
       : s.fase === 'ativo' ? `<div class="banner ok"><span><b>Em dia</b> · pago até ${dataBRA(p.pagoAte)}.</span></div>`
       : s.fase === 'aviso' ? `<div class="banner"><span><b>Venceu em ${dataBRA(s.venc)}.</b> Pague até ${dataBRA(C.maisDias(s.venc, 5))} para não ficar só para leitura.</span></div>`
       : ['leitura', 'suspensa'].includes(s.fase) ? `<div class="banner alerta"><span><b>${s.fase === 'leitura' ? 'Só leitura' : 'Suspensa'}</b> · atrasado desde ${dataBRA(s.venc)}. Pague para liberar na hora.</span></div>` : '';
-    const precoTxt = v => brl(v).replace(',00', '');
+    const precoTxt = v => brl(v).replace(',00', ''), menor = C.PLANOS.find(x => C.cabePlano(x, R.alunos));
     sheet(corpo(`${faixa}
       ${!p.doc ? `<div class="field"><label for="pldoc">CPF ou CNPJ de quem responde pela escola</label><div class="pl-docrow"><input id="pldoc" inputmode="numeric" placeholder="Só números"><button type="button" class="btn ghost" id="pldocok">Salvar</button></div><span class="s">O teste grátis é um por CPF ou CNPJ.</span></div>` : ''}
-      <div class="pl-uso"><div class="pl-uso-t"><span>Alunos ativos</span><b class="num">${R.alunos}${pl.ate ? ' de ' + pl.ate : ''}</b></div><div class="pl-barra"><i style="width:${pct}%"></i></div><span class="s">Plano <b>${esc(pl.nome)}</b>. O plano muda sozinho quando a escola muda de faixa.${pl.ate && R.alunos >= Math.ceil(pl.ate * 0.9) ? ` <b style="color:var(--out)">Quase no limite: acima de ${pl.ate} alunos, passa para o ${esc(C.PLANOS[C.PLANOS.indexOf(pl) + 1].nome)} (${brl(C.PLANOS[C.PLANOS.indexOf(pl) + 1].mes)} por mês).</b>` : ''}</span></div>
+      <div class="pl-uso"><div class="pl-uso-t"><span>Alunos ativos</span><b class="num">${R.alunos}${pl.ate ? ' de ' + pl.ate : ''}</b></div><div class="pl-barra"><i style="width:${pct}%"></i></div><span class="s">Plano <b>${esc(pl.nome)}</b>, escolhido pela escola.${pl.ate && R.alunos >= Math.ceil(pl.ate * 0.9) ? ` <b style="color:var(--out)">${R.alunos >= pl.ate ? 'Cheio' : 'Quase cheio'}: para cadastrar mais de ${pl.ate} alunos, mude para o ${esc(proxPlano(pl).nome)}.</b>` : ''}</span></div>
+      ${menor && menor.id !== pl.id ? `<div class="banner ok pl-lembra"><span>Você tem ${R.alunos} aluno${R.alunos === 1 ? '' : 's'}: o <b>${esc(menor.nome)}</b> atende e custa ${precoTxt(C.r2(pl.mes - menor.mes))} a menos por mês.</span><button type="button" data-pl="${menor.id}">Ver</button></div>` : ''}
       <div class="seg pl-per"><button type="button" data-per="mensal" aria-pressed="${ciclo === 'mensal'}">Mensal</button><button type="button" data-per="anual" aria-pressed="${ciclo === 'anual'}">Anual · 2 meses grátis</button></div>
-      <div class="pl-grade">${C.PLANOS.map(x => `<div class="pl-card ${x.id === pl.id ? 'sel' : ''}"><span class="pl-nome">${x.nome}</span><span class="pl-ate">${x.ate ? 'até ' + x.ate + ' alunos' : 'acima de 250'}</span><span class="pl-preco num">${precoTxt(ciclo === 'anual' ? x.mes * 10 / 12 : x.mes)}</span><span class="pl-mes">${ciclo === 'anual' ? 'por mês, no anual' : 'por mês'}</span></div>`).join('')}</div>
+      <div class="pl-grade">${C.PLANOS.map(x => { const cabe = C.cabePlano(x, R.alunos), atual = x.id === pl.id;
+        return `<button type="button" class="pl-card ${atual ? 'sel' : ''} ${escolha === x.id ? 'esc' : ''}" data-pl="${x.id}" ${!cabe ? 'disabled' : ''} aria-pressed="${atual}">${atual ? '<span class="pl-tag">Seu plano</span>' : ''}<span class="pl-nome">${x.nome}</span><span class="pl-ate">${x.ate ? 'até ' + x.ate + ' alunos' : 'acima de 250'}</span><span class="pl-preco num">${precoTxt(ciclo === 'anual' ? x.mes * 10 / 12 : x.mes)}</span><span class="pl-mes">${!cabe ? `você tem ${R.alunos} alunos` : ciclo === 'anual' ? 'por mês, no anual' : 'por mês'}</span></button>`; }).join('')}</div>
+      ${escolha ? (() => { const x = C.PLANOS.find(y => y.id === escolha), sobe = x.mes > pl.mes;
+        return `<div class="pl-conf"><span><b>Mudar para o ${esc(x.nome)}?</b> ${sobe ? (x.ate ? `O limite sobe na hora para ${x.ate} alunos.` : 'Na hora, a escola passa a não ter limite de alunos.') : `Vai até ${x.ate} alunos ativos.`} O novo valor, ${brl(ciclo === 'anual' ? x.mes * 10 : x.mes)} por ${ciclo === 'anual' ? 'ano' : 'mês'}, vale a partir da próxima cobrança.</span>
+          <div class="actions"><button type="button" class="btn ghost" id="plnao">Cancelar</button><button type="button" class="btn" id="plsim">Mudar</button></div></div>`; })() : ''}
       <div class="conta">${contaL(`Plano ${esc(pl.nome)} · ${ciclo === 'anual' ? '1 ano' : '1 mês'}`, brl(pr.cheio))}${d ? contaL(`Desconto do Turma em Dia${d.pct ? ` (${d.pct}%)` : ''}${d.ate ? ` até ${dataBRA(d.ate)}` : ''}`, '− ' + brl(C.r2(pr.cheio - pr.valor)), 'desc') : ''}${contaL(`<b>${ciclo === 'anual' ? 'Total do ano' : 'Total por mês'}</b>`, `<b>${brl(pr.valor)}</b>`, 'total')}</div>
       <div class="lb" style="margin:4px 0 8px">Como pagar</div>
       <div class="pl-meios">
@@ -5458,6 +5477,10 @@ function sheetPlano() {
       <div class="err" id="plerr" role="alert"></div>
       <div class="note">${p.cartao ? 'O cartão é cobrado sozinho no vencimento. ' : s.fase === 'teste' ? 'Com o cartão, a primeira cobrança é no fim do teste grátis. ' : ''}O Turma em Dia não vê nem guarda o número do cartão: ele vai direto para o Mercado Pago.</div>`), sh => {
       const err = m => $('plerr').textContent = m;
+      sh.querySelectorAll('[data-pl]').forEach(b => b.onclick = () => { const id = b.dataset.pl; escolha = id === R.plano.planoId || id === pl.id || escolha === id ? null : id; desenhar(); if (escolha) setTimeout(() => $('plsim') && $('plsim').scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 30); });
+      if ($('plnao')) $('plnao').onclick = () => { escolha = null; desenhar(); };
+      if ($('plsim')) $('plsim').onclick = async () => { $('plsim').disabled = true;
+        try { R = await chamarPlano({ acao: 'escolher', planoId: escolha }); aviso(`Plano ${R.mensal.plano.nome} escolhido`); escolha = null; desenhar(); } catch (e) { err(msgErro(e)); $('plsim').disabled = false; } };
       sh.querySelectorAll('[data-per]').forEach(b => b.onclick = async () => { if (b.dataset.per === ciclo) return; ciclo = b.dataset.per; if (parar) parar(); pixAberto = false; desenhar();
         if (R.plano.cartao) { try { R = await chamarPlano({ acao: 'ciclo', ciclo }); aviso(ciclo === 'anual' ? 'O cartão passa a ser cobrado uma vez por ano' : 'O cartão passa a ser cobrado todo mês'); desenhar(); } catch (e) { err(msgErro(e)); } } });
       if ($('pldoc')) { $('pldoc').addEventListener('input', e => { const x = C.soDigitos(e.target.value); e.target.value = x.length > 11 ? fmtCnpj(x) : fmtCpf(x); });
@@ -5522,7 +5545,11 @@ async function mockPlano(b) {
   let p = (await B.get(ref)) || null;
   const gravar = async mud => { const x = { ...(p || {}), ...mud }, s = C.situacaoPlano(x, h); p = { ...x, bloqueio: s.bloqueio, fase: s.fase }; await B.set(ref, p); return p; };
   const pub = () => ({ plano: p, situacao: C.situacaoPlano(p, h), alunos: n, mensal: C.precoPlano(n, 'mensal', p, h), anual: C.precoPlano(n, 'anual', p, h), publicKey: 'TEST-PUB' });
-  if (!p) await gravar({ inicio: h, testeAte: C.maisDias(h, 30), ciclo: 'mensal' });
+  if (!p) await gravar({ inicio: h, testeAte: C.maisDias(h, 30), ciclo: 'mensal', planoId: C.planoPara(n).id });
+  else if (!p.planoId) await gravar({ planoId: C.planoPara(n).id });
+  if (b.acao === 'escolher') { const pl = C.PLANOS.find(x => x.id === b.planoId); if (!pl) throw new Error('Plano inválido.');
+    if (!C.cabePlano(pl, n)) throw new Error(`A escola tem ${n} alunos ativos e o ${pl.nome} vai até ${pl.ate}. Desative alunos ou escolha um plano maior.`);
+    await gravar({ planoId: pl.id }); return pub(); }
   if (b.acao === 'documento') { const d = C.soDigitos(b.doc); if (!(d.length === 11 ? C.cpfValido(d) : d.length === 14)) throw new Error('Confira o CPF ou CNPJ.'); await gravar({ doc: d.length === 11 ? `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**` : `**.***.${d.slice(5, 8)}/${d.slice(8, 12)}-**` }); return { ...pub(), aviso: null }; }
   if (b.acao === 'ciclo') { await gravar({ ciclo: b.ciclo }); return pub(); }
   if (b.acao === 'pix') { const v = C.precoPlano(n, b.ciclo, p, h).valor; return { pix: { mpId: 'mock', valor: v, ciclo: b.ciclo, qr: `00020126580014br.gov.bcb.pix0136turmaemdia-plano5204000053039865802BR5911TURMA EM DIA6006RECIFE62070503***6304PLAN`, expira: Date.now() + 864e5 } }; }
