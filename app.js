@@ -1152,7 +1152,7 @@ function tCobrancas(v) {
   ligarFaixa(v);
   if ($('vatlist')) $('vatlist').onclick = () => sheetAtestadosEscola();
   if ($('vpend')) $('vpend').onclick = () => sheetPendencias();
-  v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vmud));
+  v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => { const f = termosParaVer(), i = f.indexOf(b.dataset.vmud); sheetVerTermo(b.dataset.vmud, i >= 0 ? f.filter(id => id !== b.dataset.vmud) : []); });
   v.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => { S.filtroCobr = b.dataset.fl; render(); });
   $('cbusca').oninput = e => { S.buscaC = e.target.value; render(); };
   ligarAlunas(v);
@@ -1609,7 +1609,7 @@ function sheetCartaoFam(chaves) {
       if ($('cfdoc')) $('cfdoc').addEventListener('input', e => { e.target.value = fmtCpf(e.target.value); });
       if ($('cfsalvo')) $('cfsalvo').onclick = () => { if (!usarSalvo) { usarSalvo = true; bin = P.cartao.bin || ''; metodo = { id: P.cartao.metodo, name: P.cartao.marca }; ops = [{ n: 1, total: P.valor, parcela: P.valor }]; desenhar(); } };
       if ($('cfnovo')) $('cfnovo').onclick = () => { if (usarSalvo) { usarSalvo = false; bin = ''; metodo = null; ops = [{ n: 1, total: P.valor, parcela: P.valor }]; desenhar(); } };
-      if ($('cfesq')) duploToque($('cfesq'), async () => { try { if (MOCK) MOCK_CARTOES[S.eid] = []; else await servidor('pagar', { acao: 'esquecer', eid: S.eid, rec: P.rec }); S.cartoes = null; P.cartao = null; usarSalvo = false; aviso('Cartão esquecido'); desenhar(); } catch (e) { $('cferr').textContent = msgErro(e); } }, 'Toque de novo para esquecer');
+      if ($('cfesq')) $('cfesq').onclick = () => duploToque($('cfesq'), async () => { try { if (MOCK) MOCK_CARTOES[S.eid] = []; else await servidor('pagar', { acao: 'esquecer', eid: S.eid, rec: P.rec }); S.cartoes = null; P.cartao = null; usarSalvo = false; aviso('Cartão esquecido'); desenhar(); } catch (e) { $('cferr').textContent = msgErro(e); } }, 'Toque de novo para esquecer');
       $('cfpag').onclick = async () => {
         const err = m => { $('cferr').textContent = m; $('cfpag').disabled = false; $('cfpag').textContent = `Pagar ${brl(P.valor)}`; };
         const parcelas = $('cfparc') ? Number($('cfparc').value) || 1 : 1;
@@ -2211,7 +2211,7 @@ function tAlunas(v) {
   if ($('adocs')) $('adocs').onclick = () => sheetDocsEscola();
   v.querySelectorAll('[data-resp]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; sheetResp(li.dataset.resp); });
   v.querySelectorAll('[data-al]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; S.admin ? sheetPerfilAluno(li.dataset.al) : sheetAluna(li.dataset.al); });
-  v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vmud));
+  v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => { const f = termosParaVer(), i = f.indexOf(b.dataset.vmud); sheetVerTermo(b.dataset.vmud, i >= 0 ? f.filter(id => id !== b.dataset.vmud) : []); });
   v.querySelectorAll('[data-nova]').forEach(li => li.onclick = () => sheetAluna(null, li.dataset.nova));
   v.querySelectorAll('[data-nao]').forEach(b => b.onclick = () => B.set(`escolas/${S.eid}/config/geral`, { naoRepetidos: [...(S.cfg.naoRepetidos || []), b.dataset.nao] }, { merge: true }));
   v.querySelectorAll('[data-junta]').forEach(b => b.onclick = () => juntarResps(...b.dataset.junta.split('+')));
@@ -4165,16 +4165,17 @@ function corpoTermo(t, marcar = new Set()) {
     <section><h2>Autorizações</h2>${ddl([['Primeiros socorros', 'Autorizado'], ['Uso de imagem', m('Uso de imagem', t.imagem ? 'Autorizado' : '<b style="color:var(--out)">Não autorizado</b>')]])}</section>`;
 }
 // leitura do termo: a escola vê o que mudou, dá ciente e vê o histórico; a família vê o termo e pode informar uma mudança
-function sheetVerTermo(alid) {
+// termos que a administração ainda precisa ver: assinados e não abertos, ou mudados sem ciente
+const termosParaVer = () => porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && (termoNovo(id) || (termoDe(id).pend || []).length)).map(([id]) => id);
+function sheetVerTermo(alid, fila) {
   const a = S.alunas[alid] || {}, x = termoDe(alid), t = x.t, adm = !!S.admin; if (!t) return;
   const alts = t.alteracoes || [], pend = x.pend || [], marcar = new Set(adm ? pend.flatMap(p => itensMudou(p.mudou).map(([k]) => k)) : []);
   const ult = alts.filter(m => (m.mudou || []).length).pop();
-  sheet(`<h3>Termo de ${esc(primeiro(a.nome))}</h3>
+  sheet(`${fila ? `<div class="label">Termos para ver · ${fila.length ? `faltam ${fila.length} depois deste` : 'último'}</div>` : ''}<h3>Termo de ${esc(primeiro(a.nome))}</h3>
     <div class="sub">${alts.length ? 'Última versão assinada' : 'Assinado'} por ${esc(t.assinatura.nome)} em ${horaCurta(t.em)}${x.st === 'vencido' ? ' · <b style="color:var(--out)">vencido, ' + (adm ? 'pedir renovação' : 'precisa renovar') + '</b>' : ''}</div>
     ${adm && pend.length ? `<div class="mud-alerta"><b>O termo mudou</b>
       ${pend.map(p => `<div class="mud-item"><span class="sub">${p.tipo === 'renovar' ? 'Renovado' : 'Mudado'} por ${esc(p.assinatura.nome)} em ${horaCurta(p.em)}</span>${listaMudou(p.mudou)}</div>`).join('')}
-      <span class="sub">O que mudou está marcado no termo abaixo. Basta uma pessoa da administração tocar em "Ciente": fica registrado quem viu, a data e a hora, e o aviso some para todas.</span>
-      <button type="button" class="btn" id="vtciente">Ciente</button></div>` : ''}
+      <span class="sub">O que mudou está marcado no termo abaixo. Basta uma pessoa da administração tocar em "Visto": fica registrado quem viu, a data e a hora, e o aviso some para todas.</span></div>` : ''}
     ${!adm && ult ? `<div class="aviso-lei ${ult.cienteEm ? 'ok' : ''}"><b>${ult.cienteEm ? 'Escola ciente' : 'Aguardando a escola'}</b><span>Mudança enviada em ${horaCurta(ult.em)}${ult.cienteEm ? `, vista pela escola em ${horaCurta(ult.cienteEm)}` : '. A escola já recebeu o aviso.'}</span></div>` : ''}
     ${adm ? blocoAtestadoAdm(alid, x) : ''}
     ${corpoTermo(t, marcar)}
@@ -4183,17 +4184,19 @@ function sheetVerTermo(alid) {
         ${(m.mudou || []).length ? listaMudou(m.mudou) : '<span class="sub">Renovado sem mudanças.</span>'}
         <span class="sub">${m.cienteEm ? ((m.mudou || []).length ? `Escola ciente em ${horaCurta(m.cienteEm)} (${esc(m.cienteNome || 'administração')})` : '') : '<b style="color:var(--out)">Aguardando ciência da escola</b>'}</span>
         <details class="antes"><summary>Ver como estava antes</summary><div class="sub">Versão assinada por ${esc((m.anterior.assinatura || {}).nome || '')} em ${horaCurta(m.anterior.em)}</div>${corpoTermo(m.anterior)}</details></div>`).join('')}</div></details>` : ''}
-    ${adm ? '<button class="btn ghost" data-fechar>Fechar</button>' : `<div class="note">Se algo mudou na saúde de ${esc(primeiro(a.nome))} (alergia, remédio, contato de emergência) ou se quiser mudar a autorização de imagem, informe aqui. A escola é avisada e a versão anterior fica guardada.</div>
+    ${adm ? (termoNovo(alid) || pend.length ? `<div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="vtvisto">${fila && fila.length ? 'Visto · próximo' : 'Visto'}</button></div>
+      <span class="s" style="text-align:center;display:block">Fechar não marca como visto. "Visto" guarda que a escola viu${fila && fila.length ? ' e já abre o próximo' : ''}.</span>` : '<button class="btn ghost" data-fechar>Fechar</button>') : `<div class="note">Se algo mudou na saúde de ${esc(primeiro(a.nome))} (alergia, remédio, contato de emergência) ou se quiser mudar a autorização de imagem, informe aqui. A escola é avisada e a versão anterior fica guardada.</div>
       <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="vtmudar">${x.st === 'vencido' ? 'Renovar termo' : 'Informar mudança'}</button></div>`}`, () => {
     if (adm) ligarAtestadoAdm(alid, () => sheetVerTermo(alid));
-    if (adm && t.vistoAdm !== t.em) B.set(`escolas/${S.eid}/saude/${alid}`, { vistoAdm: t.em }, { merge: true }).catch(() => { });
     if ($('vtmudar')) $('vtmudar').onclick = () => sheetTermo(alid);
-    if ($('vtciente')) $('vtciente').onclick = async () => {
-      $('vtciente').disabled = true; const agora = Date.now();
-      const novas = alts.map(m => (m.mudou || []).length && !m.cienteEm ? { ...m, cienteEm: agora, cientePor: EU.uid, cienteNome: EU.nome || 'Administração' } : m);
-      try { await B.set(`escolas/${S.eid}/saude/${alid}`, { alteracoes: novas }, { merge: true }); aviso('Ciente registrado'); setTimeout(() => sheetVerTermo(alid), 60); }
-      catch (e) { aviso(msgErro(e)); $('vtciente').disabled = false; }
-    };
+    // Visto (dois toques): guarda que a escola viu (e dá ciente nas mudanças); na fila, abre o próximo
+    if ($('vtvisto')) $('vtvisto').onclick = () => duploToque($('vtvisto'), async () => {
+      const agora = Date.now(), novas = alts.map(m => (m.mudou || []).length && !m.cienteEm ? { ...m, cienteEm: agora, cientePor: EU.uid, cienteNome: EU.nome || 'Administração' } : m);
+      try { await B.set(`escolas/${S.eid}/saude/${alid}`, { vistoAdm: t.em, ...(pend.length ? { alteracoes: novas } : {}) }, { merge: true });
+        const prox = (fila || []).filter(id => id !== alid && (termoNovo(id) || (termoDe(id).pend || []).length));
+        if (prox.length) { aviso(`Visto. Faltam ${prox.length}.`); setTimeout(() => sheetVerTermo(prox[0], prox.slice(1)), 60); } else { fecharSheet(); aviso(fila ? 'Pronto: todos vistos' : 'Visto'); } }
+      catch (e) { aviso(msgErro(e)); }
+    }, 'Toque de novo para confirmar');
   });
 }
 // administração: aviso forte no topo de Cobranças enquanto ninguém deu ciente
@@ -4218,7 +4221,7 @@ function cartaoTermo(alid) {
 function avisoMudancasTermo() {
   if (!S.admin) return '';
   const novos = porNome(S.alunas).filter(([id, a]) => !a.anonimizadoEm && termoNovo(id) && !(termoDe(id).pend || []).length);
-  const faixaNovos = novos.length ? `<button class="faixa-resumo ok" data-vmud="${esc(novos[0][0])}"><span class="grow"><b>${novos.length === 1 ? `Termo de matrícula assinado: ${esc(primeiro(novos[0][1].nome))}` : `${novos.length} termos de matrícula assinados`}</b><span class="s">${novos.length === 1 ? 'Toque para ver as informações de saúde.' : esc(novos.map(([, a]) => primeiro(a.nome)).join(', ')) + '. Toque para ver o primeiro.'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : '';
+  const faixaNovos = novos.length ? `<button class="faixa-resumo ok" data-vmud="${esc(novos[0][0])}"><span class="grow"><b>${novos.length === 1 ? `Termo de matrícula assinado: ${esc(primeiro(novos[0][1].nome))}` : `${novos.length} termos de matrícula assinados`}</b><span class="s">${novos.length === 1 ? 'Toque para ver as informações de saúde.' : esc(novos.map(([, a]) => primeiro(a.nome)).join(', ')) + '. Toque para ver um por um.'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : '';
   return faixaNovos + 
 porNome(S.alunas).map(([id, a]) => ({ id, a, x: termoDe(id) })).filter(r => r.x.pend && r.x.pend.length).map(({ id, a, x }) => {
     const campos = [...new Set(x.pend.flatMap(p => itensMudou(p.mudou).map(([k]) => k)))];
@@ -5445,7 +5448,7 @@ function sheetPlano() {
       const abrirCartao = () => abrirDe(() => desenhar(), () => sheetCartaoPlano(R, ciclo, novo => { R = novo; desenhar(); }));
       if ($('pladd')) $('pladd').onclick = abrirCartao;
       if ($('pltroca')) $('pltroca').onclick = abrirCartao;
-      if ($('pltira')) duploToque($('pltira'), async () => { try { R = await chamarPlano({ acao: 'tirarCartao' }); aviso('Cartão tirado. Pague por Pix a cada mês.'); desenhar(); } catch (e) { err(msgErro(e)); } }, 'Toque de novo para tirar');
+      if ($('pltira')) $('pltira').onclick = () => duploToque($('pltira'), async () => { try { R = await chamarPlano({ acao: 'tirarCartao' }); aviso('Cartão tirado. Pague por Pix a cada mês.'); desenhar(); } catch (e) { err(msgErro(e)); } }, 'Toque de novo para tirar');
       $('plpix').onclick = async () => {
         if (pixAberto) return; pixAberto = true; $('plpixc').innerHTML = '<div class="empty">Gerando o Pix…</div>';
         try {
@@ -5562,7 +5565,7 @@ function sheetCortesiaDono(e) {
     $('dcvolta').onclick = () => sheetEscolasDono();
     $('dcok').onclick = async () => { const n = m(); if (!(n >= 1 && n <= 36)) return $('dcerr').textContent = 'Escolha de 1 a 36 meses.';
       $('dcok').disabled = true; try { await acaoDono({ acao: 'donoCortesia', eid: e.eid, meses: n, motivo: $('dcmot').value }, `${n} ${n === 1 ? 'mês grátis' : 'meses grátis'} para ${e.nome}`); } catch (x) { $('dcerr').textContent = msgErro(x); $('dcok').disabled = false; } };
-    if ($('dctira')) duploToque($('dctira'), async () => { try { await acaoDono({ acao: 'donoTirarCortesia', eid: e.eid }, 'Meses grátis cancelados'); } catch (x) { $('dcerr').textContent = msgErro(x); } }, 'Toque de novo para cancelar');
+    if ($('dctira')) $('dctira').onclick = () => duploToque($('dctira'), async () => { try { await acaoDono({ acao: 'donoTirarCortesia', eid: e.eid }, 'Meses grátis cancelados'); } catch (x) { $('dcerr').textContent = msgErro(x); } }, 'Toque de novo para cancelar');
   });
 }
 function sheetDescontoDono(e) {
@@ -5589,7 +5592,7 @@ function sheetDescontoDono(e) {
       if (tipo === 'pct' && !(corpo.pct >= 1 && corpo.pct <= 100)) return $('dderr').textContent = 'O desconto vai de 1% a 100%.';
       if (tipo === 'valor' && !(corpo.valor >= 0)) return $('dderr').textContent = 'Digite quanto a escola paga por mês.';
       $('ddok').disabled = true; try { await acaoDono(corpo, `Desconto salvo para ${e.nome}`); } catch (x) { $('dderr').textContent = msgErro(x); $('ddok').disabled = false; } };
-    if ($('ddtira')) duploToque($('ddtira'), async () => { try { await acaoDono({ acao: 'donoTirarDesconto', eid: e.eid }, 'Desconto retirado'); } catch (x) { $('dderr').textContent = msgErro(x); } }, 'Toque de novo para tirar');
+    if ($('ddtira')) $('ddtira').onclick = () => duploToque($('ddtira'), async () => { try { await acaoDono({ acao: 'donoTirarDesconto', eid: e.eid }, 'Desconto retirado'); } catch (x) { $('dderr').textContent = msgErro(x); } }, 'Toque de novo para tirar');
   });
 }
 // modo de teste: as escolas do painel do dono
@@ -5900,9 +5903,9 @@ async function semearMock() {
         await set(`${p}/alunas/${id}`, { nome, nascimento: nasc, responsavelId: rid, turmas: [tid], inicio: mesMais(m, -3 - (n % 5)) });
         // a maioria pagou o mês; alguns em aberto
         if (n % 4) await set(`${p}/pagamentos/${id}`, { mens: { [m]: { s: 'pago', d: `${m}-0${1 + (n % 8)}`, v: t.preco, via: n % 3 ? 'pix' : 'dinheiro', rec: t.recebedor } } });
-        const resp = joao ? { ...nao, ...joao[1] } : nao;
+        const resp = joao ? { ...nao, ...joao[1] } : nao; const emT = Date.now() - (20 + n) * 864e5;
         await set(`${p}/saude/${id}`, { responsavelId: rid, respostas: resp, detalhes: joao ? joao[2] : '', alergias: joao ? joao[3] : '', remedios: joao ? joao[4] : '', plano: n % 2 ? 'Hapvida' : '',
-          emergencia: { nome: mae, telefone: tel, parentesco: 'mãe' }, primeirosSocorros: joao ? joao[5] : true, imagem: n % 6 !== 0, assinatura: { nome: mae }, em: Date.now() - (20 + n) * 864e5, versao: 1, atestado: joao && (joao[1].coracao || joao[1].doenca) ? { pedidoEm: Date.now() - 10 * 864e5 } : null });
+          emergencia: { nome: mae, telefone: tel, parentesco: 'mãe' }, primeirosSocorros: joao ? joao[5] : true, imagem: n % 6 !== 0, assinatura: { nome: mae }, em: emT, ...(joao ? {} : { vistoAdm: emT }), versao: 1, atestado: joao && (joao[1].coracao || joao[1].doenca) ? { pedidoEm: Date.now() - 10 * 864e5 } : null });
       }
     }
   }
