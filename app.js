@@ -3384,14 +3384,16 @@ function tFEventos(v) {
     const quem = c.meu ? c.meus.map(id => { const st = partDe(c.x, id), nm = esc(primeiro((S.alunas[id] || {}).nome)); return `<span class="chip ${st === 'inscrito' || st === 'interesse' || !eventoNovo(c.x) ? 'pago' : st === 'nao' ? '' : 'aberto'}">${nm}: ${st === 'inscrito' ? 'inscrito(a)' : st === 'nao' ? 'não vai' : st === 'interesse' || !eventoNovo(c.x) ? 'vai' : 'falta responder'}</span>`; }).join(' ') : '';
     return `<li class="cal-ev tap ${c.meu ? 'meu' : 'outro'}" data-fev="${esc(c.xid)}"><div class="cal-dia"><b class="num">${d.getDate()}</b><span>${C.MESES[d.getMonth()].slice(0, 3)}</span></div>
       <div class="grow"><div class="t">${esc(c.x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(c.x))}</span>${c.x.local ? ' · ' + esc(c.x.local) : ''}`)}${quem ? `<div class="ev-quem">${quem}</div>` : ''}</div><span class="seta" aria-hidden="true">›</span></li>`; };
-  v.innerHTML = `${blocoEventosFamilia().replace('<section><h2>Eventos</h2>', '<section><h2>Com seus filhos</h2>')}
-    <section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo mês">›</button></div>
+  const N = 3, todos = !!S.feTodos, vis = todos ? prox : prox.slice(0, N);
+  v.innerHTML = `<section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo mês">›</button></div>
       ${gradeMes(ano, mes, doMes)}
       <div class="cal-legenda"><span><i class="lg-meu"></i>Com seus filhos</span><span><i class="lg-outro"></i>Outros eventos da escola</span></div>
       <button type="button" class="btn ghost" id="feano">Ver o ano inteiro</button></section>
     <section><h2>Próximos eventos <span class="sub num">${prox.length}</span></h2>
-      ${prox.length ? `<ul class="list">${prox.map(linha).join('')}</ul>` : '<div class="empty"><span>Nenhum evento marcado pela escola.</span></div>'}</section>
+      ${prox.length ? `<ul class="list">${vis.map(linha).join('')}</ul>${prox.length > N ? `<button type="button" class="mostrar" id="femais" aria-expanded="${todos}">${todos ? 'Ver menos' : `Ver mais ${prox.length - N} evento${prox.length - N === 1 ? '' : 's'}`}<span aria-hidden="true">${todos ? '▴' : '▾'}</span></button>` : ''}` : '<div class="empty"><span>Nenhum evento marcado pela escola.</span></div>'}</section>
+    ${blocoEventosFamilia().replace('<section><h2>Eventos</h2>', '<section><h2>Com seus filhos</h2>')}
     <div class="note">O calendário é da escola: só ela muda os eventos. Dúvidas, fale com a escola.</div>`;
+  if ($('femais')) $('femais').onclick = () => { S.feTodos = !todos; render(); };
   const vai = n => { let a = ano, m = mes + n; if (m < 1) { m = 12; a--; } if (m > 12) { m = 1; a++; } S.evMes = `${a}-${String(m).padStart(2, '0')}`; render(); };
   $('feant').onclick = () => vai(-1); $('feprox').onclick = () => vai(1);
   $('feano').onclick = () => sheetCalendario(ano);
