@@ -404,9 +404,17 @@ function telaIntro(depois) {
       <div class="intro-barra"><i></i></div>
       <button class="btn" id="iseguir" style="width:100%;padding:15px">Continuar</button>
     </div></div>`;
-  let foi = false; const seguir = () => { if (foi) return; foi = true; clearTimeout(t); const r = RAIZ().firstElementChild; if (r && MOVIMENTO) { r.classList.add('saindo'); setTimeout(depois, 300); } else depois(); };
-  const t = setTimeout(seguir, MOVIMENTO ? 8000 : 4000);
+  let foi = false, t = null, resta = MOVIMENTO ? 8000 : 4000, desde = Date.now();
+  const seguir = () => { if (foi) return; foi = true; clearTimeout(t); const r = RAIZ().firstElementChild; if (r && MOVIMENTO) { r.classList.add('saindo'); setTimeout(depois, 300); } else depois(); };
+  t = setTimeout(seguir, resta);
   $('iseguir').onclick = seguir; $('ipular').onclick = seguir;
+  // segurar o dedo na tela (fora dos botões) pausa a apresentação, como pausar um vídeo; soltou, continua
+  const el = RAIZ().querySelector('.intro'); el.insertAdjacentHTML('beforeend', '<div class="intro-pausa" aria-hidden="true"><i></i><i></i></div>');
+  let pausado = false;
+  const pausar = e => { if (foi || pausado || (e.target && e.target.closest('button'))) return; pausado = true; clearTimeout(t); resta = Math.max(300, resta - (Date.now() - desde)); el.classList.add('pausado'); };
+  const continuar = () => { if (!pausado || foi) return; pausado = false; desde = Date.now(); el.classList.remove('pausado'); t = setTimeout(seguir, resta); };
+  el.addEventListener('pointerdown', pausar); ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, continuar));
+  el.addEventListener('contextmenu', e => e.preventDefault());
 }
 function telaLogin(modo = 'entrar') {
   // primeira vez nesta abertura do app: espera a tela de abertura e mostra o que o app faz
