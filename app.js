@@ -3308,6 +3308,20 @@ function tPagar(v) {
     try { if (!MOCK) await servidor('pagar', { acao: 'automatico', eid: S.eid, rec: recD, ligar: false }); (S.cartoes || []).forEach(c => c.auto = false); aviso('Cobrança automática desligada'); render(); } catch (e) { aviso(msgErro(e)); } }); };
   if ($('plimpa')) $('plimpa').onclick = () => { S.sel.clear(); render(); };
 }
+// Meus filhos: termo, atestado, documentos e contrato numa lista só (nome à esquerda, situação à direita; toque para agir)
+function docsFilhaHTML(id) {
+  const lin = (attrs, nome, chip, sub) => `<button type="button" class="plinha" ${attrs}><span class="grow">${esc(nome)}${sub ? `<span class="s" style="display:block">${sub}</span>` : ''}</span>${chip}<span class="seta" aria-hidden="true">›</span></button>`;
+  const out = [], x = termoDe(id);
+  if (x.st === 'ok') { const ult = ((x.t || {}).alteracoes || []).filter(m => (m.mudou || []).length).pop();
+    out.push(lin(`data-vtermo="${esc(id)}"`, 'Termo de matrícula', x.pend.length ? '<span class="chip">Aguardando a escola</span>' : '<span class="chip pago">Assinado</span>', !x.pend.length && ult && ult.cienteEm ? `Mudança de ${dataCurta(ult.em)} vista pela escola` : ''));
+    if (x.as) { const at = (x.t || {}).atestado || {};
+      out.push(lin(`data-atest="${esc(id)}"`, 'Atestado médico', { ok: '<span class="chip pago">Conferido</span>', conferir: '<span class="chip">Aguardando a escola</span>', recusado: '<span class="chip vencido">Mandar outro</span>', falta: '<span class="chip vencido">Falta enviar</span>' }[x.as] || '', x.as === 'recusado' && at.recusa ? esc(at.recusa.motivo || '') : '')); } }
+  else out.push(lin(`data-termo="${esc(id)}"`, 'Termo de matrícula', `<span class="chip vencido">${x.st === 'vencido' ? 'Renovar' : 'Preencher'}</span>`, ''));
+  for (const T of [...tiposDoc(), ...avulsosDe(id).map(tipoDoc)].filter(T => T.familia !== false || docDe(id, T.id))) out.push(lin(`data-fdoc="${esc(id)}" data-fdt="${esc(T.id)}"`, T.nome, chipDoc(docDe(id, T.id)), ''));
+  const ct = ctAssinado(id) || ctUltimo(id);
+  if (ct || ctPede()) out.push(ctAssinado(id) ? lin(`data-vct="${esc(id)}"`, 'Contrato', `<span class="chip pago">Assinado</span>`, `Em ${dataBR(new Date(ct.em).toISOString().slice(0, 10))}`) : lin(`data-ctass="${esc(id)}"`, 'Contrato', '<span class="chip vencido">Assinar</span>', ''));
+  return out.join('');
+}
 function tFilhas(v) {
   const mes = mesHoje(), al = porNome(S.alunas);
   const linha = (rot, val) => val ? `<dt>${esc(rot)}</dt><dd>${val}</dd>` : '';
@@ -3320,16 +3334,9 @@ function tFilhas(v) {
         <div class="filha-topo"><label class="filha-foto" aria-label="${FOTOS[id] ? 'Trocar a foto' : 'Adicionar uma foto'} de ${esc(primeiro(a.nome))}">${FOTOS[id] ? `<img src="${FOTOS[id]}" alt="">` : `<span>${esc(iniciais(a.nome))}</span>`}<span class="filha-cam" aria-hidden="true">${ICO_CAM}</span><input type="file" accept="image/*" data-ffoto="${esc(id)}" hidden></label><div class="grow"><div class="t" style="font-size:1.05rem">${esc(a.nome)}</div>${C.ativaNoMes(a, mes) ? '' : '<span class="chip">Inativo(a)</span>'}</div></div>
         <dl class="dl">
           ${linha('Nascimento', a.nascimento ? `${esc(dataBR(a.nascimento))}/${esc(a.nascimento.slice(0, 4))} <span class="sub">(${esc(idade(a.nascimento))})</span>` : '')}
-          ${linha('Termo', (() => { const x = termoDe(id); const ult = ((x.t || {}).alteracoes || []).filter(m => (m.mudou || []).length).pop();
-            return x.st === 'ok' ? `<span class="dd-col">${x.pend.length ? '<span class="chip">Mudança enviada · aguardando a escola</span>' : '<span class="chip pago">Assinado</span>'}${!x.pend.length && ult && ult.cienteEm ? `<span class="sub">Mudança de ${dataCurta(ult.em)} vista pela escola em ${dataCurta(ult.cienteEm)}</span>` : ''}<button type="button" class="link" data-vtermo="${esc(id)}">Ver termo</button></span>` : `<button type="button" class="chip vencido" data-termo="${esc(id)}">${x.st === 'vencido' ? 'Renovar' : 'Preencher'}</button>`; })())}
-          ${(() => { const x = termoDe(id); if (x.st !== 'ok' || !x.as) return ''; const at = x.t.atestado || {};
-            const rot = { ok: '<span class="chip pago">Conferido</span>', conferir: '<span class="chip">Aguardando a escola</span>', recusado: '<span class="chip vencido">Mandar outro</span>', falta: '<span class="chip vencido">Falta enviar</span>' }[x.as];
-            return linha('Atestado', `<span class="dd-col">${rot}<button type="button" class="link" data-atest="${esc(id)}">${at.enviadoEm && x.as !== 'recusado' ? 'Ver atestado' : 'Enviar atestado'}</button></span>`); })()}
-          ${[...tiposDoc(), ...avulsosDe(id).map(tipoDoc)].filter(T => T.familia !== false || docDe(id, T.id)).map(T => { const d = docDe(id, T.id), st = situacaoDoc(d).st;
-            return linha(T.nome, `<span class="dd-col">${chipDoc(d)}<button type="button" class="link" data-fdoc="${esc(id)}" data-fdt="${esc(T.id)}">${!d ? 'Enviar' : st === 'ok' ? 'Ver ou trocar' : 'Enviar o novo'}</button></span>`); }).join('')}
-          ${(() => { const ct = ctAssinado(id) || ctUltimo(id); if (!ct && !ctPede()) return '';
-            return linha('Contrato', ctAssinado(id) ? `<span class="dd-col"><span class="chip pago">Assinado em ${dataBR(new Date(ct.em).toISOString().slice(0, 10))}</span><button type="button" class="link" data-vct="${esc(id)}">Ver contrato</button></span>`
-              : `<span class="dd-col"><span class="chip vencido">Falta assinar</span><button type="button" class="link" data-ctass="${esc(id)}">Assinar</button>${ct ? `<button type="button" class="link" data-vct="${esc(id)}">Ver o anterior</button>` : ''}</span>`); })()}
+        </dl>
+        <div class="filha-docs"><div class="label">Documentos</div><div class="plista">${docsFilhaHTML(id)}</div></div>
+        <dl class="dl">
           ${linha('Grupos', gs.length ? gs.map(g => `<span class="chip">${esc(g)}</span>`).join(' ') : '')}
           ${linha('Matrícula', linhaMatricula(id, false))}
         </dl>
