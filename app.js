@@ -1044,11 +1044,11 @@ function faixa() {
   const PAP = { a: ['administração', 'admin@teste.com'], p: ['professor(a)', 'professor@teste.com'], f: ['responsável', 'familia@teste.com'] };
   const f = $('faixa'); let h = MOCK ? `<div class="banner" style="margin-bottom:8px"><span>Modo de teste, com dados de exemplo. Você está como <b>${PAP[S.papel][0]}</b>.</span><span class="actions">${Object.entries(PAP).filter(([k]) => k !== S.papel).map(([k, [n, e]]) => `<button data-ver="${e}">Ver como ${n}</button>`).join('')}${S.admin ? `<button id="mano">${S.anoRef ? 'Voltar para hoje' : 'Simular janeiro de ' + (Number(hoje().slice(0, 4)) + 1)}</button>` : ''}</span></div>` : '';
   if (S.admin) {
-    h += faixaPlano();
+    h += faixaPlano() + avisoLimitePlano();
     if (!S.cfg.mpConectadoEm) h += `<div class="banner"><span>O <b>Pix automático</b> ainda não está ligado. Conecte a conta do Mercado Pago da escola para os responsáveis pagarem pelo app.</span><button id="fpix">Ligar Pix</button></div>`;
     else if (S.mpc && S.mpc.conta && S.mpc.confirmada === false) h += `<div class="banner"><span>Confira a conta conectada: <b>${esc(S.mpc.conta.nome || '')}</b> ${esc(S.mpc.conta.doc || '')}</span><button id="fpix">Conferir</button></div>`;
   }
-  f.innerHTML = h; if ($('fpix')) $('fpix').onclick = () => sheetAjustes(); if ($('fplano')) $('fplano').onclick = () => sheetPlano();
+  f.innerHTML = h; if ($('fpix')) $('fpix').onclick = () => sheetAjustes(); if ($('fplano')) $('fplano').onclick = () => sheetPlano(); if ($('fplano2')) $('fplano2').onclick = () => sheetPlano();
   f.querySelectorAll('[data-ver]').forEach(b => b.onclick = () => window.__mock.trocar(b.dataset.ver));
   if ($('mano')) $('mano').onclick = () => { S.anoRef = S.anoRef ? null : Number(hoje().slice(0, 4)) + 1; render(); if (S.anoRef) aviso('Simulando janeiro de ' + S.anoRef + ': veja os avisos de faixa etária.'); };
 }
@@ -2163,7 +2163,7 @@ function respFamilia(xid, x, id) {
     if (modo === 'familia' && P.quem === 'familia') extra = `<button type="button" class="link ev-desfaz" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="interesse">Desfazer confirmação</button>`;
   } else if (st === 'interesse') {
     sub = modo === 'app' ? 'A inscrição está na tela Pagar' : modo === 'familia' ? `Faça a inscrição com ${esc(x.organizador || 'quem organiza')} e depois confirme aqui` : 'A escola vai cuidar da inscrição';
-    if (modo === 'familia') extra = `<button type="button" class="btn btn-mini ev-ja" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="inscrito">Já fiz a inscrição</button>`;
+    if (modo === 'familia') extra = `<span class="ev-ja-lin"><button type="button" class="btn btn-mini ev-ja" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="inscrito">Já fiz a inscrição</button><span class="ev-pend">Inscrição pendente</span></span>`;
   }
   return `<div class="ev-resp"><span class="grow"><b>${nm}</b><span class="s">${sub}</span>${extra}</span>${direita}</div>`;
 }
@@ -5402,6 +5402,15 @@ function travarEscritas(b) {
 }
 const chamarPlano = corpo => MOCK ? mockPlano(corpo) : servidor('plano', { eid: S.eid, ...corpo });
 // faixa no alto da tela (administração)
+// alunos ativos agora (o mesmo que o servidor conta para o preço do plano)
+const ativosPlano = () => Object.values(S.alunas || {}).filter(a => a.ativa !== false && !a.anonimizadoEm && C.ativaNoMes(a, mesHoje())).length;
+// perto do limite da faixa (90% ou mais): avisa quanto passa a custar ao mudar de faixa
+function avisoLimitePlano() {
+  if (!S.admin || !S.plano) return '';
+  const n = ativosPlano(), pl = C.planoPara(n); if (!pl.ate || n < Math.ceil(pl.ate * 0.9)) return '';
+  const prox = C.PLANOS[C.PLANOS.indexOf(pl) + 1], falta = pl.ate - n;
+  return `<div class="banner"><span><b>Plano ${esc(pl.nome)} quase no limite:</b> ${n} de ${pl.ate} alunos${falta > 0 ? ` (falta${falta > 1 ? 'm' : ''} ${falta})` : ''}. Ao passar de ${pl.ate}, o plano muda sozinho para o <b>${esc(prox.nome)}</b>, de ${brl(prox.mes)} por mês.</span><button id="fplano2">Ver planos</button></div>`;
+}
 function faixaPlano() {
   if (!S.admin || !S.plano) return '';
   const s = sitPlano(), bt = '<button id="fplano">Ver plano</button>', ate = d => dataBRA(d);
@@ -5434,7 +5443,7 @@ function sheetPlano() {
     const precoTxt = v => brl(v).replace(',00', '');
     sheet(corpo(`${faixa}
       ${!p.doc ? `<div class="field"><label for="pldoc">CPF ou CNPJ de quem responde pela escola</label><div class="pl-docrow"><input id="pldoc" inputmode="numeric" placeholder="Só números"><button type="button" class="btn ghost" id="pldocok">Salvar</button></div><span class="s">O teste grátis é um por CPF ou CNPJ.</span></div>` : ''}
-      <div class="pl-uso"><div class="pl-uso-t"><span>Alunos ativos</span><b class="num">${R.alunos}${pl.ate ? ' de ' + pl.ate : ''}</b></div><div class="pl-barra"><i style="width:${pct}%"></i></div><span class="s">Plano <b>${esc(pl.nome)}</b>. O plano muda sozinho quando a escola muda de faixa.</span></div>
+      <div class="pl-uso"><div class="pl-uso-t"><span>Alunos ativos</span><b class="num">${R.alunos}${pl.ate ? ' de ' + pl.ate : ''}</b></div><div class="pl-barra"><i style="width:${pct}%"></i></div><span class="s">Plano <b>${esc(pl.nome)}</b>. O plano muda sozinho quando a escola muda de faixa.${pl.ate && R.alunos >= Math.ceil(pl.ate * 0.9) ? ` <b style="color:var(--out)">Quase no limite: acima de ${pl.ate} alunos, passa para o ${esc(C.PLANOS[C.PLANOS.indexOf(pl) + 1].nome)} (${brl(C.PLANOS[C.PLANOS.indexOf(pl) + 1].mes)} por mês).</b>` : ''}</span></div>
       <div class="seg pl-per"><button type="button" data-per="mensal" aria-pressed="${ciclo === 'mensal'}">Mensal</button><button type="button" data-per="anual" aria-pressed="${ciclo === 'anual'}">Anual · 2 meses grátis</button></div>
       <div class="pl-grade">${C.PLANOS.map(x => `<div class="pl-card ${x.id === pl.id ? 'sel' : ''}"><span class="pl-nome">${x.nome}</span><span class="pl-ate">${x.ate ? 'até ' + x.ate + ' alunos' : 'acima de 250'}</span><span class="pl-preco num">${precoTxt(ciclo === 'anual' ? x.mes * 10 / 12 : x.mes)}</span><span class="pl-mes">${ciclo === 'anual' ? 'por mês, no anual' : 'por mês'}</span></div>`).join('')}</div>
       <div class="conta">${contaL(`Plano ${esc(pl.nome)} · ${ciclo === 'anual' ? '1 ano' : '1 mês'}`, brl(pr.cheio))}${d ? contaL(`Desconto do Turma em Dia${d.pct ? ` (${d.pct}%)` : ''}${d.ate ? ` até ${dataBRA(d.ate)}` : ''}`, '− ' + brl(C.r2(pr.cheio - pr.valor)), 'desc') : ''}${contaL(`<b>${ciclo === 'anual' ? 'Total do ano' : 'Total por mês'}</b>`, `<b>${brl(pr.valor)}</b>`, 'total')}</div>
@@ -5884,6 +5893,8 @@ async function semearMock() {
   const nao = { coracao: false, esforco: false, desmaio: false, doenca: false, ossos: false, outro: false };
   await set(`${p}/saude/al4`, { responsavelId: 'r3', respostas: { ...nao, doenca: true }, detalhes: 'Asma leve, usa bombinha antes de esforço intenso.', alergias: '', remedios: 'Bombinha (salbutamol) se precisar', plano: '', emergencia: { nome: 'Carla Andrade', telefone: '(81) 97777-3003', parentesco: 'mãe' }, primeirosSocorros: true, imagem: true, assinatura: { nome: 'Carla Andrade' }, em: Date.now() - 20 * 864e5, versao: 1, atestado: { pedidoEm: Date.now() - 20 * 864e5 } });
   await set(`${p}/saude/al3`, { responsavelId: 'r2', respostas: nao, detalhes: '', alergias: 'Dipirona', remedios: '', plano: 'Hapvida', emergencia: { nome: 'Roberto Melo', telefone: '(81) 98888-2002', parentesco: 'pai' }, primeirosSocorros: true, imagem: false, assinatura: { nome: 'Roberto Melo' }, em: Date.now() - 60 * 864e5, versao: 1, atestado: null });
+  // ?limite=1: mais alunos, para ver o aviso de plano quase no limite
+  if (qs.has('limite')) for (let i = 1; i <= 14; i++) { await set(`${p}/responsaveis/rl${i}`, { nome: `Responsável ${i}`, telefone: '', cpf: '', codigo: 'L' + (1000 + i) }); await set(`${p}/alunas/l${i}`, { nome: `Aluno Extra ${i}`, responsavelId: `rl${i}`, turmas: ['t3'], inicio: mesMais(m, -1) }); }
   // turmas cheias da professora Juliana (demonstração): 5 turmas com cerca de 15 alunos; os "João" têm algo de saúde no termo
   { const ano = Number(m.slice(0, 4)), novasT = {
       t7: { nome: 'Ballet Infantil', idadeMin: 5, idadeMax: 7, professoraId: 'p1', recebedor: 'p1', localId: 'l2', horario: 'Seg e Qua, 15h às 16h', preco: 170, vagas: 16, ordem: 7 },
