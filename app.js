@@ -1132,8 +1132,8 @@ function tCobrancas(v) {
         <div class="sub num">de ${cur(tot.esp)} previstos${tot.esp ? ` · ${Math.round(pc(rec))}%` : ''}</div></div>
       <div class="stack" role="img" aria-label="Recebido ${cur(rec)}, a vencer ${cur(tot.aVencer)}, vencido ${cur(tot.vencido)}">
         <i class="s-in" style="width:${pc(rec)}%"></i><i class="s-warn" style="width:${pc(tot.aVencer)}%"></i><i class="s-out" style="width:${pc(tot.vencido)}%"></i></div>
-      <div class="tiles">
-        <div class="tile"><span class="lbl"><span class="sw s-in"></span>Recebido</span><b class="num">${cur(rec)}</b><span class="s num">App ${cur(tot.pix).replace('R$', '').trim()}<br>Dinheiro ${cur(tot.din).replace('R$', '').trim()}</span></div>
+      <div class="tiles tiles-lin">
+        <div class="tile"><span class="lbl"><span class="sw s-in"></span>Recebido</span><b class="num">${cur(rec)}</b><span class="s num">App ${cur(tot.pix).replace('R$', '').trim()} · Dinheiro ${cur(tot.din).replace('R$', '').trim()}</span></div>
         <div class="tile"><span class="lbl"><span class="sw s-warn"></span>A vencer</span><b class="num">${cur(tot.aVencer)}</b><span class="s">no prazo</span></div>
         <div class="tile"><span class="lbl"><span class="sw s-out"></span>Vencido</span><b class="num" style="color:var(--out)">${cur(tot.vencido)}</b><span class="s">deste mês</span></div>
       </div>
@@ -2166,6 +2166,12 @@ function respFamilia(xid, x, id) {
     if (modo === 'familia') extra = `<button type="button" class="btn btn-mini ev-ja" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="inscrito">Já fiz a inscrição</button>`;
   }
   return `<div class="ev-resp"><span class="grow"><b>${nm}</b><span class="s">${sub}</span>${extra}</span>${direita}</div>`;
+}
+// família: disse que vai, mas a inscrição é com quem organiza e ainda não confirmou que fez
+function avisoInscricaoPendente() {
+  const h = hoje(), meus = Object.keys(S.alunas);
+  return eventosAtivos().filter(([, x]) => fimDe(x) >= h && modoInsc(x) === 'familia').map(([xid, x]) => ({ xid, x, ids: convidadosDe(x).filter(id => meus.includes(id) && partDe(x, id) === 'interesse') })).filter(e => e.ids.length)
+    .map(({ xid, x, ids }) => `<button class="faixa-resumo alerta" data-insc="${esc(xid)}"><span class="grow"><b>Inscrição pendente: ${esc(ids.map(id => primeiro(S.alunas[id].nome)).join(' e '))} no ${esc(x.nome)}</b><span class="s">Faça a inscrição com ${esc(x.organizador || 'quem organiza')} e depois toque em "Já fiz a inscrição".</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
 }
 function avisoEventosFamilia() {
   const h = hoje(), meus = Object.keys(S.alunas);
@@ -3319,7 +3325,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoEventosFamilia()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
+    ${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
     ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
@@ -3345,7 +3351,8 @@ function tPagar(v) {
   v.querySelectorAll('[data-termo]').forEach(b => b.onclick = () => sheetTermo(b.dataset.termo));
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-ctass]').forEach(b => b.onclick = () => sheetAssinarContrato(b.dataset.ctass));
-  v.querySelectorAll('[data-irfilhos]').forEach(b => b.onclick = () => irPara('filhas'));
+  v.querySelectorAll('[data-irfilhos]').forEach(b => b.onclick = () => irPara('feventos'));
+  v.querySelectorAll('[data-insc]').forEach(b => b.onclick = () => sheetEventoFam(b.dataset.insc));
   if ($('ppagar')) $('ppagar').onclick = () => (outrasFormas() ? sheetFormas : sheetPix)(marcados.map(i => i.k));
   if ($('pvenc')) $('pvenc').onclick = () => { abertos.filter(i => i.venc < h).forEach(i => S.sel.add(i.k)); render(); };
   if ($('pnfam')) $('pnfam').onclick = () => sheetNotasFamilia();
@@ -3370,8 +3377,8 @@ function docsFilhaHTML(id) {
   return out.join('');
 }
 // respostas "vai / não vai / já fiz a inscrição" da família
-function ligarRespostas(v) {
-  v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;
+function ligarRespostas(v, depois) {
+  v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); if (depois) setTimeout(depois, 60); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;
     aviso(f === 'inscrito' ? 'Inscrição confirmada. A escola já está sabendo.' : f === 'nao' ? 'Resposta enviada' : m === 'app' ? 'Combinado! A inscrição já está na tela Pagar.' : m === 'familia' ? 'Combinado! Faça a inscrição com quem organiza e depois toque em "Já fiz a inscrição".' : 'Combinado! A escola vai cuidar da inscrição.'); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
 }
 // família: aba Eventos. Em cima, os eventos dos filhos (para responder); embaixo, o calendário da escola, só para ver.
@@ -3387,7 +3394,7 @@ function tFEventos(v) {
     return `<li class="cal-ev tap ${c.meu ? 'meu' : 'outro'}" data-fev="${esc(c.xid)}"><div class="cal-dia"><b class="num">${d.getDate()}</b><span>${C.MESES[d.getMonth()].slice(0, 3)}</span></div>
       <div class="grow"><div class="t">${esc(c.x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(c.x))}</span>${c.x.local ? ' · ' + esc(c.x.local) : ''}`)}${quem ? `<div class="ev-quem">${quem}</div>` : ''}</div><span class="seta" aria-hidden="true">›</span></li>`; };
   const N = 3, todos = !!S.feTodos, vis = todos ? prox : prox.slice(0, N);
-  v.innerHTML = `<section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo mês">›</button></div>
+  v.innerHTML = `${avisoInscricaoPendente()}<section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo mês">›</button></div>
       ${gradeMes(ano, mes, doMes)}
       <div class="cal-legenda"><span><i class="lg-meu"></i>Com seus filhos</span><span><i class="lg-outro"></i>Outros eventos da escola</span></div>
       <button type="button" class="btn ghost" id="feano">Ver o ano inteiro</button></section>
@@ -3403,6 +3410,7 @@ function tFEventos(v) {
   let x0 = null; const g = v.querySelector('.mg');
   g.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
   g.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 60) vai(dx < 0 ? 1 : -1); });
+  v.querySelectorAll('[data-insc]').forEach(b => b.onclick = () => sheetEventoFam(b.dataset.insc));
   ligarRespostas(v); ligarFotos(v);
 }
 // família: o evento, só para ver (e responder, se for com os filhos)
@@ -3414,7 +3422,7 @@ function sheetEventoFam(xid) {
     ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Responder até', x.prazo ? dataBR(x.prazo) : '']])}
     ${localEventoHTML(x)}
     ${ids.length ? ids.map(id => respFamilia(xid, x, id)).join('') : ''}
-    <button class="btn ghost" data-fechar>Fechar</button>`, sh => { ligarRespostas(sh); });
+    <button class="btn ghost" data-fechar>Fechar</button>`, sh => { ligarRespostas(sh, () => sheetEventoFam(xid)); });
 }
 function tFilhas(v) {
   const mes = mesHoje(), al = porNome(S.alunas);
@@ -5196,7 +5204,6 @@ function sheetFormasEscola() {
         <div class="two"><div class="field"><label for="tcar">Cartão (%)</label><input id="tcar" inputmode="decimal" value="${n2(t.cartao)}"></div><div></div></div>
         <span class="s">Na taxa de pagamento, o app soma ${n2(COMISSAO * 100)}% a cada taxa da sua conta.</span>
       </div></details>
-    <div class="field"><span class="lb">Exemplo: uma cobrança de ${brl(ex)}</span><div class="conta" id="fex"></div></div>
     <div class="note" id="fnota"></div>
     <div class="err" id="ferr2" role="alert"></div>
     <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="fok2">Salvar</button></div>`, sh => {
@@ -5211,8 +5218,7 @@ function sheetFormasEscola() {
       if (l.formas.boleto) linhas_.push(['Boleto', valorForma(ex, 'boleto').total]);
       if (l.formas.cartao) linhas_.push([l.formas.parcelado ? 'Cartão (à vista; parcelado + juros)' : 'Cartão', valorForma(ex, 'cartao').total]);
       S.cfg = old;
-      $('fex').innerHTML = `<div class="label">A família paga</div>` + linhas_.map(([a, v]) => contaL(esc(a), brl(v))).join('');
-      $('fnota').textContent = S.cfg.pixRepassa === true ? 'Como "quem paga cobre a taxa" está ligado, a família paga a taxa da forma que escolher e a escola recebe o valor cheio.' : `Como "quem paga cobre a taxa" está desligado, a taxa sai do valor que a escola recebe (no cartão, de ${brl(ex)} a escola recebe cerca de ${brl(rec(l.taxas.cartao || 0))}).`; };
+      $('fnota').textContent = S.cfg.pixRepassa === true ? 'Como "quem paga cobre a taxa" está ligado, a família paga a taxa da forma que escolher e a escola recebe o valor cheio.' : 'Como "quem paga cobre a taxa" está desligado, a taxa sai do valor que a escola recebe.'; };
     sh.querySelectorAll('[data-jur]').forEach(b => b.onclick = () => { jurosEscola = b.dataset.jur === 'escola'; ver(); });
     sh.querySelectorAll('input, select').forEach(el => el.addEventListener('input', ver)); sh.querySelectorAll('input[type=checkbox]').forEach(el => el.addEventListener('change', ver)); ver();
     if ($('frecon')) $('frecon').onclick = async () => { $('frecon').disabled = true; try { await mpConta('conectar'); if (MOCK) sheetFormasEscola(); } catch (e) { $('ferr2').textContent = msgErro(e); $('frecon').disabled = false; } };

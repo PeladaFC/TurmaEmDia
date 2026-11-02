@@ -321,6 +321,11 @@ body:has(.paybar) .toast{bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 .sheet>.faixa-card{border-color:var(--warn);background:var(--warn-soft)}
 .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .tile{background:var(--surface2);border-radius:5px;padding:10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+/* resumo do mês: um quadro embaixo do outro, nome e detalhe à esquerda, valor à direita */
+.tiles-lin{grid-template-columns:1fr;gap:6px}
+.tiles-lin .tile{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:12px;padding:10px 14px}
+.tiles-lin .tile .lbl{grid-column:1;grid-row:1}.tiles-lin .tile .s{grid-column:1;grid-row:2}
+.tiles-lin .tile b{grid-column:2;grid-row:1/span 2;text-align:right;white-space:nowrap}
 .tile .lbl{display:flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .tile b{font-size:clamp(.82rem,3.7vw,1rem);white-space:nowrap}
 .tile .s{font-size:.72rem;color:var(--muted)}
@@ -847,11 +852,11 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 <div id="overlay"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="config.js"></script>
-<script src="regras.js?v=202611021114"></script>
-<script src="qrcode.js?v=202611021114"></script>
-<script src="pdf-simples.js?v=202611021114"></script>
-<script src="scanner.js?v=202611021114"></script>
-<script src="relatorio.js?v=202611021114"></script>
-<script type="module" src="app.js?v=202611021114"></script>
+<script src="regras.js?v=202611021139"></script>
+<script src="qrcode.js?v=202611021139"></script>
+<script src="pdf-simples.js?v=202611021139"></script>
+<script src="scanner.js?v=202611021139"></script>
+<script src="relatorio.js?v=202611021139"></script>
+<script type="module" src="app.js?v=202611021139"></script>
 </body>
 </html>
