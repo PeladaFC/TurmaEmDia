@@ -5453,54 +5453,46 @@ async function acaoDono(corpo, ok) {
   DONO_ESC = (MOCK ? await mockDono(corpo) : await servidor('plano', corpo)).escolas || DONO_ESC; aviso(ok); sheetEscolasDono();
 }
 function sheetCortesiaDono(e) {
-  let meses = 3;
-  sheet(`<h3>Meses grátis</h3><div class="sub"><b>${esc(e.nome)}</b> · plano ${esc(e.plano)}, ${brl(e.valor)} ${e.ciclo === 'anual' ? 'por ano' : 'por mês'}.</div>
-    ${e.cortesiaAte ? `<div class="banner ok"><span>🎁 Já está grátis até <b>${dataBRA(e.cortesiaAte)}</b>. Os meses que você der agora somam a partir daí.</span></div>` : ''}
-    <div class="field"><span class="lb">Quantos meses</span><div class="seg" id="dcm">${[1, 3, 6, 12].map(n => `<button type="button" data-m="${n}" aria-pressed="${n === meses}">${n}</button>`).join('')}<button type="button" data-m="outro" aria-pressed="false">Outro</button></div></div>
-    <div class="field" id="dcow" hidden><label for="dco">Número de meses</label><input id="dco" inputmode="numeric" placeholder="De 1 a 36"></div>
-    <div class="field"><label for="dcmot">Motivo (só você vê)</label><input id="dcmot" maxlength="200" placeholder="Ex.: parceria, indicação, problema no app"></div>
+  sheet(`<h3>Meses grátis</h3><div class="sub"><b>${esc(e.nome)}</b> · ${esc(e.plano)}, ${brl(e.valor)} ${e.ciclo === 'anual' ? 'por ano' : 'por mês'}${e.cortesiaAte ? ` · já grátis até ${dataBRA(e.cortesiaAte)}` : ''}</div>
+    <div class="dn-lin"><span class="lb">Quantos meses</span><span class="passador"><button type="button" id="dcmenos" aria-label="Menos um mês">−</button><input id="dco" inputmode="numeric" value="3" aria-label="Meses grátis"><button type="button" id="dcmais" aria-label="Mais um mês">+</button></span></div>
+    <div class="field"><label for="dcmot">Motivo (só você vê)</label><input id="dcmot" maxlength="200" placeholder="Ex.: parceria, indicação"></div>
     <div class="sub" id="dcate"></div>
-    <div class="note">A escola vê "Grátis até a data", sem pagar nada nesse período. Se ela paga no cartão, a cobrança fica pausada e volta sozinha no fim.</div>
     <div class="err" id="dcerr" role="alert"></div>
-    <div class="actions"><button type="button" class="btn ghost" id="dcvolta">Voltar</button><button type="button" class="btn" id="dcok">Dar meses grátis</button></div>
-    ${e.cortesiaAte ? '<button type="button" class="link" id="dctira" style="align-self:center;color:var(--out)">Cancelar os meses grátis</button>' : ''}`, sh => {
-    const base = () => [hoje(), e.venc || '', e.cortesiaAte || ''].sort().pop();
-    const ver = () => { const m = meses === 'outro' ? Number($('dco').value) : meses; $('dcate').innerHTML = m >= 1 && m <= 36 ? `Fica grátis até <b>${dataBRA(C.maisMeses(base(), m))}</b>.` : ''; };
-    sh.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { meses = b.dataset.m === 'outro' ? 'outro' : Number(b.dataset.m); sh.querySelectorAll('[data-m]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); $('dcow').hidden = meses !== 'outro'; ver(); });
-    $('dco').addEventListener('input', ver); ver();
+    <div class="actions"><button type="button" class="btn ghost" id="dcvolta">Voltar</button><button type="button" class="btn" id="dcok">Salvar</button></div>
+    ${e.cortesiaAte ? '<button type="button" class="link" id="dctira" style="align-self:center;color:var(--out)">Cancelar os meses grátis</button>' : ''}`, () => {
+    const base = () => [hoje(), e.venc || '', e.cortesiaAte || ''].sort().pop(), m = () => Math.round(Number($('dco').value));
+    const ver = () => { const n = m(); $('dcate').innerHTML = n >= 1 && n <= 36 ? `Fica grátis até <b>${dataBRA(C.maisMeses(base(), n))}</b>. Se paga no cartão, a cobrança pausa e volta sozinha.` : 'Escolha de 1 a 36 meses.'; };
+    const soma = d => { $('dco').value = Math.max(1, Math.min(36, (m() || 0) + d)); ver(); };
+    $('dcmenos').onclick = () => soma(-1); $('dcmais').onclick = () => soma(1); $('dco').addEventListener('input', ver); ver();
     $('dcvolta').onclick = () => sheetEscolasDono();
-    $('dcok').onclick = async () => { const m = meses === 'outro' ? Number($('dco').value) : meses; if (!(m >= 1 && m <= 36)) return $('dcerr').textContent = 'Escolha de 1 a 36 meses.';
-      $('dcok').disabled = true; try { await acaoDono({ acao: 'donoCortesia', eid: e.eid, meses: m, motivo: $('dcmot').value }, `${m} ${m === 1 ? 'mês grátis' : 'meses grátis'} para ${e.nome}`); } catch (x) { $('dcerr').textContent = msgErro(x); $('dcok').disabled = false; } };
+    $('dcok').onclick = async () => { const n = m(); if (!(n >= 1 && n <= 36)) return $('dcerr').textContent = 'Escolha de 1 a 36 meses.';
+      $('dcok').disabled = true; try { await acaoDono({ acao: 'donoCortesia', eid: e.eid, meses: n, motivo: $('dcmot').value }, `${n} ${n === 1 ? 'mês grátis' : 'meses grátis'} para ${e.nome}`); } catch (x) { $('dcerr').textContent = msgErro(x); $('dcok').disabled = false; } };
     if ($('dctira')) duploToque($('dctira'), async () => { try { await acaoDono({ acao: 'donoTirarCortesia', eid: e.eid }, 'Meses grátis cancelados'); } catch (x) { $('dcerr').textContent = msgErro(x); } }, 'Toque de novo para cancelar');
   });
 }
 function sheetDescontoDono(e) {
-  const d = e.desconto || {}; let tipo = d.valor != null ? 'valor' : 'pct', prazo = d.ate ? 'data' : 'sempre';
-  sheet(`<h3>Desconto no plano</h3><div class="sub"><b>${esc(e.nome)}</b> · plano ${esc(e.plano)}, ${brl(e.cheio)} ${e.ciclo === 'anual' ? 'por ano' : 'por mês'} sem desconto.</div>
-    <div class="field"><span class="lb">Tipo de desconto</span><div class="seg" id="ddt"><button type="button" data-t="pct" aria-pressed="${tipo === 'pct'}">Porcentagem</button><button type="button" data-t="valor" aria-pressed="${tipo === 'valor'}">Valor fixo por mês</button></div></div>
-    <div class="field" id="ddpw"><label for="ddp">Desconto (%)</label><input id="ddp" inputmode="numeric" value="${esc(d.pct != null ? String(d.pct) : '')}" placeholder="Ex.: 50"></div>
-    <div class="field" id="ddvw"><label for="ddv">A escola paga por mês (R$)</label><input id="ddv" inputmode="decimal" value="${esc(d.valor != null ? fmtValor(d.valor) : '')}" placeholder="Ex.: 29,90"></div>
-    <div class="field"><span class="lb">Por quanto tempo</span><div class="seg" id="ddz"><button type="button" data-z="sempre" aria-pressed="${prazo === 'sempre'}">Sem prazo</button><button type="button" data-z="data" aria-pressed="${prazo === 'data'}">Até uma data</button></div></div>
-    <div class="field" id="ddaw"><label for="dda">Último dia do desconto</label><input type="date" id="dda" value="${esc(d.ate || '')}" min="${hoje()}"></div>
-    <div class="field"><label for="ddmot">Motivo (só você vê)</label><input id="ddmot" maxlength="200" value="${esc(d.motivo || '')}" placeholder="Ex.: escola parceira, projeto social"></div>
+  const d = e.desconto || {}; let tipo = d.valor != null ? 'valor' : 'pct';
+  sheet(`<h3>Desconto no plano</h3><div class="sub"><b>${esc(e.nome)}</b> · ${esc(e.plano)}, ${brl(e.ciclo === 'anual' ? e.cheio / 10 : e.cheio)} por mês sem desconto</div>
+    <div class="dn-lin"><span class="lb">Desconto</span><span class="dn-dir"><input id="ddn" class="dn-num" inputmode="decimal" value="${esc(d.valor != null ? fmtValor(d.valor) : d.pct != null ? String(d.pct) : '')}" placeholder="0" aria-label="Valor do desconto">
+      <span class="seg dn-seg"><button type="button" data-t="pct" aria-pressed="${tipo === 'pct'}">%</button><button type="button" data-t="valor" aria-pressed="${tipo === 'valor'}">R$/mês</button></span></span></div>
+    <div class="dn-lin"><span class="lb">Até</span><span class="dn-dir"><input type="date" id="dda" class="dn-data" value="${esc(d.ate || '')}" min="${hoje()}" aria-label="Último dia do desconto"></span></div>
+    <span class="s" style="margin-top:-6px">Sem data, o desconto vale sem prazo. Em R$/mês, é o valor que a escola passa a pagar.</span>
+    <div class="field"><label for="ddmot">Motivo (só você vê)</label><input id="ddmot" maxlength="200" value="${esc(d.motivo || '')}" placeholder="Ex.: escola parceira"></div>
     <div class="sub" id="ddres"></div>
     <div class="err" id="dderr" role="alert"></div>
-    <div class="actions"><button type="button" class="btn ghost" id="ddvolta">Voltar</button><button type="button" class="btn" id="ddok">${e.desconto ? 'Salvar desconto' : 'Dar desconto'}</button></div>
+    <div class="actions"><button type="button" class="btn ghost" id="ddvolta">Voltar</button><button type="button" class="btn" id="ddok">Salvar</button></div>
     ${e.desconto ? '<button type="button" class="link" id="ddtira" style="align-self:center;color:var(--out)">Tirar o desconto</button>' : ''}`, sh => {
     const mensal = e.ciclo === 'anual' ? e.cheio / 10 : e.cheio;
-    const ver = () => { $('ddpw').hidden = tipo !== 'pct'; $('ddvw').hidden = tipo !== 'valor'; $('ddaw').hidden = prazo !== 'data';
-      sh.querySelectorAll('[data-t]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.t === tipo))); sh.querySelectorAll('[data-z]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.z === prazo)));
-      const v = tipo === 'pct' ? C.r2(mensal * (1 - Math.min(100, Number($('ddp').value) || 0) / 100)) : Math.min(mensal, parseValor($('ddv').value));
-      $('ddres').innerHTML = v >= 0 ? `A escola passa a pagar <b>${brl(v)}</b> por mês${e.ciclo === 'anual' ? ` (${brl(C.r2(v * 10))} no anual)` : ''}${prazo === 'data' && $('dda').value ? ` até ${dataBRA($('dda').value)}` : ''}.` : ''; };
+    const ver = () => { sh.querySelectorAll('[data-t]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.t === tipo)));
+      const n = parseValor($('ddn').value), v = tipo === 'pct' ? C.r2(mensal * (1 - Math.min(100, n || 0) / 100)) : Math.min(mensal, n);
+      $('ddres').innerHTML = v >= 0 ? `Passa a pagar <b>${brl(v)}</b> por mês${$('dda').value ? ` até ${dataBRA($('dda').value)}` : ', sem prazo'}.` : ''; };
     sh.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tipo = b.dataset.t; ver(); });
-    sh.querySelectorAll('[data-z]').forEach(b => b.onclick = () => { prazo = b.dataset.z; ver(); });
-    ['ddp', 'ddv', 'dda'].forEach(id => $(id).addEventListener('input', ver)); ver();
+    ['ddn', 'dda'].forEach(id => $(id).addEventListener('input', ver)); ver();
     $('ddvolta').onclick = () => sheetEscolasDono();
-    $('ddok').onclick = async () => {
-      const corpo = { acao: 'donoDesconto', eid: e.eid, motivo: $('ddmot').value, ate: prazo === 'data' ? $('dda').value : null, ...(tipo === 'pct' ? { pct: Number($('ddp').value) } : { valor: parseValor($('ddv').value) }) };
+    $('ddok').onclick = async () => { const n = parseValor($('ddn').value);
+      const corpo = { acao: 'donoDesconto', eid: e.eid, motivo: $('ddmot').value, ate: $('dda').value || null, ...(tipo === 'pct' ? { pct: Math.round(n) } : { valor: n }) };
       if (tipo === 'pct' && !(corpo.pct >= 1 && corpo.pct <= 100)) return $('dderr').textContent = 'O desconto vai de 1% a 100%.';
-      if (tipo === 'valor' && !(corpo.valor >= 0)) return $('dderr').textContent = 'Digite o valor que a escola paga por mês.';
-      if (prazo === 'data' && !corpo.ate) return $('dderr').textContent = 'Escolha o último dia do desconto.';
+      if (tipo === 'valor' && !(corpo.valor >= 0)) return $('dderr').textContent = 'Digite quanto a escola paga por mês.';
       $('ddok').disabled = true; try { await acaoDono(corpo, `Desconto salvo para ${e.nome}`); } catch (x) { $('dderr').textContent = msgErro(x); $('ddok').disabled = false; } };
     if ($('ddtira')) duploToque($('ddtira'), async () => { try { await acaoDono({ acao: 'donoTirarDesconto', eid: e.eid }, 'Desconto retirado'); } catch (x) { $('dderr').textContent = msgErro(x); } }, 'Toque de novo para tirar');
   });
