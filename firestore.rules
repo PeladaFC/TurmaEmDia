@@ -12,6 +12,12 @@ service cloud.firestore {
     function escolaDepois(eid) { return getAfter(base(eid)).data; }
     function admin(eid) { return logado() && exists(base(eid)) && eu() in escola(eid).admins; }
     function adminDepois(eid) { return logado() && eu() in escolaDepois(eid).admins; }
+    // plano do app em dia: com o plano atrasado (6 a 30 dias, só leitura) ou suspenso (mais de 30), a administração não grava.
+    // Quem decide é o servidor (config/plano.bloqueio). As famílias seguem usando o que é delas.
+    function planoDoc(eid) { return /databases/$(database)/documents/escolas/$(eid)/config/plano; }
+    function livre(eid) { return !exists(planoDoc(eid)) || get(planoDoc(eid)).data.get('bloqueio', null) == null; }
+    function adminW(eid) { return adminDepois(eid) && livre(eid); }
+    function adminE(eid) { return admin(eid) && livre(eid); }
     function membro(eid) { return logado() && exists(/databases/$(database)/documents/escolas/$(eid)/membros/$(eu())); }
     // professor com acesso ao app (o servidor cria, quando ele entra com o e-mail cadastrado pela escola)
     function equipe(eid) { return logado() && exists(/databases/$(database)/documents/escolas/$(eid)/equipe/$(eu())); }
@@ -56,8 +62,8 @@ service cloud.firestore {
     match /codigos/{codigo} {
       allow get: if logado();
       allow list: if false;
-      allow create: if logado() && adminDepois(request.resource.data.eid);
-      allow update, delete: if logado() && admin(resource.data.eid);
+      allow create: if logado() && adminDepois(request.resource.data.eid) && livre(request.resource.data.eid);
+      allow update, delete: if logado() && admin(resource.data.eid) && livre(resource.data.eid);
     }
 
     match /escolas/{eid} {
@@ -67,7 +73,7 @@ service cloud.firestore {
         && request.resource.data.admins == [eu()];
       // Só o dono muda quem é administração (e não pode sair); os outros só podem sair sozinhos.
       // Convites e dados de quem administra são gravados pelo servidor.
-      allow update: if admin(eid)
+      allow update: if adminE(eid)
         && request.resource.data.dono == resource.data.dono
         && request.resource.data.dono in request.resource.data.admins
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['convitesAdm', 'adminsInfo'])
@@ -81,8 +87,8 @@ service cloud.firestore {
         allow read: if admin(eid) || (logado() && eu() == uid);
         allow create: if logado() && eu() == uid
           && get(/databases/$(database)/documents/codigos/$(request.resource.data.codigo)).data.eid == eid;
-        allow update: if admin(eid) || (logado() && eu() == uid && soMuda(['nome', 'email', 'consentimento', 'pedidoExclusao']));
-        allow delete: if admin(eid) || (logado() && eu() == uid);
+        allow update: if adminE(eid) || (logado() && eu() == uid && soMuda(['nome', 'email', 'consentimento', 'pedidoExclusao']));
+        allow delete: if adminE(eid) || (logado() && eu() == uid);
         // Cadastros de responsável ligados a esta conta. Pelo código: ela mesma.
         // Pelo telefone/CPF (sugestão aceita): só o servidor, que confere os dados.
         match /vinculos/{rid} {
@@ -90,27 +96,27 @@ service cloud.firestore {
           allow create: if logado() && eu() == uid
             && get(/databases/$(database)/documents/codigos/$(request.resource.data.codigo)).data.eid == eid
             && get(/databases/$(database)/documents/codigos/$(request.resource.data.codigo)).data.rid == rid;
-          allow delete: if admin(eid);
+          allow delete: if adminE(eid);
         }
       }
 
       match /responsaveis/{rid} {
         allow read: if admin(eid) || meu(eid, rid);
-        allow write: if adminDepois(eid);
+        allow write: if adminW(eid);
       }
       match /alunas/{alid} {
         allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
-        allow write: if adminDepois(eid);
+        allow write: if adminW(eid);
       }
       // Ficha de pagamentos de cada aluno (o id é o do aluno).
       match /pagamentos/{alid} {
         allow read: if admin(eid) || minhaAluna(eid, alid);
-        allow write: if adminDepois(eid);
+        allow write: if adminW(eid);
       }
       // Acordos de atrasados: cada família vê os dela (campo rid).
       match /acordos/{aid} {
         allow read: if admin(eid) || meu(eid, resource.data.rid);
-        allow write: if adminDepois(eid);
+        allow write: if adminW(eid);
       }
       match /cobrancas/{doc} {
         allow read: if admin(eid) || (logado() && resource.data.uid == eu());
@@ -122,23 +128,28 @@ service cloud.firestore {
       match /notasFamilia/{nid} { allow read: if admin(eid); allow write: if false; }
       match /config/mp {
         allow read: if admin(eid);
-        allow update: if admin(eid) && soMuda(['confirmada']);
+        allow update: if adminE(eid) && soMuda(['confirmada']);
       }
       match /config/geral {
         allow read: if admin(eid) || membro(eid) || equipe(eid);
-        allow write: if adminDepois(eid);
+        allow write: if adminW(eid);
       }
       // modelo do contrato: a família lê para assinar; só a escola escreve
+      // plano do app (teste, pago até, bloqueio): só o servidor grava; a escola, as famílias e a equipe leem
+      match /config/plano { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if false; }
+      match /planoPag/{doc} { allow read, write: if false; }
+      // cartão salvo da família (só a marca, o final e o código do Mercado Pago, nunca o número): a própria pessoa lê; só o servidor grava
+      match /cartoes/{cid} { allow read: if logado() && resource.data.uid == eu(); allow write: if false; }
       match /config/contrato {
         allow read: if admin(eid) || membro(eid);
-        allow write: if adminDepois(eid);
+        allow write: if adminW(eid);
       }
       // cancelamento de matrícula: a família pede, desiste (enquanto é só pedido) e assina o termo; o resto é da escola
       match /destratos/{did} {
         allow read: if admin(eid) || minhaAluna(eid, resource.data.alid);
-        allow create: if adminDepois(eid) || (minhaAluna(eid, request.resource.data.alid) && request.resource.data.status == 'pedido'
+        allow create: if adminW(eid) || (minhaAluna(eid, request.resource.data.alid) && request.resource.data.status == 'pedido'
           && request.resource.data.pedidoPor.uid == request.auth.uid && request.resource.data.pedidoPor.quem == 'familia');
-        allow update: if adminDepois(eid) || (minhaAluna(eid, resource.data.alid) && (
+        allow update: if adminW(eid) || (minhaAluna(eid, resource.data.alid) && (
           (resource.data.status == 'pedido' && request.resource.data.status == 'desistiu' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'desistiuEm']))
           || (resource.data.status in ['confirmado', 'encerrado'] && !('assinatura' in resource.data) && request.resource.data.assinatura.uid == request.auth.uid
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['assinatura']))));
@@ -154,32 +165,32 @@ service cloud.firestore {
           && request.resource.data.texto is string && request.resource.data.texto.size() < 40000
           && request.resource.data.nome is string && request.resource.data.nome.size() < 100;
         allow update: if false;
-        allow delete: if adminDepois(eid);
+        allow delete: if adminW(eid);
       }
 
       // Turmas, locais, grupos, eventos e taxas: quem paga lê; a administração escreve.
       // A resposta "vai / não vai" da família passa pelo servidor (eventoResposta).
-      match /turmas/{doc} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if adminDepois(eid); }
-      match /locais/{doc} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if adminDepois(eid); }
-      match /grupos/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
-      match /extras/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid); }
+      match /turmas/{doc} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if adminW(eid); }
+      match /locais/{doc} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if adminW(eid); }
+      match /grupos/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminW(eid); }
+      match /extras/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminW(eid); }
       // Fotos de cada evento (cartaz, regulamento): quem é da escola vê; a administração põe e tira (até 3, já reduzidas)
-      match /midiaEventos/{xid} { allow read: if admin(eid) || membro(eid); allow write: if adminDepois(eid) && request.resource.data.fotos.size() <= 3; }
+      match /midiaEventos/{xid} { allow read: if admin(eid) || membro(eid); allow write: if adminW(eid) && request.resource.data.fotos.size() <= 3; }
 
       // Professores: telefone, chave Pix e conta ficam só com a administração.
       // As famílias leem só o nome, na cópia profsPublico que o servidor mantém.
-      match /professoras/{pid} { allow read, write: if admin(eid); }
+      match /professoras/{pid} { allow read: if admin(eid); allow write: if adminE(eid); }
       match /profsPublico/{pid} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if false; }
 
       // Caixa (entradas e saídas avulsas): só administração.
-      match /lancamentos/{doc} { allow read, write: if admin(eid); }
+      match /lancamentos/{doc} { allow read: if admin(eid); allow write: if adminE(eid); }
 
       // Pedidos das famílias (LGPD): a família cria o próprio e vê; a administração responde.
       match /pedidos/{pid} {
         allow read: if admin(eid) || (logado() && resource.data.uid == eu());
         allow create: if membro(eid) && request.resource.data.uid == eu()
           && request.resource.data.tipo == 'exclusao' && request.resource.data.status == 'pendente';
-        allow update, delete: if admin(eid);
+        allow update, delete: if adminE(eid);
       }
 
       // Termo de matrícula (dados de saúde, sensíveis): só a família do aluno e a administração.
@@ -193,12 +204,12 @@ service cloud.firestore {
           return request.resource.data.get(['atestado', campo], null) == resource.data.get(['atestado', campo], null);
         }
         allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
-        allow create: if admin(eid) || (daFamilia() && request.resource.data.get(['atestado', 'recebidoEm'], null) == null);
-        allow update: if admin(eid) || (daFamilia()
+        allow create: if adminE(eid) || (daFamilia() && request.resource.data.get(['atestado', 'recebidoEm'], null) == null);
+        allow update: if adminE(eid) || (daFamilia()
           && request.resource.data.get('alteracoes', []).hasAll(resource.data.get('alteracoes', []))
           && request.resource.data.get('alteracoes', []).size() >= resource.data.get('alteracoes', []).size()
           && mesmo('recebidoEm') && mesmo('recusa'));
-        allow delete: if admin(eid);
+        allow delete: if adminE(eid);
       }
       // Documentos dos alunos (parecer cardiológico, identidade e outros que a escola pede): só a família do aluno e a administração.
       // A situação (datas e validade) fica em docsAlunos, leve, para as listas; o arquivo (até 2 fotos reduzidas ou 1 PDF pequeno) em documentos.
@@ -206,23 +217,23 @@ service cloud.firestore {
       // Cada nota leva quem escreveu; só o autor edita o texto; a administração pode apagar.
       match /notasAlunos/{nid} {
         allow read: if admin(eid);
-        allow create: if admin(eid) && request.resource.data.autorUid == eu()
+        allow create: if adminE(eid) && request.resource.data.autorUid == eu()
           && request.resource.data.alid is string && request.resource.data.texto is string && request.resource.data.texto.size() <= 2000;
-        allow update: if admin(eid) && resource.data.autorUid == eu() && soMuda(['texto', 'tag', 'editadoEm'])
+        allow update: if adminE(eid) && resource.data.autorUid == eu() && soMuda(['texto', 'tag', 'editadoEm'])
           && request.resource.data.texto is string && request.resource.data.texto.size() <= 2000;
-        allow delete: if admin(eid);
+        allow delete: if adminE(eid);
       }
       // Quem é professor no app: só o servidor cria (confere o e-mail); a pessoa lê o dela; a escola vê e pode tirar.
       // O professor não lê alunos, responsáveis, pagamentos, saúde nem documentos: o servidor monta o que ele pode ver.
       match /equipe/{uid} {
         allow read: if admin(eid) || (logado() && eu() == uid);
         allow create, update: if false;
-        allow delete: if admin(eid);
+        allow delete: if adminE(eid);
       }
       // Foto do aluno (pequena): a administração e a família do aluno veem e colocam. O professor recebe pelo servidor.
       match /fotosAlunos/{alid} {
         allow read: if admin(eid) || minhaAluna(eid, alid);
-        allow write: if admin(eid);
+        allow write: if adminE(eid);
         // a família põe ou troca a foto do próprio filho (só a foto, pequena)
         allow create, update: if minhaAluna(eid, alid) && request.resource.data.responsavelId == ridDaAluna(eid, alid)
           && request.resource.data.keys().hasOnly(['foto', 'responsavelId', 'em', 'por'])
@@ -230,21 +241,21 @@ service cloud.firestore {
       }
       match /docsAlunos/{alid} {
         allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
-        allow create, update: if admin(eid) || (minhaAluna(eid, alid) && request.resource.data.responsavelId == ridDaAluna(eid, alid));
-        allow delete: if admin(eid);
+        allow create, update: if adminE(eid) || (minhaAluna(eid, alid) && request.resource.data.responsavelId == ridDaAluna(eid, alid));
+        allow delete: if adminE(eid);
       }
       match /documentos/{did} {
         allow read: if admin(eid) || minhaAluna(eid, resource.data.alid);
-        allow create, update: if (admin(eid) || minhaAluna(eid, request.resource.data.alid))
+        allow create, update: if (adminE(eid) || minhaAluna(eid, request.resource.data.alid))
           && request.resource.data.alid is string && request.resource.data.tipo is string
           && did == request.resource.data.alid + '__' + request.resource.data.tipo
           && request.resource.data.arquivos is list && request.resource.data.arquivos.size() >= 1 && request.resource.data.arquivos.size() <= 2;
-        allow delete: if admin(eid);
+        allow delete: if adminE(eid);
       }
       // Foto ou PDF do atestado (pequeno: o app reduz a foto).
       match /atestados/{alid} {
         allow read: if admin(eid) || meu(eid, resource.data.responsavelId);
-        allow write: if admin(eid) || (meu(eid, request.resource.data.responsavelId)
+        allow write: if adminE(eid) || (meu(eid, request.resource.data.responsavelId)
           && request.resource.data.responsavelId == ridDaAluna(eid, alid)
           && request.resource.data.arquivo is string && request.resource.data.arquivo.size() < 1000000);
       }

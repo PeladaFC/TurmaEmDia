@@ -479,6 +479,126 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     r = await nf({ acao: 'cancelar', nid: 'pix_c1', motivo: 'Emitida por engano' }, 'ok:adm8'); assert.strictEqual(r.body.status, 'cancelada');
     assert.strictEqual(await NF.interno.aposPix('e8', 'c1', { rec: 'escola', rids: ['r1'], itens: [] }), 'sem_itens');
   });
+
+  /* ---------- cartão e boleto das famílias; plano da escola ---------- */
+  await t('formas: valor do cartão e do boleto com a taxa repassada; sem repasse, o valor cheio', () => {
+    assert.deepStrictEqual(C.valorForma(100, 'cartao', { pixRepassa: true }, 0.01), { valor: 106.37, fee: 1.06 });
+    assert.deepStrictEqual(C.valorForma(100, 'boleto', { pixRepassa: true }, 0.01), { valor: 104.54, fee: 1.05 });
+    assert.deepStrictEqual(C.valorForma(100, 'cartao', {}, 0.01), { valor: 100, fee: 1 });
+    assert.strictEqual(C.valorForma(100, 'pix', { pixRepassa: true }, 0.01).valor, C.valorPix(100, { pixRepassa: true }, 0.0099, 0.01).valor);
+  });
+  await t('plano: faixa por alunos, anual = 10 meses, desconto do dono (% ou valor) e situação do atraso', () => {
+    assert.deepStrictEqual([C.planoPara(30).id, C.planoPara(31).id, C.planoPara(250).id, C.planoPara(251).id], ['inicial', 'essencial', 'completo', 'grande']);
+    assert.strictEqual(C.precoPlano(80, 'anual', {}, H).valor, 690);
+    assert.strictEqual(C.precoPlano(80, 'mensal', { desconto: { pct: 50 } }, H).valor, 34.5);
+    assert.strictEqual(C.precoPlano(80, 'mensal', { desconto: { pct: 50, ate: '2026-10-01' } }, H).valor, 69); // desconto vencido
+    assert.strictEqual(C.precoPlano(80, 'anual', { desconto: { valor: 40 } }, H).valor, 400);
+    const f = venc => C.situacaoPlano({ testeAte: venc }, H).fase;
+    assert.deepStrictEqual([f('2026-10-20'), f('2026-10-10'), f('2026-10-09'), f('2026-09-15'), f('2026-09-14')], ['teste', 'aviso', 'leitura', 'leitura', 'suspensa']);
+    assert.strictEqual(C.situacaoPlano({ testeAte: '2026-07-01' }, H).encerrar, true);
+    assert.strictEqual(C.situacaoPlano({ testeAte: '2026-09-01', cortesiaAte: '2026-12-01' }, H).fase, 'cortesia');
+    assert.strictEqual(C.maisMeses('2026-01-31', 1), '2026-02-28');
+  });
+  {
+    const db2 = bancoFalso(), S2 = db2.store, P2 = require('./pagamentos')(db2);
+    const CA = require('./cartao')(db2, P2.interno), AS = require('./assinatura')(db2, P2.interno);
+    S2.set('servidor/mp', { clientId: '123', clientSecret: 's', comissao: 0.01, publicKey: 'APP_PUB' });
+    S2.set('servidor/plataforma', { emails: ['dono@x.com'] });
+    S2.set('escolas/e5', { nome: 'Escola Cinco', admins: ['adm5'] });
+    S2.set('escolas/e5/config/geral', { vencDia: 10, pixRepassa: true, formas: { cartao: true, boleto: true, parcelado: true, maxParcelas: 3 } });
+    S2.set('escolas/e5/segredos/mp', { token: 'TOKEN-E5', via: 'oauth' });
+    S2.set('escolas/e5/turmas/t1', { nome: 'GR', preco: 100 });
+    S2.set('escolas/e5/alunas/b1', { nome: 'Bia', responsavelId: 'q1', turmas: ['t1'], inicio: '2026-10' });
+    S2.set('escolas/e5/membros/pai', {}); S2.set('escolas/e5/membros/pai/vinculos/q1', {});
+    const pay = {}; let id2 = 5001, prer = null;
+    global.fetch = async (url, o = {}) => {
+      const ok = b => ({ ok: true, status: 200, json: async () => b }), b = o.body ? JSON.parse(o.body) : null;
+      if (url.endsWith('/oauth/token')) return ok({ access_token: 'TOKEN-APP', expires_in: 21600 });
+      if (url.endsWith('/v1/payments') && o.method === 'POST') { const id = id2++, st = b.payment_method_id === 'visa' ? (b.token === 'RUIM' ? 'rejected' : 'approved') : 'pending';
+        pay[id] = { ...b, id, status: st, status_detail: b.token === 'RUIM' ? 'cc_rejected_insufficient_amount' : 'accredited', payment_type_id: b.payment_method_id === 'visa' ? 'credit_card' : b.payment_method_id === 'pix' ? 'bank_transfer' : 'ticket', installments: b.installments || 1, card: { last_four_digits: '4242' }, auth: o.headers.Authorization };
+        return ok({ ...pay[id], transaction_details: { digitable_line: '2379-LINHA', external_resource_url: 'https://mp/boleto/' + id }, point_of_interaction: { transaction_data: { qr_code: 'PIX-' + id } } }); }
+      const m = url.match(/\/v1\/payments\/(\d+)$/); if (m) return ok(pay[m[1]]);
+      if (url.includes('/v1/customers/search')) return ok({ results: [] });
+      if (url.endsWith('/v1/customers')) return ok({ id: 'CUST1' });
+      if (url.endsWith('/v1/customers/CUST1/cards')) return ok({ id: 'CARD1', last_four_digits: '4242', payment_method: { id: 'visa', name: 'Visa' }, expiration_month: 8, expiration_year: 2030 });
+      if (url.endsWith('/preapproval') && o.method === 'POST') { prer = { id: 'PRE1', status: 'authorized', auto_recurring: b.auto_recurring, summarized: { charged_quantity: 0 }, body: b, auth: o.headers.Authorization }; return ok(prer); }
+      if (url.includes('/preapproval/PRE1')) { if (o.method === 'PUT') { if (b.status) prer.status = b.status; if (b.auto_recurring) prer.auto_recurring = { ...prer.auto_recurring, ...b.auto_recurring }; } return ok(prer); }
+      throw new Error('url inesperada ' + url);
+    };
+    await t('pagar: sem a chave pública da conta, pede para a escola reconectar; com ela, devolve valor e parcelas', async () => {
+      let r = resp(); await CA.pagar(req({ acao: 'preparar', eid: 'e5', itens: ['m:2026-10:b1'] }, 'ok:pai'), r);
+      assert.strictEqual(r.code, 412); assert.strictEqual(r.body.codigo, 'reconectar');
+      S2.set('escolas/e5/segredos/mp', { token: 'TOKEN-E5', via: 'oauth', publicKey: 'PUB-E5' });
+      r = resp(); await CA.pagar(req({ acao: 'preparar', eid: 'e5', itens: ['m:2026-10:b1'] }, 'ok:pai'), r);
+      assert.strictEqual(r.code, 200, JSON.stringify(r.body)); assert.deepStrictEqual([r.body.publicKey, r.body.maxParcelas, r.body.valor], ['PUB-E5', 3, C.valorForma(r.body.base, 'cartao', { pixRepassa: true }, 0.01).valor]);
+      r = resp(); await CA.pagar(req({ acao: 'preparar', eid: 'e5', itens: ['m:2026-10:b1'] }, 'ok:estranho'), r); assert.strictEqual(r.code, 403);
+    });
+    await t('pagar: cartão recusado explica o motivo; aprovado dá baixa na hora como Cartão em 3x, com a taxa do app, e guarda o cartão', async () => {
+      let r = resp(); await CA.pagar(req({ acao: 'cartao', eid: 'e5', itens: ['m:2026-10:b1'], token: 'RUIM', metodo: 'visa', parcelas: 3 }, 'ok:pai'), r);
+      assert.strictEqual(r.code, 402); assert.match(r.body.erro, /limite/); assert.ok(!S2.has('escolas/e5/pagamentos/b1'));
+      r = resp(); await CA.pagar(req({ acao: 'cartao', eid: 'e5', itens: ['m:2026-10:b1'], token: 'TOK1', token2: 'TOK2', salvar: true, metodo: 'visa', parcelas: 9 }, 'ok:pai'), r);
+      assert.strictEqual(r.code, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.parcelas, 3); // no máximo o que a escola liberou
+      const p = Object.values(pay).at(-1); assert.strictEqual(p.application_fee, C.r2(p.transaction_amount * 0.01)); assert.strictEqual(p.auth, 'Bearer TOKEN-E5'); assert.strictEqual(p.binary_mode, true);
+      const pg = S2.get('escolas/e5/pagamentos/b1').mens['2026-10']; assert.deepStrictEqual([pg.via, pg.parcelas, pg.v], ['cartao', 3, 100]);
+      assert.deepStrictEqual([r.body.cartao.marca, r.body.cartao.fim, r.body.cartao.auto], ['Visa', '4242', false]);
+      r = resp(); await CA.pagar(req({ acao: 'automatico', eid: 'e5', rec: 'escola', ligar: true }, 'ok:pai'), r); assert.strictEqual(r.code, 412); // sem a liberação do Mercado Pago
+    });
+    await t('pagar: boleto confere CPF e endereço e devolve a linha digitável', async () => {
+      S2.set('escolas/e5/alunas/b2', { nome: 'Caio', responsavelId: 'q1', turmas: ['t1'], inicio: '2026-10' });
+      let r = resp(); await CA.pagar(req({ acao: 'boleto', eid: 'e5', itens: ['m:2026-10:b2'], pagador: { nome: 'Pai', cpf: '123' } }, 'ok:pai'), r); assert.strictEqual(r.code, 400);
+      r = resp(); await CA.pagar(req({ acao: 'boleto', eid: 'e5', itens: ['m:2026-10:b2'], pagador: { nome: 'Pedro Alves', cpf: '529.982.247-25', cep: '50000-000', rua: 'Rua A', numero: '10', bairro: 'Boa Vista', cidade: 'Recife', uf: 'PE' } }, 'ok:pai'), r);
+      assert.strictEqual(r.code, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.boleto.linha, '2379-LINHA');
+      const p = Object.values(pay).at(-1); assert.strictEqual(p.payment_method_id, 'bolbradesco'); assert.strictEqual(p.payer.address.federal_unit, 'PE');
+      // pago: o aviso do Mercado Pago dá baixa como Boleto
+      p.status = 'approved'; const w = resp(); await P2.mpWebhook({ query: { e: 'e5', r: 'escola', 'data.id': String(p.id) }, body: {} }, w);
+      assert.strictEqual(S2.get('escolas/e5/pagamentos/b2').mens['2026-10'].via, 'boleto');
+    });
+    await t('plano: primeiro acesso cria 30 dias de teste; o teste é um por CPF/CNPJ', async () => {
+      let r = resp(); await AS.plano(req({ acao: 'estado', eid: 'e5' }, 'ok:pai'), r); assert.strictEqual(r.code, 403);
+      r = resp(); await AS.plano(req({ acao: 'estado', eid: 'e5' }, 'ok:adm5'), r);
+      assert.strictEqual(r.code, 200, JSON.stringify(r.body)); assert.strictEqual(r.body.plano.testeAte, '2026-11-14'); assert.strictEqual(r.body.situacao.fase, 'teste');
+      assert.deepStrictEqual([r.body.alunos, r.body.mensal.valor, r.body.anual.valor, r.body.publicKey], [2, 39, 390, 'APP_PUB']);
+      r = resp(); await AS.plano(req({ acao: 'documento', eid: 'e5', doc: '529.982.247-25' }, 'ok:adm5'), r); assert.strictEqual(r.body.aviso, null);
+      S2.set('escolas/e6', { nome: 'Escola Seis', admins: ['adm6'] });
+      r = resp(); await AS.plano(req({ acao: 'documento', eid: 'e6', doc: '52998224725' }, 'ok:adm6'), r);
+      assert.match(r.body.aviso, /já usou/); assert.strictEqual(r.body.plano.testeAte, H);
+    });
+    await t('plano: Pix na conta da empresa estende um mês a partir do vencimento; atraso de 6 dias trava (só leitura)', async () => {
+      S2.set('escolas/e6/config/plano', { ...S2.get('escolas/e6/config/plano'), testeAte: '2026-10-09' });
+      let r = resp(); await AS.plano(req({ acao: 'estado', eid: 'e6' }, 'ok:adm6'), r); assert.strictEqual(S2.get('escolas/e6/config/plano').bloqueio, 'leitura');
+      r = resp(); await AS.plano(req({ acao: 'pix', eid: 'e6' }, 'ok:adm6'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+      const p = pay[r.body.pix.mpId]; assert.strictEqual(p.auth, 'Bearer TOKEN-APP'); assert.strictEqual(p.application_fee, undefined); assert.strictEqual(p.transaction_amount, 39);
+      p.status = 'approved'; const w = resp(); await AS.planoWebhook({ query: { e: 'e6', 'data.id': String(p.id) }, body: {} }, w);
+      const pl = S2.get('escolas/e6/config/plano'); assert.deepStrictEqual([pl.pagoAte, pl.bloqueio, pl.fase], ['2026-11-09', null, 'ativo']);
+      await AS.planoWebhook({ query: { e: 'e6', 'data.id': String(p.id) }, body: {} }, resp()); assert.strictEqual(S2.get('escolas/e6/config/plano').pagoAte, '2026-11-09'); // aviso repetido não soma de novo
+    });
+    await t('plano suspenso: a família não paga pelo app e recebe a mensagem de pausa', async () => {
+      S2.set('escolas/e5/config/plano', { ...S2.get('escolas/e5/config/plano'), bloqueio: 'suspensa' });
+      const r = resp(); await P2.criarPix(req({ eid: 'e5', itens: ['m:2026-11:b1'] }, 'ok:pai'), r);
+      assert.strictEqual(r.code, 423); assert.strictEqual(r.body.erro, 'O acesso da escola ao app e seus serviços está pausado. Fale com a escola.');
+      S2.set('escolas/e5/config/plano', { ...S2.get('escolas/e5/config/plano'), bloqueio: null });
+    });
+    await t('plano no cartão: assinatura começa no fim do teste; cada cobrança estende; preço segue a faixa e o desconto', async () => {
+      let r = resp(); await AS.plano(req({ acao: 'cartao', eid: 'e5', token: 'CT1', marca: 'Visa', fim: '4242' }, 'ok:adm5'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+      assert.strictEqual(prer.body.auto_recurring.start_date.slice(0, 10), '2026-11-14'); assert.strictEqual(prer.auth, 'Bearer TOKEN-APP');
+      prer.summarized.charged_quantity = 1; await AS.interno.diario();
+      assert.strictEqual(S2.get('escolas/e5/config/plano').pagoAte, '2026-12-14');
+      r = resp(); await AS.plano(req({ acao: 'donoDesconto', eid: 'e5', pct: 50, motivo: 'parceria' }, 'ok:dono@x.com'), r); assert.strictEqual(r.code, 403); // e-mail não confirmado
+    });
+    await t('painel do dono: meses grátis e desconto por escola, com histórico; a assinatura pausa nos meses grátis', async () => {
+      const dono = 'ok:dono:v';
+      S2.set('servidor/plataforma', { emails: ['dono@x.com'] });
+      let r = resp(); await AS.plano(req({ acao: 'donoEscolas' }, 'ok:adm5:v'), r); assert.strictEqual(r.code, 403);
+      r = resp(); await AS.plano(req({ acao: 'donoDesconto', eid: 'e5', pct: 50, motivo: 'parceria' }, dono), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+      assert.strictEqual(prer.auto_recurring.transaction_amount, 19.5);
+      const e5 = () => r.body.escolas.find(x => x.eid === 'e5'); assert.strictEqual(e5().valor, 19.5);
+      r = resp(); await AS.plano(req({ acao: 'donoDesconto', eid: 'e5', valor: '25', ate: '2027-03-01' }, dono), r); assert.strictEqual(e5().valor, 25);
+      r = resp(); await AS.plano(req({ acao: 'donoCortesia', eid: 'e5', meses: 3, motivo: 'indicação' }, dono), r);
+      assert.strictEqual(e5().cortesiaAte, '2027-03-14'); assert.strictEqual(e5().fase, 'cortesia'); assert.strictEqual(prer.status, 'paused');
+      assert.deepStrictEqual(e5().historico.map(h => h.txt.split(':')[0].split(',')[0]), ['Desconto', 'Desconto', '3 meses grátis']);
+      r = resp(); await AS.plano(req({ acao: 'donoTirarCortesia', eid: 'e5' }, dono), r); assert.strictEqual(prer.status, 'authorized');
+    });
+  }
   Date.now = realNow;
   console.log(`\n${n} testes passaram.`);
 })().catch(e => { console.error('✗', e); process.exit(1); });

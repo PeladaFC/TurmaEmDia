@@ -70,7 +70,7 @@ module.exports = db => {
     const r = await fetch(MP + '/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(corpo) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.access_token) { logger.error('mp oauth', r.status, j.message || j.error); throw erro('O Mercado Pago não liberou a conta.', 502); }
-    return { token: j.access_token, refresh: j.refresh_token || null, expira: Date.now() + (Number(j.expires_in) || 15552000) * 1000, mpUser: j.user_id != null ? String(j.user_id) : null };
+    return { token: j.access_token, refresh: j.refresh_token || null, expira: Date.now() + (Number(j.expires_in) || 15552000) * 1000, mpUser: j.user_id != null ? String(j.user_id) : null, ...(j.public_key ? { publicKey: String(j.public_key) } : {}) };
   }
   // chave da conta de quem recebe: a escola (segredos/mp) ou um(a) professor(a) (segredos/mp_{pid});
   // renova sozinha quando falta menos de 15 dias (vale ~6 meses)
@@ -127,6 +127,21 @@ module.exports = db => {
     return { cfg: cfg || {}, itens, rids: [...rids], extras };
   }
 
+  // um pagamento para cada recebedor (escola ou professor), com a parte de cada item que é dele
+  function lotesDe(itens, cfg, extras) {
+    const por = {};
+    for (const i of itens) for (const [rec, v] of Object.entries(i.partes || { escola: i.v })) {
+      const L = por[rec] = por[rec] || { rec, base: 0, itens: [] };
+      L.base = C.r2(L.base + v); L.itens.push({ k: i.k, tipo: i.tipo, alid: i.alid, mes: i.mes || null, xid: i.xid || null, aid: i.aid || null, n: i.n || null, v: C.r2(v), total: i.v, recs: Object.keys(i.partes || { escola: 1 }), desc: i.desc, nome: i.nome, detalhe: i.detalhe || null, enc: i.enc ? { base: i.enc.base, multa: i.enc.multa || 0, juros: i.enc.juros || 0 } : null });
+    }
+    // quem paga cobre a taxa: escolha da escola, ou do evento para inscrição e taxas de evento
+    for (const L of Object.values(por)) L.baseRep = C.baseRepasse(L.itens, cfg, extras);
+    return Object.values(por).sort((x, y) => (y.rec === 'escola') - (x.rec === 'escola') || x.rec.localeCompare(y.rec));
+  }
+  // escola com o plano do app suspenso (mais de 30 dias sem pagar): as famílias não pagam pelo app
+  const PAUSA = 'O acesso da escola ao app e seus serviços está pausado. Fale com a escola.';
+  async function pausada(eid) { const p = await ler(`escolas/${eid}/config/plano`); return !!(p && p.bloqueio === 'suspensa'); }
+
   const criarPix = onRequest({ cors: true, maxInstances: 5 }, async (req, res) => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST.' });
@@ -135,19 +150,12 @@ module.exports = db => {
       if (!idOk(eid) || !Array.isArray(chaves) || !chaves.length || chaves.length > 80 || !chaves.every(k => typeof k === 'string' && k.length < 140)) return res.status(400).json({ erro: 'Pedido inválido.' });
       const escola = await ler(`escolas/${eid}`);
       if (!escola) return res.status(404).json({ erro: 'Escola não encontrada.' });
+      if (await pausada(eid)) return res.status(423).json({ erro: PAUSA, codigo: 'pausada' });
       const adm = (escola.admins || []).includes(u.uid);
       const meus = adm ? null : await meusVinculos(eid, u.uid);
       const { cfg, itens, rids, extras } = await itensPedidos(eid, chaves, rid => adm || (rid && meus.has(rid)));
       if (!itens.length) return res.status(409).json({ erro: 'Esses itens já foram pagos ou não estão mais em aberto.' });
-      // um Pix para cada recebedor (escola ou professor), com a parte de cada item que é dele
-      const por = {};
-      for (const i of itens) for (const [rec, v] of Object.entries(i.partes || { escola: i.v })) {
-        const L = por[rec] = por[rec] || { rec, base: 0, itens: [] };
-        L.base = C.r2(L.base + v); L.itens.push({ k: i.k, tipo: i.tipo, alid: i.alid, mes: i.mes || null, xid: i.xid || null, aid: i.aid || null, n: i.n || null, v: C.r2(v), total: i.v, recs: Object.keys(i.partes || { escola: 1 }), desc: i.desc, nome: i.nome, detalhe: i.detalhe || null, enc: i.enc ? { base: i.enc.base, multa: i.enc.multa || 0, juros: i.enc.juros || 0 } : null });
-      }
-      // quem paga cobre a taxa: escolha da escola, ou do evento para inscrição e taxas de evento
-      for (const L of Object.values(por)) L.baseRep = C.baseRepasse(L.itens, cfg, extras);
-      const lotes = Object.values(por).sort((x, y) => (y.rec === 'escola') - (x.rec === 'escola') || x.rec.localeCompare(y.rec));
+      const lotes = lotesDe(itens, cfg, extras);
       const profs = await mapa(`escolas/${eid}/professoras`), nomeRec = r => r === 'escola' ? (escola.nome || 'a escola') : ((profs[r] || {}).nome || 'o(a) professor(a)');
       const contas = {};
       for (const L of lotes) contas[L.rec] = await contaMP(eid, L.rec);
@@ -204,9 +212,10 @@ module.exports = db => {
   }
 
   // baixa de uma cobrança aprovada: grava cada item como pago na ficha da aluna (valor da dívida, sem a taxa)
-  async function darBaixa(eid, cob, mpId) {
+  const NOME_VIA = { pix: 'Pix automático', boleto: 'Boleto', cartao: 'Cartão' };
+  async function darBaixa(eid, cob, mpId, via = 'pix', parcelas = 1) {
     const rec = cob.rec || 'escola';
-    const val = v => ({ s: 'pago', d: hojeRecife(), v: C.r2(v), obs: 'Pix automático', via: 'pix', mp: String(mpId), rec });
+    const val = v => ({ s: 'pago', d: hojeRecife(), v: C.r2(v), obs: via === 'pix' ? 'Pix automático' : `${NOME_VIA[via] || 'Pago'} pelo app${parcelas > 1 ? ` em ${parcelas}x` : ''}`, via, ...(parcelas > 1 ? { parcelas } : {}), mp: String(mpId), rec });
     const porAluna = {};
     for (const i of cob.itens || []) (porAluna[i.alid] = porAluna[i.alid] || []).push(i);
     for (const [alid, its] of Object.entries(porAluna)) {
@@ -228,6 +237,13 @@ module.exports = db => {
     }
   }
 
+  // via do pagamento no Mercado Pago (Pix, boleto ou cartão)
+  const viaDe = p => p.payment_type_id === 'credit_card' || p.payment_type_id === 'debit_card' ? 'cartao' : p.payment_type_id === 'ticket' ? 'boleto' : 'pix';
+  // pagamento aprovado (pelo aviso do Mercado Pago, ou na hora, no cartão): baixa e nota fiscal, uma vez só
+  async function aprovado(eid, chave, cob, p) {
+    await darBaixa(eid, cob, p.id, viaDe(p), Number(p.installments) || 1); logger.info('pago', eid, chave, p.id);
+    if (ganchos.aposPix && cob.status !== 'approved') await ganchos.aposPix(eid, chave, cob);
+  }
   const mpWebhook = onRequest({ maxInstances: 5 }, async (req, res) => {
     try {
       const eid = String(req.query.e || ''), rec = String(req.query.r || 'escola');
@@ -245,8 +261,7 @@ module.exports = db => {
       if (!cob || (cob.rec || 'escola') !== rec) return res.status(200).send('ok');
       if (cob.mpId && cob.mpId !== String(p.id) && cob.status === 'approved') return res.status(200).send('ok');
       await cobRef.set({ status: p.status, mpId: String(p.id), atualizadoEm: Date.now(), ...(p.status === 'approved' && !cob.pagoEm ? { pagoEm: Date.parse(p.date_approved || '') || Date.now() } : {}) }, { merge: true });
-      if (p.status === 'approved') { await darBaixa(eid, cob, p.id); logger.info('pago', eid, chave, p.id);
-        if (ganchos.aposPix && cob.status !== 'approved') await ganchos.aposPix(eid, chave, cob); }
+      if (p.status === 'approved') await aprovado(eid, chave, cob, p);
       res.status(200).send('ok');
     } catch (e) { logger.error(e); res.status(200).send('ok'); }
   });
@@ -306,6 +321,7 @@ module.exports = db => {
         if (acao === 'desconectar') {
           await segredoDe(eid, pid).delete();
           await pRef.set({ mpConectadoEm: null, mpConta: null, mpDesligadoEm: Date.now() }, { merge: true });
+          await db.doc(`escolas/${eid}/profsPublico/${pid}`).set({ mpChave: null }, { merge: true });
           return res.json({ ok: true });
         }
         if (acao === 'link') {
@@ -324,7 +340,7 @@ module.exports = db => {
       }
       if (acao === 'desconectar') {
         await segredoDe(eid, 'escola').delete();
-        await db.doc(`escolas/${eid}/config/geral`).set({ mpConectadoEm: null }, { merge: true });
+        await db.doc(`escolas/${eid}/config/geral`).set({ mpConectadoEm: null, mpChave: null }, { merge: true });
         await db.doc(`escolas/${eid}/config/mp`).set({ conta: null, confirmada: false }, { merge: true });
         return res.json({ ok: true });
       }
@@ -356,12 +372,14 @@ module.exports = db => {
         await segredoDe(e.eid, e.pid).set({ ...n, via: 'oauth', em: Date.now(), por: 'link' });
         const conta = await dadosConta(n.token, e.eid, e.pid), esc_ = (await ler(`escolas/${e.eid}`)) || {};
         await db.doc(`escolas/${e.eid}/professoras/${e.pid}`).set({ mpConectadoEm: Date.now(), mpConta: (conta && conta.nome) || null, mpDoc: (conta && conta.doc) || null }, { merge: true });
+        // chave pública da conta (não é segredo): o app usa para o cartão ir direto ao Mercado Pago
+        await db.doc(`escolas/${e.eid}/profsPublico/${e.pid}`).set({ mpChave: n.publicKey || null }, { merge: true });
         logger.info('mp professor conectado', e.eid, e.pid, n.mpUser);
         return res.status(200).set('Content-Type', 'text/html; charset=utf-8').send(paginaSimples('Conta ligada!', `A sua conta do Mercado Pago${conta && conta.nome ? ` (${esc(conta.nome)})` : ''} vai receber os pagamentos das suas turmas na ${esc(esc_.nome || 'escola')}. Pode fechar esta página.`));
       }
       await db.doc(`escolas/${e.eid}/segredos/mp`).set({ ...n, via: 'oauth', em: Date.now(), por: e.uid });
       const conta = await dadosConta(n.token, e.eid, 'escola');
-      await db.doc(`escolas/${e.eid}/config/geral`).set({ mpConectadoEm: Date.now(), mpTaxaApp: P.comissao }, { merge: true });
+      await db.doc(`escolas/${e.eid}/config/geral`).set({ mpConectadoEm: Date.now(), mpTaxaApp: P.comissao, mpChave: n.publicKey || null }, { merge: true });
       await db.doc(`escolas/${e.eid}/config/mp`).set({ conta: conta || null, confirmada: false }, { merge: true });
       logger.info('mp conectado', e.eid, n.mpUser);
       volta('ok');
@@ -406,5 +424,5 @@ module.exports = db => {
     return { mes, linhas, total: Math.round(linhas.reduce((s, l) => s + l.total, 0) * 100) / 100 };
   }
 
-  return { criarPix, mpWebhook, mpConectar, mpRetorno, mpLigar, vinculos, interno: { comissoesDoMes, usuario, ganchos } };
+  return { criarPix, mpWebhook, mpConectar, mpRetorno, mpLigar, vinculos, interno: { comissoesDoMes, usuario, ganchos, ler, mapa, erro, idOk, plataforma, contaMP, meusVinculos, itensPedidos, lotesDe, aprovado, darBaixa, pausada, PAUSA, motivoMP, BASE, MP, hojeRecife, isoRecife, trocaOAuth } };
 };

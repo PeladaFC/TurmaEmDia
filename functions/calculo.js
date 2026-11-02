@@ -264,5 +264,41 @@
     alunos.sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
     return { turmas: minhas, alunos, rec: rec.sort(ord), atr: atr.sort(ord), ven: ven.sort(ord), totais: { recebido: soma(rec), atrasado: soma(atr), aVencer: soma(ven) } };
   }
-  return { vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
+
+  /* Formas de pagamento da família (Pix, boleto, cartão): quanto a família paga para uma base.
+     rep = parte em que quem paga cobre a taxa. Cartão parcelado: o valor é o mesmo do à vista;
+     os juros do parcelamento o Mercado Pago soma na fatura de quem paga (ou a escola absorve, se ligou "sem juros" na conta dela). */
+  const TAXAS_PADRAO = { pix: 0.99, boleto: 3.49, cartao: 4.98 };
+  function taxasDe(cfg) { const t = (cfg || {}).taxas || {}, n = (x, d) => Number.isFinite(Number(x)) && Number(x) >= 0 && Number(x) < 30 ? Number(x) : d;
+    return { pix: n(t.pix, TAXAS_PADRAO.pix), boleto: n(t.boleto, TAXAS_PADRAO.boleto), cartao: n(t.cartao, TAXAS_PADRAO.cartao) }; }
+  function valorForma(base, forma, cfg, comissao, baseRep) {
+    const b = r2(base), t = taxasDe(cfg), com = Number(comissao) || 0, rep = Math.min(b, r2(baseRep == null ? ((cfg || {}).pixRepassa === true ? b : 0) : baseRep));
+    const up = pct => rep > 0 ? r2(r2(b - rep) + Math.ceil(rep / (1 - pct - com) * 100 - 1e-6) / 100) : b;
+    const valor = forma === 'boleto' ? (rep > 0 ? r2(r2(b - rep) + Math.ceil((rep + t.boleto) / (1 - com) * 100 - 1e-6) / 100) : b) : up((forma === 'cartao' ? t.cartao : t.pix) / 100);
+    return { valor, fee: com > 0 ? r2(valor * com) : 0 };
+  }
+  /* Plano da escola: o preço depende de quantos alunos ativos ela tem. Anual = 10 mensalidades (2 meses grátis). */
+  const PLANOS = [{ id: 'inicial', nome: 'Inicial', ate: 30, mes: 39 }, { id: 'essencial', nome: 'Essencial', ate: 100, mes: 69 }, { id: 'completo', nome: 'Completo', ate: 250, mes: 129 }, { id: 'grande', nome: 'Grande', ate: null, mes: 199 }];
+  const planoPara = n => PLANOS.find(p => p.ate == null || (Number(n) || 0) <= p.ate);
+  const difDias = (a, b) => Math.round((Date.parse(b + 'T12:00:00Z') - Date.parse(a + 'T12:00:00Z')) / 864e5);
+  function maisMeses(dia, n) { const [y, m, d] = String(dia).split('-').map(Number), alvo = new Date(Date.UTC(y, m - 1 + n, 1)), ult = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+    alvo.setUTCDate(Math.min(d, ult)); return alvo.toISOString().slice(0, 10); }
+  const maisDias = (dia, n) => new Date(Date.parse(dia + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+  // desconto que o dono do app deu para a escola: { pct } ou { valor } (por mês), até uma data (ate) ou sem prazo
+  const descontoPlano = (p, hoje) => { const d = (p || {}).desconto; return d && (Number(d.pct) > 0 || Number(d.valor) >= 0 && d.valor != null) && (!d.ate || d.ate >= hoje) ? d : null; };
+  function precoPlano(nAlunos, ciclo, p, hoje) {
+    const pl = planoPara(nAlunos), meses = ciclo === 'anual' ? 10 : 1, cheio = pl.mes * meses, d = descontoPlano(p, hoje);
+    const valor = !d ? cheio : d.valor != null ? Math.min(cheio, r2(Number(d.valor) * meses)) : r2(cheio * (1 - Math.min(100, Number(d.pct)) / 100));
+    return { plano: pl, cheio, desconto: d, valor };
+  }
+  /* Situação do plano: teste ou pago em dia; até 5 dias de atraso só aviso; de 6 a 30, só leitura
+     (sem registrar pagamento em dinheiro; as famílias seguem pagando pelo app); mais de 30, suspensa; 90, aviso de encerramento. */
+  function situacaoPlano(p, hoje) {
+    if (!p || (!p.testeAte && !p.pagoAte && !p.cortesiaAte)) return { fase: 'livre', atraso: 0 };
+    // vence no último destes: fim do teste, até onde está pago, meses grátis dados pelo dono do app
+    const venc = [p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(), atraso = difDias(venc, hoje);
+    const fase = atraso <= 0 ? ((p.cortesiaAte || '') >= hoje && (p.cortesiaAte || '') >= (p.pagoAte || '') ? 'cortesia' : (p.pagoAte || '') >= hoje ? 'ativo' : 'teste') : atraso <= 5 ? 'aviso' : atraso <= 30 ? 'leitura' : 'suspensa';
+    return { fase, venc, atraso, restam: Math.max(0, -atraso), encerrar: atraso >= 90, bloqueio: fase === 'leitura' ? 'leitura' : fase === 'suspensa' ? 'suspensa' : null };
+  }
+  return { TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
 });
