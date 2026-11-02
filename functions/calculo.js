@@ -300,5 +300,22 @@
     const fase = atraso <= 0 ? ((p.cortesiaAte || '') >= hoje && (p.cortesiaAte || '') >= (p.pagoAte || '') ? 'cortesia' : (p.pagoAte || '') >= hoje ? 'ativo' : 'teste') : atraso <= 5 ? 'aviso' : atraso <= 30 ? 'leitura' : 'suspensa';
     return { fase, venc, atraso, restam: Math.max(0, -atraso), encerrar: atraso >= 90, bloqueio: fase === 'leitura' ? 'leitura' : fase === 'suspensa' ? 'suspensa' : null };
   }
-  return { TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
+
+  /* Saúde para o professor: o resumo do termo de matrícula (só o que não é "não"), as alergias, os remédios, se a escola
+     pode dar os primeiros socorros, a situação do atestado e o contato de emergência. O termo inteiro e os documentos ficam com a escola. */
+  const SAUDE_CURTA = { coracao: 'Problema no coração ou só faz atividade com orientação médica', esforco: 'Dor no peito, falta de ar ou cansaço exagerado no esforço', desmaio: 'Já desmaiou ou teve tontura forte no exercício',
+    doenca: 'Asma, bronquite, epilepsia, diabetes ou outra doença que pede cuidado', ossos: 'Problema em ossos, articulações ou coluna, ou lesão recente', outro: 'Outra razão de saúde para não fazer atividade' };
+  function saudeProfessor(t) {
+    if (!t) return null;
+    const itens = Object.keys(SAUDE_CURTA).filter(k => (t.respostas || {})[k]).map(k => SAUDE_CURTA[k]), at = t.atestado || null;
+    const e = t.emergencia || {}, r = { itens, detalhes: t.detalhes || '', alergias: t.alergias || '', remedios: t.remedios || '', semPrimeiros: t.primeirosSocorros === false,
+      atestado: (() => { const a = at || {}, novo = x => x && Date.now() - x < 365 * 864e5;
+        if (novo(a.recebidoEm) && (!a.enviadoEm || a.recebidoEm >= a.enviadoEm)) return 'ok';
+        if (novo(a.enviadoEm) && !(a.recusa && a.recusa.em > a.enviadoEm)) return 'conferir';
+        if (!(itens.length || a.pedidoEm)) return null; return a.recusa ? 'recusado' : 'falta'; })(),
+      emergencia: e.nome || e.telefone ? { nome: e.nome || '', telefone: e.telefone || '', parentesco: e.parentesco || '' } : null };
+    r.alerta = !!(itens.length || r.detalhes || r.alergias || r.remedios || r.semPrimeiros);
+    return r;
+  }
+  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
 });

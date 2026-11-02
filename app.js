@@ -2450,9 +2450,24 @@ function pendenciasAluno(alid) {
 }
 const categoriaTxt = a => a && /^\d{4}/.test(a.nascimento || '') ? `Categoria ${a.nascimento.slice(0, 4)}` : 'Sem data de nascimento';
 
+// perfil (professor): a saúde do aluno, do termo de matrícula, para a aula ser segura
+function saudeProfHTML(alid) {
+  const x = ((S.pp || {}).saude || {})[alid], cab = '<section class="psec"><div class="psec-cab"><h2>Saúde</h2></div>';
+  if (!x) return `${cab}<div class="plista"><div class="plinha sub">A família ainda não preencheu o termo de matrícula. Na dúvida, fale com a escola.</div></div></section>`;
+  const it = [];
+  x.itens.forEach(t => it.push(['Saúde', t]));
+  if (x.detalhes) it.push(['Detalhes', x.detalhes]);
+  if (x.alergias) it.push(['Alergias', x.alergias]);
+  if (x.remedios) it.push(['Remédios', x.remedios]);
+  if (x.semPrimeiros) it.push(['Atenção', 'A família não autoriza os primeiros socorros pela escola: em caso de problema, ligue para o contato de emergência']);
+  if (x.atestado) it.push(['Atestado', { ok: 'Entregue e conferido pela escola', conferir: 'Enviado; a escola ainda vai conferir', recusado: 'A escola pediu outro', falta: 'Ainda não foi entregue' }[x.atestado]]);
+  const e = x.emergencia, tel = e && e.telefone ? C.soDigitos(e.telefone) : '';
+  return `${cab}<div class="plista">${it.length ? it.map(([r, v]) => `<div class="plinha psaude"><span class="psaude-r">${esc(r)}</span><span class="grow">${esc(v)}</span></div>`).join('') : '<div class="plinha sub">No termo, tudo "não": nada de saúde a observar.</div>'}
+    ${e ? `<div class="plinha psaude"><span class="psaude-r">Emergência</span><span class="grow">${esc(e.nome)}${e.parentesco ? ` (${esc(e.parentesco)})` : ''}${tel ? ` · <a href="tel:${esc(tel)}" class="num">${esc(foneBR(e.telefone) || e.telefone)}</a>` : ''}</span></div>` : ''}</div>
+    <span class="s" style="display:block;margin-top:6px">Dados de saúde são sigilosos: use só para cuidar do aluno na aula.</span></section>`;
+}
 // perfil (escola): o que o termo de matrícula tem de diferente de "não" (o que a equipe precisa saber)
-const SAUDE_CURTA = { coracao: 'Problema no coração ou só faz atividade com orientação médica', esforco: 'Dor no peito, falta de ar ou cansaço exagerado no esforço', desmaio: 'Já desmaiou ou teve tontura forte no exercício',
-  doenca: 'Asma, bronquite, epilepsia, diabetes ou outra doença que pede cuidado', ossos: 'Problema em ossos, articulações ou coluna, ou lesão recente', outro: 'Outra razão de saúde para não fazer atividade' };
+const SAUDE_CURTA = C.SAUDE_CURTA;
 function saudePerfilHTML(alid) {
   const x = termoDe(alid), t = x.t;
   const cab = `<section class="psec"><div class="psec-cab"><h2>Saúde</h2>${x.st === 'ok' ? `<button type="button" class="pacao" data-psaude="${esc(alid)}">Ver termo</button>` : ''}</div>`;
@@ -2515,7 +2530,7 @@ function sheetPerfilAluno(alid, volta) {
       </div>
     </div>
     ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
-    ${adm ? blocoCancelPerfil(alid) + blocoPendPerfil(alid) + saudePerfilHTML(alid) : ''}
+    ${adm ? blocoCancelPerfil(alid) + blocoPendPerfil(alid) + saudePerfilHTML(alid) : prof ? saudeProfHTML(alid) : ''}
     ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${(() => { const ok = ctAssinado(alid), ult = ok || ctUltimo(alid); if (!ult && !ctPede()) return '';
       return `<button type="button" class="plinha" ${ult ? `data-pvct="${esc(alid)}"` : 'disabled'}><span class="grow">Contrato</span>${ok ? `<span class="chip pago">Assinado em ${dataBR(new Date(ok.em).toISOString().slice(0, 10))}</span>` : '<span class="chip vencido">Falta assinar</span>'}<span class="seta" aria-hidden="true">${ult ? '›' : ''}</span></button>`; })()}${docsDoAluno(alid).map(t => { const d = docDe(alid, t);
       return `<button type="button" class="plinha" data-adoc="${esc(t)}"><span class="grow">${esc(tipoDoc(t).nome)}</span>${chipDoc(d)}<span class="seta" aria-hidden="true">›</span></button>`; }).join('') || '<div class="plinha sub">Nenhum documento. Toque em "+ Documento".</div>'}</div></section>` : ''}
@@ -2653,8 +2668,9 @@ async function profMock(acao, d) {
     const pags = {}; for (const id of Object.keys(alunas)) pags[id] = (await B.get(`${p}/pagamentos/${id}`)) || {};
     const [extras, grupos, acordos, cfg] = await Promise.all([colMock(`${p}/extras`), colMock(`${p}/grupos`), colMock(`${p}/acordos`), B.get(`${p}/config/geral`)]);
     const mes = d.mes || mesHoje(), r = C.painelProfessor({ alunas, turmas, extras, grupos, acordos, cfg: cfg || {}, pags }, pid, mes, hoje()), fotos = {};
-    for (const a of r.alunos) { const f = await B.get(`${p}/fotosAlunos/${a.id}`); if (f && f.foto) fotos[a.id] = f.foto; }
-    return { pid, nome: P.nome || '', mes, ...r, fotos };
+    const saude = {};
+    for (const a of r.alunos) { const f = await B.get(`${p}/fotosAlunos/${a.id}`); if (f && f.foto) fotos[a.id] = f.foto; const x = C.saudeProfessor(await B.get(`${p}/saude/${a.id}`)); if (x) saude[a.id] = x; }
+    return { pid, nome: P.nome || '', mes, ...r, fotos, saude };
   }
   if (!alunas[d.alid]) throw new Error('Este aluno não está nas suas turmas.');
   if (acao === 'notas') return { notas: Object.entries(await colMock(`${p}/notasAlunos`)).filter(([, n]) => n.alid === d.alid).map(([id, n]) => ({ id, ...n })).sort((x, y) => (y.em || 0) - (x.em || 0)) };
@@ -2695,7 +2711,7 @@ function tPTurmas(v) {
     ${ts.map(([tid, t]) => { const al = ativos.filter(a => a.turmas.includes(tid) && (!q || semAcento(a.nome).includes(q)));
       if (q && !al.length) return '';
       return `<section class="pt-turma"><div class="pt-cab"><b>${esc(t.nome)}</b><span class="sub">${esc([t.horario, localDe(t), `${al.length} aluno${al.length === 1 ? '' : 's'}`].filter(Boolean).join(' · '))}</span></div>
-        <ul class="list">${al.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div>${chipMensal(a.mensal)}</li>`).join('') || '<li><span class="sub">Nenhum aluno nesta turma.</span></li>'}</ul></section>`; }).join('') || '<div class="empty"><b>Nenhuma turma com você ainda.</b><span>A escola escolhe o(a) professor(a) de cada turma.</span></div>'}
+        <ul class="list">${al.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}${((pp.saude || {})[a.id] || {}).alerta ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div>${chipMensal(a.mensal)}</li>`).join('') || '<li><span class="sub">Nenhum aluno nesta turma.</span></li>'}</ul></section>`; }).join('') || '<div class="empty"><b>Nenhuma turma com você ainda.</b><span>A escola escolhe o(a) professor(a) de cada turma.</span></div>'}
     <div class="note">Você vê os alunos das suas turmas e escreve notas sobre eles. Os contatos e os documentos das famílias ficam com a escola.</div>`;
   $('ppbusca').oninput = e => { S.busca = e.target.value; render(); };
   v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));

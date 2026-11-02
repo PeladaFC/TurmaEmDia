@@ -89,7 +89,10 @@ module.exports = db => {
         // fotos (pequenas) dos alunos que ele vê
         const fotos = {}, vis = r.alunos.map(a => a.id);
         if (vis.length) (await db.getAll(...vis.map(id => db.doc(`escolas/${eid}/fotosAlunos/${id}`)))).forEach(s => { if (s.exists && s.data().foto) fotos[s.id] = s.data().foto; });
-        return res.json({ pid, nome: P.nome || '', mes, ...r, fotos });
+        // saúde: o resumo do termo de cada aluno (para a aula ser segura)
+        const saude = {};
+        if (vis.length) (await db.getAll(...vis.map(id => db.doc(`escolas/${eid}/saude/${id}`)))).forEach(s => { if (s.exists) { const x = C.saudeProfessor(s.data()); if (x) saude[s.id] = x; } });
+        return res.json({ pid, nome: P.nome || '', mes, ...r, fotos, saude });
       }
 
       if (acao === 'notas' || acao === 'nota' || acao === 'apagarNota') {
