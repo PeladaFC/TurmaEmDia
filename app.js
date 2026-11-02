@@ -683,7 +683,7 @@ async function abrirEscola(eid, tab) {
   let prof = null;
   // professor(a) com acesso ao app: o servidor criou escolas/{eid}/equipe/{uid} quando ele(a) entrou com o e-mail cadastrado
   if (!admin) { const eq = await B.get(`escolas/${eid}/equipe/${EU.uid}`).catch(() => null); if (eq && eq.pid) prof = eq.pid; }
-  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['pturmas', 'pfin'], f: ['pagar', 'filhas'] }[papel];
+  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['pturmas', 'palunos', 'pfin'], f: ['pagar', 'filhas'] }[papel];
   ls.set('escolinha.ultima', eid);
   S = { eid, admin, prof, papel, escola, mes: mesHoje(), tab: tab || ls.get('escolinha.tab.' + papel) || ABAS_OK[0],
     cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, docs: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
@@ -1007,7 +1007,7 @@ function render() {
   if (!S) return;
   const adm = S.admin, abas = {
     a: [['cobr', 'Cobranças', 'cobr'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
-    p: [['pturmas', 'Minhas turmas', 'escola'], ['pfin', 'Financeiro', 'caixa']],
+    p: [['pturmas', 'Turmas', 'escola'], ['palunos', 'Alunos', 'alunas'], ['pfin', 'Financeiro', 'caixa']],
     f: [['pagar', 'Pagar', 'cobr'], ['filhas', 'Meus filhos', 'filhas']] }[S.papel];
   const comMes = (adm && ['cobr', 'fin'].includes(S.tab)) || (S.papel === 'p' && S.tab === 'pfin');
   const titulo = adm ? 'Administração' : S.prof ? 'Professor(a) ' + ((S.profs[S.prof] || {}).nome || '') : (Object.values(S.resps)[0] || {}).nome || 'Responsável';
@@ -1033,7 +1033,7 @@ function render() {
   const v = $('tela');
   if (S.plano && sitPlano().fase === 'suspensa') return telaPlanoParado(v);
   if (S.papel === 'f' && S.eu && !S.eu.consentimento) return telaConsentimento(v);
-  ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar, pturmas: tPTurmas, pfin: tPFin })[S.tab](v);
+  ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar, pturmas: tPTurmas, palunos: tPAlunos, pfin: tPFin })[S.tab](v);
   pedirFotos();
   if (foco && $(foco) && $(foco).tagName === 'INPUT' && $(foco).type !== 'checkbox') { $(foco).focus(); try { $(foco).setSelectionRange(selS, selS); } catch (e) { } }
 }
@@ -2724,6 +2724,24 @@ function tPTurmas(v) {
     <div class="note">Aqui você consulta as suas turmas e os alunos. Para mudar uma turma, fale com a escola. Toque no aluno para ver a saúde e escrever notas.</div>`;
   $('ppbusca').oninput = e => { S.busca = e.target.value; render(); };
   v.querySelectorAll('[data-pabre]').forEach(b => b.onclick = () => { const t = b.dataset.pabre; abertas.has(t) ? abertas.delete(t) : abertas.add(t); render(); });
+  v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));
+}
+// professor: todos os alunos das turmas dele, em ordem alfabética, só para consultar (busca, filtro por turma e saúde)
+function tPAlunos(v) {
+  if (ppCarregando(v)) return;
+  const pp = S.pp, q = semAcento((S.buscaPA || '').trim()), f = S.paFiltro || 'todos', nomeT = id => (S.turmas[id] || {}).nome || '';
+  const sau = a => ((pp.saude || {})[a.id] || {}).alerta, ativos = pp.alunos.filter(a => a.ativo).sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR'));
+  const lista = ativos.filter(a => (!q || semAcento(a.nome).includes(q)) && (f === 'todos' || (f === 'saude' ? sau(a) : a.turmas.includes(f))));
+  const ts = ordenar(S.turmas).filter(([t]) => pp.turmas.includes(t)), nS = ativos.filter(sau).length;
+  v.innerHTML = `<div class="headrow"><h2>Alunos</h2></div>
+    <div class="sub num">${ativos.length} aluno${ativos.length === 1 ? '' : 's'} nas suas turmas${nS ? ` · <span class="saude-ic">✚</span> ${nS} com atenção à saúde` : ''}</div>
+    <div class="field"><input id="pabusca" type="search" placeholder="Buscar aluno" aria-label="Buscar aluno" value="${esc(S.buscaPA || '')}"></div>
+    <div class="field"><select id="pafil" aria-label="Filtrar"><option value="todos">Todas as turmas</option>${nS ? `<option value="saude" ${f === 'saude' ? 'selected' : ''}>✚ Atenção à saúde</option>` : ''}${ts.map(([t, x]) => `<option value="${esc(t)}" ${f === t ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></div>
+    ${lista.length ? `<ul class="list">${lista.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}${sau(a) ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), a.turmas.filter(t => pp.turmas.includes(t)).map(nomeT).join(', ')].filter(Boolean).join(' · ')))}</div>${chipMensal(a.mensal)}</li>`).join('')}</ul>`
+      : '<div class="empty"><b>Nenhum aluno encontrado.</b><span>Confira o nome ou mude o filtro.</span></div>'}
+    <div class="note">Toque no aluno para ver a saúde e escrever notas. Para mudar o cadastro, fale com a escola.</div>`;
+  $('pabusca').oninput = e => { S.buscaPA = e.target.value; render(); };
+  $('pafil').onchange = e => { S.paFiltro = e.target.value; render(); };
   v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));
 }
 function tPFin(v) {
@@ -5831,7 +5849,7 @@ async function semearMock() {
     for (const [tid, t] of Object.entries({ t1: turmas.t1, t2: turmas.t2, ...novasT })) {
       for (let i = 0; i < 15; i++) {
         n++; const id = `d${n}`, rid = `rd${n}`, joao = i === 3 ? JOAO[tid] : null;
-        const nome = joao ? joao[0] : `${NOMES[(n * 7) % NOMES.length]} ${SOBRE[(n * 3) % SOBRE.length]}`, sob = nome.split(' ').pop();
+        const nome = joao ? joao[0] : `${NOMES[(n - 1) % NOMES.length]} ${SOBRE[(n * 7) % SOBRE.length]}`, sob = nome.split(' ').pop();
         const idadeA = t.idadeMin + (n % (t.idadeMax - t.idadeMin + 1)), nasc = `${ano - idadeA}-${pad(1 + (n % 12))}-${pad(1 + (n * 5) % 27)}`;
         const mae = `${MAES[n % MAES.length]} ${sob}`, tel = `(81) 9${String(8100 + n).padStart(4, '0')}-${String(1000 + n * 37).slice(-4)}`;
         await set(`${p}/responsaveis/${rid}`, { nome: mae, telefone: tel, cpf: '', codigo: 'D' + String(10000 + n) });
