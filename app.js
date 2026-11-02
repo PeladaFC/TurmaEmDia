@@ -2494,10 +2494,10 @@ function sheetPerfilAluno(alid, volta) {
   const a = S.alunas[alid]; if (!a) return;
   const eu = () => sheetPerfilAluno(alid, volta), adm = !!S.admin, prof = !!S.prof && !adm;
   const A = prof ? ((S.pp || {}).alunos || []).find(x => x.id === alid) || {} : null;
-  const r = adm ? respDe(alid) : {};
+  const r = adm ? respDe(alid) : prof ? (A.resp || {}) : {};
   const ts = (prof ? A.turmas || [] : a.turmas || []).map(t => S.turmas[t]).filter(Boolean);
   const gs = prof ? A.grupos || [] : porNome(S.grupos).filter(([, G]) => (G.alunas || []).includes(alid)).map(([, G]) => G.nome);
-  const wa = adm && r.telefone ? waLink(r.telefone, `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
+  const wa = (adm || prof) && r.telefone ? waLink(r.telefone, prof ? `Olá, ${primeiro(r.nome || '')}! Aqui é ${primeiro(((S.profs || {})[S.prof] || {}).nome || EU.nome || '')}, professor(a) de ${primeiro(a.nome)} na ${S.escola.nome || 'escola'}.` : `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
   const cor = hexOk(S.cfg.cor) ? S.cfg.cor : COR_PADRAO;
   let filtro = '', notas = null, parar = null;
   const desenharNotas = () => {
@@ -2526,7 +2526,7 @@ function sheetPerfilAluno(alid, volta) {
         ${idade(a.nascimento) ? `<div class="pcard-meta num">${esc(idade(a.nascimento))}</div>` : ''}
         ${ts.length ? `<div class="pcard-turmas">${ts.map(t => `<span>${esc(t.nome)}</span>`).join(' · ')}</div>` : ''}
         ${gs.length ? `<div class="pcard-grupos">${gs.map(g => `<span>${esc(g)}</span>`).join(' · ')}</div>` : ''}
-        ${adm && r.nome ? `<div class="pcard-resp"><span>${esc(r.nome)}</span>${wa ? `<a class="pcard-wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome)}">${ICO_WA}</a>` : ''}</div>` : ''}
+        ${(adm || prof) && r.nome ? `<div class="pcard-resp"><span>${prof ? "Responsável: " : ""}${esc(r.nome)}</span>${wa ? `<a class="pcard-wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome)}">${ICO_WA}</a>` : ''}</div>` : ''}
       </div>
     </div>
     ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
@@ -2669,6 +2669,7 @@ async function profMock(acao, d) {
     const [extras, grupos, acordos, cfg] = await Promise.all([colMock(`${p}/extras`), colMock(`${p}/grupos`), colMock(`${p}/acordos`), B.get(`${p}/config/geral`)]);
     const mes = d.mes || mesHoje(), r = C.painelProfessor({ alunas, turmas, extras, grupos, acordos, cfg: cfg || {}, pags }, pid, mes, hoje()), fotos = {};
     const saude = {};
+    for (const a of r.alunos) { const rr = await B.get(`${p}/responsaveis/${(alunas[a.id] || {}).responsavelId}`); if (rr) a.resp = { nome: rr.nome || '', telefone: rr.telefone || '' }; }
     for (const a of r.alunos) { const f = await B.get(`${p}/fotosAlunos/${a.id}`); if (f && f.foto) fotos[a.id] = f.foto; const x = C.saudeProfessor(await B.get(`${p}/saude/${a.id}`)); if (x) saude[a.id] = x; }
     return { pid, nome: P.nome || '', mes, ...r, fotos, saude };
   }
@@ -2715,7 +2716,7 @@ function tPTurmas(v) {
       <div class="hd"><div class="grow"><div class="t">${esc(t.nome)}</div></div></div>
       <div class="turma-info">${ddl([['Dias e horário', esc(t.horario || '—')], ['Local', esc(localDe(t) || '—')], ['Faixa etária', esc(C.faixaTxt(t))], ['Alunos', `<span class="num">${alunosTxt}</span>`], nSaude && ['Saúde', `<span class="saude-ic">✚</span> ${nSaude} com atenção à saúde`]])}</div>
       <button class="mostrar" data-pabre="${esc(tid)}" aria-expanded="${aberta}">${aberta ? 'Esconder alunos' : `Mostrar alunos${n ? ` (${n})` : ''}`}<span aria-hidden="true">${aberta ? '▴' : '▾'}</span></button>
-      ${aberta ? `<div class="ativ">${al.map(a => `<div class="turma" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}${((pp.saude || {})[a.id] || {}).alerta ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div>${chipMensal(a.mensal)}</div>`).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}</div>` : ''}</div>`;
+      ${aberta ? `<div class="ativ">${al.map(a => `<div class="turma" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}${((pp.saude || {})[a.id] || {}).alerta ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div></div>`).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}</div>` : ''}</div>`;
   };
   v.innerHTML = `<div class="headrow"><h2>Minhas turmas</h2></div>
     <div class="sub num">${ts.length} turma${ts.length === 1 ? '' : 's'} · ${ativos.length} aluno${ativos.length === 1 ? '' : 's'}</div>
@@ -2737,7 +2738,7 @@ function tPAlunos(v) {
     <div class="sub num">${ativos.length} aluno${ativos.length === 1 ? '' : 's'} nas suas turmas${nS ? ` · <span class="saude-ic">✚</span> ${nS} com atenção à saúde` : ''}</div>
     <div class="field"><input id="pabusca" type="search" placeholder="Buscar aluno" aria-label="Buscar aluno" value="${esc(S.buscaPA || '')}"></div>
     <div class="field"><select id="pafil" aria-label="Filtrar"><option value="todos">Todas as turmas</option>${nS ? `<option value="saude" ${f === 'saude' ? 'selected' : ''}>✚ Atenção à saúde</option>` : ''}${ts.map(([t, x]) => `<option value="${esc(t)}" ${f === t ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></div>
-    ${lista.length ? `<ul class="list">${lista.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}${sau(a) ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), a.turmas.filter(t => pp.turmas.includes(t)).map(nomeT).join(', ')].filter(Boolean).join(' · ')))}</div>${chipMensal(a.mensal)}</li>`).join('')}</ul>`
+    ${lista.length ? `<ul class="list">${lista.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}${sau(a) ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), a.turmas.filter(t => pp.turmas.includes(t)).map(nomeT).join(', ')].filter(Boolean).join(' · ')))}</div></li>`).join('')}</ul>`
       : '<div class="empty"><b>Nenhum aluno encontrado.</b><span>Confira o nome ou mude o filtro.</span></div>'}
     <div class="note">Toque no aluno para ver a saúde e escrever notas. Para mudar o cadastro, fale com a escola.</div>`;
   $('pabusca').oninput = e => { S.buscaPA = e.target.value; render(); };

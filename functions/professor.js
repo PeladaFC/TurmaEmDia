@@ -89,6 +89,10 @@ module.exports = db => {
         // fotos (pequenas) dos alunos que ele vê
         const fotos = {}, vis = r.alunos.map(a => a.id);
         if (vis.length) (await db.getAll(...vis.map(id => db.doc(`escolas/${eid}/fotosAlunos/${id}`)))).forEach(s => { if (s.exists && s.data().foto) fotos[s.id] = s.data().foto; });
+        // responsável de cada aluno: só o nome e o WhatsApp, para o contato rápido do professor
+        const rids = [...new Set(r.alunos.map(x => (alunas[x.id] || {}).responsavelId).filter(Boolean))], resps = {};
+        if (rids.length) (await db.getAll(...rids.map(id => db.doc(`escolas/${eid}/responsaveis/${id}`)))).forEach(s => { if (s.exists) resps[s.id] = { nome: s.data().nome || '', telefone: s.data().telefone || '' }; });
+        r.alunos.forEach(x => { const rr = resps[(alunas[x.id] || {}).responsavelId]; if (rr) x.resp = rr; });
         // saúde: o resumo do termo de cada aluno (para a aula ser segura)
         const saude = {};
         if (vis.length) (await db.getAll(...vis.map(id => db.doc(`escolas/${eid}/saude/${id}`)))).forEach(s => { if (s.exists) { const x = C.saudeProfessor(s.data()); if (x) saude[s.id] = x; } });
