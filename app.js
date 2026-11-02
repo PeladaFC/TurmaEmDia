@@ -1002,6 +1002,14 @@ function gerarMarca(fonte) {
   return { logo, logoPdf: { jpg: d.toDataURL('image/jpeg', 0.88).split(',')[1], w: pw, h: ph } };
 }
 async function prepararLogo(arquivo) { return gerarMarca(await abrirImagem(arquivo, 256)); }
+// bolinha com o número de avisos na aba (família: o que falta pagar e as taxas divididas sem resposta)
+function bolhaAba(k) {
+  if (k !== 'pagar' || S.papel !== 'f' || !S.carregado || !S.carregado.has('alunas')) return '';
+  let n = 0;
+  try { for (const id of Object.keys(S.alunas || {})) n += itensDe(id).filter(i => !i.pago).length;
+    for (const x of Object.values(S.extras || {})) if (x && x.tipo === 'taxa' && x.rateio && !C.rateioFechado(x)) n += (x.convidados || []).filter(id => S.alunas[id] && !rtSt(x, id)).length; } catch (e) { return ''; }
+  return n ? `<span class="tab-bolha num" aria-label="${n} pendente${n > 1 ? 's' : ''}">${n > 99 ? '99+' : n}</span>` : '';
+}
 function render() {
   aplicarMarca(S.cfg);
   if (!S) return;
@@ -1022,7 +1030,7 @@ function render() {
     <div id="faixa"></div>
     <main id="tela" style="display:flex;flex-direction:column;gap:16px"></main>
   </div>
-  <nav class="tabs" aria-label="Seções"><div class="in">${abas.map(([k, n, ic]) => `<button data-tab="${k}" aria-current="${S.tab === k ? 'page' : 'false'}">${ICO[ic]}${n}</button>`).join('')}</div></nav>`;
+  <nav class="tabs" aria-label="Seções"><div class="in">${abas.map(([k, n, ic]) => `<button data-tab="${k}" aria-current="${S.tab === k ? 'page' : 'false'}"><span class="tab-ic">${ICO[ic]}${bolhaAba(k)}</span>${n}</button>`).join('')}</div></nav>`;
   RAIZ().querySelectorAll('[data-tab]').forEach(b => b.onclick = () => irPara(b.dataset.tab));
   ABAS_ATUAIS = abas.map(([k]) => k);
   $('hcfg').onclick = () => sheetAjustes();
