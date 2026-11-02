@@ -1004,9 +1004,14 @@ function gerarMarca(fonte) {
 async function prepararLogo(arquivo) { return gerarMarca(await abrirImagem(arquivo, 256)); }
 // bolinha com o número de avisos na aba (família: o que falta pagar e as taxas divididas sem resposta)
 function bolhaAba(k) {
-  if (k !== 'pagar' || S.papel !== 'f' || !S.carregado || !S.carregado.has('alunas')) return '';
+  if (!['pagar', 'feventos'].includes(k) || S.papel !== 'f' || !S.carregado || !S.carregado.has('alunas')) return '';
   let n = 0;
-  try { for (const id of Object.keys(S.alunas || {})) n += itensDe(id).filter(i => !i.pago).length;
+  // eventos: convites sem resposta (dentro do prazo) e inscrições que a família ainda precisa fazer com quem organiza
+  if (k === 'feventos') { try { const h = hoje(), meus = Object.keys(S.alunas);
+    for (const [, x] of eventosAtivos()) { if (fimDe(x) < h) continue; const cv = convidadosDe(x).filter(id => meus.includes(id));
+      if (!x.prazo || x.prazo >= h) n += cv.filter(id => !partDe(x, id)).length;
+      if (modoInsc(x) === 'familia') n += cv.filter(id => partDe(x, id) === 'interesse').length; } } catch (e) { return ''; } }
+  else try { for (const id of Object.keys(S.alunas || {})) n += itensDe(id).filter(i => !i.pago).length;
     for (const x of Object.values(S.extras || {})) if (x && x.tipo === 'taxa' && x.rateio && !C.rateioFechado(x)) n += (x.convidados || []).filter(id => S.alunas[id] && !rtSt(x, id)).length; } catch (e) { return ''; }
   return n ? `<span class="tab-bolha num" aria-label="${n} pendente${n > 1 ? 's' : ''}">${n > 99 ? '99+' : n}</span>` : '';
 }
