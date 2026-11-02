@@ -3141,6 +3141,34 @@ async function cadernetaDados(tid, mes) {
   const na = new Set(chs.flatMap(c => Object.keys(c.pres || {})));
   return { chamadas: chs, alunos: Object.entries(S.alunas).filter(([id, a]) => (a.turmas || []).includes(tid) && !a.anonimizadoEm && (na.has(id) || (a.ativa !== false && C.ativaNoMes(a, mes)))).map(([id, a]) => ({ id, nome: a.nome })) };
 }
+// caderneta em PDF (A4), para imprimir ou mandar pelo WhatsApp (só a escola)
+function cadernetaPdf(t, mes, L, al, pctDe) {
+  const P = window.PdfSimples, d = P.Documento(), M = 36, larN = 150, larP = 36;
+  const col = Math.min(28, (d.w - 2 * M - larN - larP) / Math.max(1, L.length)), larT = larN + col * L.length + larP, linhaH = 17;
+  let y = 0, pag = 0;
+  const cabec = () => {
+    if (pag++) d.novaPagina();
+    d.texto(M, 46, S.escola.nome || 'Escola', { tam: 9, cor: '#777777' });
+    d.texto(M, 66, `Caderneta de chamada · ${t.nome}`, { tam: 16, neg: true });
+    d.texto(M, 84, `${nomeMesAno(mes)}${t.horario ? ' · ' + t.horario : ''}${profNome(t) ? ' · ' + profNome(t) : ''}`, { tam: 9, cor: '#555555', max: d.w - 2 * M });
+    y = 104; d.ret(M, y, larT, 26, '#f1ece4');
+    d.texto(M + 6, y + 16, 'Aluno', { tam: 8, neg: true });
+    L.forEach((c, i) => { const x = M + larN + col * i + col / 2; d.texto(x, y + 11, String(Number(c.data.slice(8))), { tam: 8, neg: true, alinha: 'meio' }); d.texto(x, y + 21, C.DIAS_SEM[diaSem(c.data)].slice(0, 3), { tam: 6, cor: '#777777', alinha: 'meio' }); });
+    d.texto(M + larT - 6, y + 16, '%', { tam: 8, neg: true, alinha: 'dir' }); y += 26;
+  };
+  cabec();
+  al.forEach((a, k) => {
+    if (y + linhaH > d.h - 60) cabec();
+    if (k % 2) d.ret(M, y, larT, linhaH, '#faf8f4');
+    d.texto(M + 6, y + 12, a.nome, { tam: 8, max: larN - 10 });
+    L.forEach((c, i) => { const x = M + larN + col * i + col / 2; if (c.semAula) { d.ret(M + larN + col * i, y, col, linhaH, '#ebe7e0'); return; }
+      const st = (c.pres || {})[a.id]; if (st) d.texto(x, y + 12, st.toUpperCase(), { tam: 8, neg: true, alinha: 'meio', cor: st === 'p' ? '#1b7f6b' : st === 'f' ? '#b0402a' : '#9a6b00' }); });
+    const p = pctDe(a.id); d.texto(M + larT - 6, y + 12, p == null ? '—' : p + '%', { tam: 8, neg: true, alinha: 'dir', cor: p != null && p < 75 ? '#b0402a' : '#222222' });
+    d.linha(M, y + linhaH, M + larT, y + linhaH, '#e2ddd3'); y += linhaH;
+  });
+  d.texto(M, Math.min(y + 18, d.h - 40), 'P presente · F falta · J falta justificada · coluna cinza: não teve aula.', { tam: 7, cor: '#777777' });
+  return d.bytes(`Caderneta ${t.nome} ${nomeMesAno(mes)}`);
+}
 function sheetCaderneta(tid, mes) {
   const t = S.turmas[tid]; if (!t) return; mes = mes || mesHoje();
   const titulo = `<h3>Caderneta · ${esc(t.nome)}</h3><div class="cal-topo"><button type="button" class="icon-btn" id="cdant" aria-label="Mês anterior">‹</button><h2 style="font-size:1.05rem">${esc(nomeMesAno(mes))}</h2><button type="button" class="icon-btn" id="cdprox" aria-label="Próximo mês" ${mes >= mesHoje() ? 'disabled' : ''}>›</button></div>`;
@@ -3161,8 +3189,9 @@ function sheetCaderneta(tid, mes) {
         <tfoot><tr><td class="cad-nome">Presentes</td>${L.map(c => `<td class="num ${c.semAula ? 'cad-sem' : ''}">${c.semAula ? '' : Object.values(c.pres || {}).filter(x => x === 'p').length}</td>`).join('')}<td></td></tr></tfoot>
       </table></div>
       <span class="s">P presente · F falta · J falta justificada. Coluna cinza: não teve aula. Toque no dia para abrir a chamada. Em vermelho, presença abaixo de 75%.</span>`;
-    sheet(titulo + corpo + '<button class="btn ghost" data-fechar style="width:100%">Fechar</button>', sh => {
+    sheet(titulo + corpo + (S.admin && L.length ? '<div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="cdpdf">Baixar PDF</button></div>' : '<button class="btn ghost" data-fechar style="width:100%">Fechar</button>'), sh => {
       ligar();
+      if ($('cdpdf')) $('cdpdf').onclick = async () => { try { const r = await salvarArquivo(`Caderneta ${t.nome} ${nomeMesAno(mes)}.pdf`.replace(/[\\/:*?"<>|]/g, '-'), cadernetaPdf(t, mes, L, al, pctDe), 'application/pdf'); if (r === 'baixado') aviso('PDF baixado'); } catch (e) { aviso(msgErro(e)); } };
       sh.querySelectorAll('[data-cdd]').forEach(th => th.onclick = () => abrirDe(() => sheetCaderneta(tid, mes), () => sheetChamada(tid, th.dataset.cdd)));
     });
   }).catch(e => sheet(titulo + `<div class="empty"><b>Não deu para abrir a caderneta.</b><span>${esc(msgErro(e))}</span></div><button class="btn ghost" data-fechar>Fechar</button>`, ligar));
