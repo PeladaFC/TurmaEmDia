@@ -2703,17 +2703,27 @@ function ppCarregando(v) {
 }
 function tPTurmas(v) {
   if (ppCarregando(v)) return;
+  // o professor vê as turmas dele no mesmo cartão da escola, só para consultar (sem editar e sem valores)
   const pp = S.pp, q = semAcento((S.busca || '').trim()), ts = ordenar(S.turmas).filter(([t]) => pp.turmas.includes(t));
-  const ativos = pp.alunos.filter(a => a.ativo);
+  const ativos = pp.alunos.filter(a => a.ativo), abertas = S.turmasAbertas = S.turmasAbertas || new Set();
+  const cartao = (tid, t) => {
+    const todos = ativos.filter(a => a.turmas.includes(tid)), al = todos.filter(a => !q || semAcento(a.nome).includes(q)), n = todos.length;
+    if (q && !al.length) return '';
+    const aberta = !!q || abertas.has(tid), nSaude = todos.filter(a => ((pp.saude || {})[a.id] || {}).alerta).length;
+    const alunosTxt = `${n} aluno${n === 1 ? '' : 's'}${t.vagas ? ` · ${n >= t.vagas ? 'turma cheia' : t.vagas - n === 1 ? 'resta 1 vaga' : `restam ${t.vagas - n} vagas`}` : ''}`;
+    return `<div class="local turma-card">
+      <div class="hd"><div class="grow"><div class="t">${esc(t.nome)}</div></div></div>
+      <div class="turma-info">${ddl([['Dias e horário', esc(t.horario || '—')], ['Local', esc(localDe(t) || '—')], ['Faixa etária', esc(C.faixaTxt(t))], ['Alunos', `<span class="num">${alunosTxt}</span>`], nSaude && ['Saúde', `<span class="saude-ic">✚</span> ${nSaude} com atenção à saúde`]])}</div>
+      <button class="mostrar" data-pabre="${esc(tid)}" aria-expanded="${aberta}">${aberta ? 'Esconder alunos' : `Mostrar alunos${n ? ` (${n})` : ''}`}<span aria-hidden="true">${aberta ? '▴' : '▾'}</span></button>
+      ${aberta ? `<div class="ativ">${al.map(a => `<div class="turma" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}${((pp.saude || {})[a.id] || {}).alerta ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div>${chipMensal(a.mensal)}</div>`).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}</div>` : ''}</div>`;
+  };
   v.innerHTML = `<div class="headrow"><h2>Minhas turmas</h2></div>
-    <div class="sub num">${ativos.length} aluno${ativos.length === 1 ? '' : 's'} · ${ts.length} turma${ts.length === 1 ? '' : 's'}</div>
+    <div class="sub num">${ts.length} turma${ts.length === 1 ? '' : 's'} · ${ativos.length} aluno${ativos.length === 1 ? '' : 's'}</div>
     <div class="field"><input id="ppbusca" type="search" placeholder="Buscar aluno" aria-label="Buscar aluno" value="${esc(S.busca || '')}"></div>
-    ${ts.map(([tid, t]) => { const al = ativos.filter(a => a.turmas.includes(tid) && (!q || semAcento(a.nome).includes(q)));
-      if (q && !al.length) return '';
-      return `<section class="pt-turma"><div class="pt-cab"><b>${esc(t.nome)}</b><span class="sub">${esc([t.horario, localDe(t), `${al.length} aluno${al.length === 1 ? '' : 's'}`].filter(Boolean).join(' · '))}</span></div>
-        <ul class="list">${al.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}${((pp.saude || {})[a.id] || {}).alerta ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div>${chipMensal(a.mensal)}</li>`).join('') || '<li><span class="sub">Nenhum aluno nesta turma.</span></li>'}</ul></section>`; }).join('') || '<div class="empty"><b>Nenhuma turma com você ainda.</b><span>A escola escolhe o(a) professor(a) de cada turma.</span></div>'}
-    <div class="note">Você vê os alunos das suas turmas e escreve notas sobre eles. Os contatos e os documentos das famílias ficam com a escola.</div>`;
+    <div class="tree">${ts.map(([tid, t]) => cartao(tid, t)).join('') || (q ? '<div class="empty"><b>Nenhum aluno com esse nome.</b></div>' : '<div class="empty"><b>Nenhuma turma ainda.</b><span>A escola coloca você como professor(a) das turmas.</span></div>')}</div>
+    <div class="note">Aqui você consulta as suas turmas e os alunos. Para mudar uma turma, fale com a escola. Toque no aluno para ver a saúde e escrever notas.</div>`;
   $('ppbusca').oninput = e => { S.busca = e.target.value; render(); };
+  v.querySelectorAll('[data-pabre]').forEach(b => b.onclick = () => { const t = b.dataset.pabre; abertas.has(t) ? abertas.delete(t) : abertas.add(t); render(); });
   v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));
 }
 function tPFin(v) {
