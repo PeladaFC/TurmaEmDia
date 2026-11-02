@@ -3252,7 +3252,7 @@ async function sheetNotaDono(volta) {
       <li>Comece em <b>Teste</b>, ligue <b>Emitir sozinho todo dia 1º</b> e salve. Na tela de notas, toque em <b>Emitir as notas deste mês agora</b> para ver se sai certo.</li>
       <li>Deu certo? Volte aqui e mude para <b>Valendo</b>.</li></ol>
     <h4>Depois de ligado</h4><ul><li>Todo dia 1º, o app emite a nota do mês anterior para cada escola e professor, no CPF ou CNPJ da conta do Mercado Pago.</li>
-      <li>A escola baixa o PDF em Ajustes → Notas fiscais da comissão.</li><li>Se faltar o CPF ou CNPJ de alguém, aparece "Preencher dados" na tela de notas.</li></ul></div>`;
+      <li>A escola baixa o PDF em Ajustes → Notas fiscais do Turma em Dia.</li><li>Se faltar o CPF ou CNPJ de alguém, aparece "Preencher dados" na tela de notas.</li></ul></div>`;
   const casca = h => `<div class="headrow"><h3>Minha nota fiscal</h3><button type="button" class="chip" id="ndexp">Explique-me como</button></div>${ajuda}${h}`;
   const ligarAj = () => { if ($('ndexp')) $('ndexp').onclick = () => { const a = $('ndajuda'); a.hidden = !a.hidden; $('ndexp').textContent = a.hidden ? 'Explique-me como' : 'Fechar explicação'; }; };
   sheet(casca('<div class="empty">Carregando…</div>'), ligarAj);
@@ -3720,7 +3720,7 @@ async function sheetNotasFamilia() {
 
 // a administração baixa as notas da escola
 async function sheetNotasEscola() {
-  const corpo = h => `<h3>Notas fiscais da comissão</h3><div class="sub">O Turma em Dia fica com <b>1% de cada Pix</b> que cai na conta do Mercado Pago da escola. Todo mês, a empresa do app emite uma nota fiscal desse valor no CPF ou CNPJ do dono da conta, e ela aparece aqui para baixar.</div>${h}
+  const corpo = h => `<h3>Notas fiscais do Turma em Dia</h3><div class="sub">A nota fiscal do serviço do app, emitida todo mês no CPF ou CNPJ do dono da conta do Mercado Pago que recebe pelo app. Ela aparece aqui para baixar.</div>${h}
     <span class="s">Cada nota tem uma chave de acesso e um QR Code no PDF para conferir no site oficial (nfse.gov.br).</span><button class="btn ghost" data-fechar>Fechar</button>`;
   sheet(corpo('<div class="empty">Buscando as notas…</div>'));
   let R; try { R = MOCK ? { notas: [{ mes: '2026-09', valor: 52.4, chave: 'x', teste: true }] } : await servidor('notaComissao', { eid: S.eid }); }
@@ -4849,10 +4849,10 @@ function sheetFormasEscola() {
   sheet(`<h3>Formas de pagamento</h3>
     <div class="sub">O Pix fica sempre ligado: é o mais barato e cai na hora. Ligue as outras formas se quiser dar opção às famílias.</div>
     <div class="checks" style="max-height:none">
-      <label><input type="checkbox" checked disabled><span class="grow"><b>Pix</b><span class="s">Taxa ${num(t.pix)}% · cai na hora</span></span></label>
-      <label><input type="checkbox" id="fbol" ${f.boleto ? 'checked' : ''}><span class="grow"><b>Boleto</b><span class="s">Taxa R$ ${num(t.boleto)} por boleto pago · cai em 3 dias</span></span></label>
-      <label><input type="checkbox" id="fcar" ${f.cartao ? 'checked' : ''}><span class="grow"><b>Cartão de crédito à vista</b><span class="s">Taxa ${num(t.cartao)}% · cai em 7 dias</span></span></label>
-      <label><input type="checkbox" id="fpar" ${f.parcelado ? 'checked' : ''}><span class="grow"><b>Cartão parcelado</b><span class="s">A escola paga ${num(t.cartao)}%; os juros do parcelamento ficam com quem paga</span></span></label>
+      <label><input type="checkbox" checked disabled><span class="grow"><b>Pix</b><span class="s">Taxa de pagamento ${num(C.r2(t.pix + COMISSAO * 100))}% · cai na hora</span></span></label>
+      <label><input type="checkbox" id="fbol" ${f.boleto ? 'checked' : ''}><span class="grow"><b>Boleto</b><span class="s">Taxa de pagamento R$ ${num(t.boleto)} + ${num(COMISSAO * 100)}% por boleto pago · cai em 3 dias</span></span></label>
+      <label><input type="checkbox" id="fcar" ${f.cartao ? 'checked' : ''}><span class="grow"><b>Cartão de crédito à vista</b><span class="s">Taxa de pagamento ${num(C.r2(t.cartao + COMISSAO * 100))}% · cai em 7 dias</span></span></label>
+      <label><input type="checkbox" id="fpar" ${f.parcelado ? 'checked' : ''}><span class="grow"><b>Cartão parcelado</b><span class="s">A escola paga ${num(C.r2(t.cartao + COMISSAO * 100))}%; os juros do parcelamento ficam com quem paga</span></span></label>
     </div>
     <div class="field" id="fmaxw"><label for="fmax">Parcelar em até</label><select id="fmax">${[2, 3, 4, 5, 6].map(n => `<option value="${n}" ${Number(f.maxParcelas) === n ? 'selected' : ''}>${n}x</option>`).join('')}</select></div>
     <details class="historico"><summary><span class="grow"><b>Taxas da sua conta no Mercado Pago</b><span class="s">Confira no app do Mercado Pago, em "Todas as taxas", e ajuste aqui</span></span><span class="seta" aria-hidden="true">▾</span></summary>
@@ -4863,7 +4863,7 @@ function sheetFormasEscola() {
         <div class="two">${[2, 3, 4, 5, 6].map(n => `<div class="field"><label for="tp${n}">${n}x</label><input id="tp${n}" inputmode="decimal" value="${num(t.parc[n])}"></div>`).join('')}</div>
       </div></details>
     <div class="field"><span class="lb">Exemplo: uma cobrança de ${brl(ex)}</span><div class="conta" id="fex"></div></div>
-    <div class="note">Mais ${Math.round(COMISSAO * 100)}% de comissão do app em todas as formas. ${S.cfg.pixRepassa === true ? 'Como "quem paga cobre a taxa" está ligado, a família paga a taxa da forma que escolher e a escola recebe o valor cheio.' : 'Como "quem paga cobre a taxa" está desligado, as taxas saem do valor que a escola recebe.'}</div>
+    <div class="note">As taxas acima já são o total de cada forma de pagamento. ${S.cfg.pixRepassa === true ? 'Como "quem paga cobre a taxa" está ligado, a família paga a taxa da forma que escolher e a escola recebe o valor cheio.' : 'Como "quem paga cobre a taxa" está desligado, as taxas saem do valor que a escola recebe.'}</div>
     <div class="err" id="ferr2" role="alert"></div>
     <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="fok2">Salvar</button></div>`, () => {
     const ler = () => { const pn = id => parseValor($(id).value); return { formas: { boleto: $('fbol').checked, cartao: $('fcar').checked, parcelado: $('fcar').checked && $('fpar').checked, maxParcelas: Number($('fmax').value) },
@@ -5083,7 +5083,7 @@ function sheetAjustes() {
       ${c.mpConectadoEm ? `<div class="banner ok"><span>Conectado${conta ? ` à conta de <b>${esc(conta.nome)}</b> ${esc(conta.doc || '')}` : ''}.</span></div>
         ${conta && S.mpc.confirmada === false ? `<div class="sub">É essa a conta que deve receber os pagamentos?</div><div class="actions"><button class="btn ok" id="mpsim">Sim, é essa conta</button><button class="btn ghost" id="mpout">Não, conectar outra</button></div>` : ''}
         <div class="actions"><button class="btn ghost" id="mpinfo">Atualizar dados da conta</button><button class="btn ghost" id="mpdes" style="color:var(--out)">Desconectar</button></div>
-        <button type="button" class="linha-botao" id="jnotas"><span class="grow"><b>Notas fiscais da comissão</b><span class="s">As notas do Turma em Dia para a escola, para baixar</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`
+        <button type="button" class="linha-botao" id="jnotas"><span class="grow"><b>Notas fiscais do Turma em Dia</b><span class="s">As notas do serviço do app para a escola, para baixar</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`
         : `<div class="sub">O dinheiro cai direto na conta do Mercado Pago da escola, e a baixa no app é automática. Antes de conectar, confira: conta no nome de quem recebe, maior de 18 anos, identidade confirmada e uma chave Pix cadastrada.</div>
         <div class="note">Se o Mercado Pago já estiver aberto neste celular, ele conecta direto com essa conta. Depois você confere o nome e o CPF.</div>
         <button class="btn" id="mpcon">Conectar Mercado Pago</button>`}
