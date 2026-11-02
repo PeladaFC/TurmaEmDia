@@ -5705,6 +5705,9 @@ function sheetPrivEscola() {
    Preço pela quantidade de alunos ativos; 30 dias de teste; cartão (cobrança automática) ou Pix a cada mês.
    Com o plano atrasado: até 5 dias, aviso; de 6 a 30, só leitura; mais de 30, suspensa. Quem decide é o servidor (config/plano). */
 const sitPlano = () => C.situacaoPlano(S && S.plano, hoje());
+/* App das lojas (Apple e Google): o plano do Turma em Dia é pago só pelo site. Dentro do app da loja não aparece
+   preço, pagamento nem troca de plano (regras das lojas para assinaturas digitais); só a situação do plano. */
+const LOJA = () => NATIVO() || new URLSearchParams(location.search).has('loja');
 const planoTrava = () => !!(S && S.admin && S.plano && (S.plano.bloqueio || ['leitura', 'suspensa'].includes(sitPlano().fase)));
 const MSG_LEITURA = 'O plano do app está atrasado e a escola está só para leitura. Pague em Ajustes → Plano para voltar a editar.';
 const MSG_PAUSA = 'O acesso da escola ao app e seus serviços está pausado. Fale com a escola.';
@@ -5727,11 +5730,13 @@ function avisoLimitePlano() {
   if (!S.admin || !S.plano) return '';
   const n = ativosPlano(), pl = planoAtual(); if (!pl.ate || n < Math.ceil(pl.ate * 0.9)) return '';
   const prox = proxPlano(pl), falta = Math.max(0, pl.ate - n);
+  if (LOJA()) return `<div class="banner"><span><b>Plano ${esc(pl.nome)} ${falta ? 'quase cheio' : 'cheio'}:</b> ${n} de ${pl.ate} alunos${falta ? ` (falta${falta > 1 ? 'm' : ''} ${falta})` : ''}. Para cadastrar mais de ${pl.ate}, a escola precisa de um plano maior.</span></div>`;
   return `<div class="banner"><span><b>Plano ${esc(pl.nome)} ${falta ? 'quase cheio' : 'cheio'}:</b> ${n} de ${pl.ate} alunos${falta ? ` (falta${falta > 1 ? 'm' : ''} ${falta})` : ''}. Para cadastrar mais de ${pl.ate}, mude para o <b>${esc(prox.nome)}</b>, de ${brl(prox.mes)} por mês.</span><button id="fplano2">Ver planos</button></div>`;
 }
 // cadastrar ou reativar acima do limite do plano escolhido: mostra o aviso com o botão de mudar (a ficha não se perde)
 function limitePlanoNoForm(box, depois) {
   const pl = planoAtual(), prox = proxPlano(pl);
+  if (LOJA()) { box.innerHTML = `<div class="pl-lim"><span><b>O plano ${esc(pl.nome)} vai até ${pl.ate} alunos ativos</b> e a escola já tem ${ativosPlano()}. Para cadastrar mais, a escola precisa de um plano maior.</span></div>`; return; }
   box.innerHTML = `<div class="pl-lim"><span><b>O plano ${esc(pl.nome)} vai até ${pl.ate} alunos ativos</b> e a escola já tem ${ativosPlano()}.${S.admin ? ` Para cadastrar mais, mude para o <b>${esc(prox.nome)}</b> (até ${prox.ate ? prox.ate + ' alunos' : 'quantos precisar'}, ${brl(prox.mes)} por mês). O novo valor vale a partir da próxima cobrança.` : ' Peça à administração da escola para mudar de plano.'}</span>
     ${S.admin ? `<button type="button" class="btn" id="plmudar">Mudar para o ${esc(prox.nome)}</button>` : ''}</div>`;
   if ($('plmudar')) $('plmudar').onclick = async () => { $('plmudar').disabled = true;
@@ -5741,6 +5746,12 @@ function limitePlanoNoForm(box, depois) {
 function faixaPlano() {
   if (!S.admin || !S.plano) return '';
   const s = sitPlano(), bt = '<button id="fplano">Ver plano</button>', ate = d => dataBRA(d);
+  if (LOJA()) { // sem pagamento no app da loja: só a situação
+    if (s.fase === 'teste' && s.restam <= 7) return `<div class="banner"><span><b>Teste grátis:</b> ${s.restam === 0 ? 'termina hoje' : `falta${s.restam > 1 ? 'm' : ''} ${s.restam} dia${s.restam > 1 ? 's' : ''}`}.</span></div>`;
+    if (s.fase === 'aviso') return `<div class="banner"><span><b>O plano do app venceu</b> em ${ate(s.venc)}. Em ${ate(C.maisDias(s.venc, 5))} a escola fica só para leitura.</span></div>`;
+    if (s.fase === 'leitura') return `<div class="banner alerta"><span><b>Só leitura:</b> o plano está atrasado desde ${ate(s.venc)}. As famílias continuam pagando pelo app, mas a escola não edita nem registra dinheiro.</span></div>`;
+    return '';
+  }
   if (s.fase === 'teste' && s.restam <= 7) return `<div class="banner"><span><b>Teste grátis:</b> ${s.restam === 0 ? 'termina hoje' : `falta${s.restam > 1 ? 'm' : ''} ${s.restam} dia${s.restam > 1 ? 's' : ''}`}. Escolha como pagar para a escola seguir usando o app.</span>${bt}</div>`;
   if (s.fase === 'aviso') return `<div class="banner"><span><b>O plano do app venceu</b> em ${ate(s.venc)}. Pague até ${ate(C.maisDias(s.venc, 5))} para a escola não ficar só para leitura.</span><button id="fplano">Pagar</button></div>`;
   if (s.fase === 'leitura') return `<div class="banner alerta"><span><b>Só leitura:</b> o plano está atrasado desde ${ate(s.venc)}. As famílias continuam pagando pelo app, mas a escola não edita nem registra dinheiro. Pague até ${ate(C.maisDias(s.venc, 30))} para não suspender.</span><button id="fplano">Pagar</button></div>`;
@@ -5753,10 +5764,11 @@ function telaPlanoParado(v) {
   v.innerHTML = `<div class="empty pausa"><b>A conta da escola está suspensa</b>
     <span>O plano do app venceu em ${dataBRA(s.venc)}. As famílias veem: "${MSG_PAUSA}"</span>
     ${s.encerrar ? '<span class="s"><b>Aviso de encerramento:</b> já passaram 90 dias do vencimento. Se o plano não for pago, a conta da escola pode ser encerrada.</span>' : ''}
-    <span>Pague para liberar tudo na hora.</span><button class="btn" id="spag">Pagar o plano</button></div>`;
-  $('spag').onclick = () => sheetPlano();
+    ${LOJA() ? '' : '<span>Pague para liberar tudo na hora.</span><button class="btn" id="spag">Pagar o plano</button>'}</div>`;
+  if ($('spag')) $('spag').onclick = () => sheetPlano();
 }
 function sheetPlano() {
+  if (LOJA()) return sheetPlanoLoja();
   let R = null, ciclo = (S.plano && S.plano.ciclo) || 'mensal', pixAberto = false, parar = null, escolha = null;
   const corpo = h => `<h3>Plano da escola</h3>${h}<button class="btn ghost" data-fechar style="width:100%;margin-top:8px">Fechar</button>`;
   const carregar = async () => { try { R = await chamarPlano({ acao: 'estado' }); ciclo = R.plano.ciclo || ciclo; desenhar(); } catch (e) { sheet(corpo(`<div class="empty"><b>Não deu para abrir o plano.</b><span>${esc(msgErro(e))}</span></div>`)); } };
@@ -5821,6 +5833,18 @@ function sheetPlano() {
   };
   sheet(corpo('<div class="empty">Carregando…</div>'));
   carregar();
+}
+// app da loja: só a situação do plano e o uso (sem preço, pagamento ou troca de plano)
+async function sheetPlanoLoja() {
+  sheet('<h3>Plano da escola</h3><div class="empty">Carregando…</div>');
+  let R; try { R = await chamarPlano({ acao: 'estado' }); } catch (e) { return sheet(`<h3>Plano da escola</h3><div class="empty"><b>Não deu para abrir o plano.</b><span>${esc(msgErro(e))}</span></div><button class="btn ghost" data-fechar>Fechar</button>`); }
+  const p = R.plano, s = R.situacao, pl = R.mensal.plano, lim = pl.ate || Math.max(R.alunos, 1), pct = Math.min(100, Math.round(R.alunos / lim * 100));
+  const fx = s.fase === 'teste' ? `<b>Teste grátis</b> · ${s.restam ? `faltam ${s.restam} dia${s.restam > 1 ? 's' : ''} (até ${dataBR(s.venc)})` : 'termina hoje'}`
+    : s.fase === 'cortesia' ? `<b>Grátis até ${dataBR(p.cortesiaAte)}</b>` : s.fase === 'ativo' ? `<b>Em dia</b> · até ${dataBR(p.pagoAte)}`
+    : s.fase === 'aviso' ? `<b>Venceu em ${dataBR(s.venc)}</b>` : `<b>${s.fase === 'leitura' ? 'Só leitura' : 'Suspensa'}</b> · atrasado desde ${dataBR(s.venc)}`;
+  sheet(`<h3>Plano da escola</h3><div class="banner ${['leitura', 'suspensa'].includes(s.fase) ? 'alerta' : s.fase === 'aviso' ? '' : 'ok'}"><span>${fx}</span></div>
+    <div class="pl-uso"><div class="pl-uso-t"><span>Alunos ativos</span><b class="num">${R.alunos}${pl.ate ? ' de ' + pl.ate : ''}</b></div><div class="pl-barra"><i style="width:${pct}%"></i></div><span class="s">Plano <b>${esc(pl.nome)}</b>.</span></div>
+    <button class="btn ghost" data-fechar style="width:100%">Fechar</button>`);
 }
 // cartão da escola para o plano (na conta do Mercado Pago da empresa do app)
 function sheetCartaoPlano(R, ciclo, pronto) {
@@ -6005,7 +6029,7 @@ function sheetAjustes() {
   }
   const c = S.cfg, conta = (S.mpc || {}).conta, taxaTot = (0.0099 + (Number(c.mpTaxaApp) || 0.01)) * 100;
   const sp = sitPlano(), pl = S.plano;
-  const planoTxt = !pl ? 'Planos, teste grátis e como pagar' : sp.fase === 'teste' ? `Teste grátis · ${sp.restam ? `faltam ${sp.restam} dia${sp.restam > 1 ? 's' : ''}` : 'termina hoje'}` : sp.fase === 'cortesia' ? `Grátis até ${dataBRA(pl.cortesiaAte)}` : sp.fase === 'ativo' ? `Em dia · pago até ${dataBRA(pl.pagoAte)}${pl.cartao ? ' · cartão' : ''}` : sp.fase === 'aviso' ? `Venceu em ${dataBRA(sp.venc)}` : sp.fase === 'leitura' ? 'Atrasado · só leitura' : sp.fase === 'suspensa' ? 'Suspenso' : 'Planos e como pagar';
+  const planoTxt = !pl ? (LOJA() ? 'Situação do plano' : 'Planos, teste grátis e como pagar') : sp.fase === 'teste' ? `Teste grátis · ${sp.restam ? `faltam ${sp.restam} dia${sp.restam > 1 ? 's' : ''}` : 'termina hoje'}` : sp.fase === 'cortesia' ? `Grátis até ${dataBRA(pl.cortesiaAte)}` : sp.fase === 'ativo' ? `Em dia · pago até ${dataBRA(pl.pagoAte)}${pl.cartao ? ' · cartão' : ''}` : sp.fase === 'aviso' ? `Venceu em ${dataBRA(sp.venc)}` : sp.fase === 'leitura' ? 'Atrasado · só leitura' : sp.fase === 'suspensa' ? 'Suspenso' : 'Planos e como pagar';
   sheet(`<h3>Ajustes da escola</h3>
     <section><h2>Plano do app</h2><button type="button" class="linha-botao" id="jplano"><span class="grow"><b>Plano da escola</b><span class="s">${esc(planoTxt)}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
     <section><h2>Pix automático</h2>
