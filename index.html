@@ -153,6 +153,19 @@ button.chip{cursor:pointer}
 .ch-op input[type=date]{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer}
 .ch-sair{display:flex;flex-direction:column;gap:8px;padding:14px;border:1.5px solid var(--out);border-radius:6px;background:var(--out-soft,#f8e3dd)}
 .ch-sair span{font-size:.9rem;color:var(--muted)}.ch-sair .actions{margin:4px 0 0}
+.cad-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.cad{border-collapse:separate;border-spacing:0;font-size:.82rem;min-width:100%}
+.cad th,.cad td{padding:6px 4px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap;min-width:30px}
+.cad thead th{font-weight:600;color:var(--muted);cursor:pointer;background:var(--surface)}
+.cad thead th b{display:block;color:var(--ink);font-size:.9rem}.cad thead th span{font-size:.66rem}
+.cad .cad-nome{position:sticky;left:0;z-index:1;background:var(--surface);text-align:left;max-width:130px;min-width:110px;overflow:hidden;text-overflow:ellipsis;padding-left:10px;border-right:1px solid var(--line);font-weight:600}
+.cad .cad-pct{font-weight:700;padding-right:10px}.cad .cad-pct.baixa{color:var(--out)}
+.cad .cad-sem{background:repeating-linear-gradient(135deg,var(--surface2,#eee) 0 4px,transparent 4px 8px)}
+.cad .cad-extra b{color:var(--accent)}
+.cad i{display:inline-flex;width:22px;height:22px;border-radius:4px;align-items:center;justify-content:center;font:700 .7rem var(--f-body,system-ui);font-style:normal;color:#fff}
+.cad i.p{background:var(--in,#1b7f6b)}.cad i.f{background:var(--out)}.cad i.j{background:var(--warn);color:var(--ink)}
+.cad .cad-vazio{color:var(--line)}
+.cad tfoot td{font-weight:700;border-bottom:0;color:var(--muted)}
 .dias-seg{display:grid;grid-template-columns:repeat(7,1fr)}.dias-seg button{padding:8px 0;min-width:0;font-size:.8rem}
 .pl-nome{font-weight:800;font-size:1rem}.pl-ate{font-size:.78rem;color:var(--muted)}.pl-preco{font-size:1.35rem;font-weight:800;margin-top:4px}.pl-mes{font-size:.72rem;color:var(--muted)}
 .pl-meios{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px}

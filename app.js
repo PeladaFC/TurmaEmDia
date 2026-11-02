@@ -2824,6 +2824,9 @@ async function profMock(acao, d) {
     const quem = { uid: EU.uid, nome: P.nome || 'Professor(a)', papel: 'professor', em: Date.now() };
     await B.set(ref, { tid: d.tid, data: d.data, pres, alunos: Object.keys(pres), obs: String(d.obs || '').slice(0, 300), semAula: !!d.semAula, motivo: d.semAula ? String(d.motivo || '').slice(0, 120) : '', extra: !ehAula(turmas[d.tid], d.data), por: atual && atual.por ? atual.por : quem, editado: atual ? quem : null, hist: [...((atual || {}).hist || []), quem] }); return { ok: true };
   }
+  if (acao === 'caderneta') { if (!minhas.includes(d.tid)) throw new Error('Esta turma não é sua.');
+    const chs = Object.values(await colMock(`${p}/chamadas`)).filter(c => c.tid === d.tid && String(c.data).slice(0, 7) === d.mes), na = new Set(chs.flatMap(c => Object.keys(c.pres || {})));
+    return { alunos: Object.entries(alunas).filter(([id, a]) => (a.turmas || []).includes(d.tid) && (na.has(id) || (a.ativa !== false && C.ativaNoMes(a, d.mes)))).map(([id, a]) => ({ id, nome: a.nome })), chamadas: chs }; }
   if (acao === 'freq') { if (!alunas[d.alid]) throw new Error('Este aluno não está nas suas turmas.');
     return { chamadas: Object.values(await colMock(`${p}/chamadas`)).filter(c => minhas.includes(c.tid) && (c.alunos || []).includes(d.alid)), turmas: Object.fromEntries(minhas.map(t => [t, { nome: (turmas[t] || {}).nome || '' }])) }; }
   if (!alunas[d.alid]) throw new Error('Este aluno não está nas suas turmas.');
@@ -2869,7 +2872,7 @@ function tPTurmas(v) {
     return `<div class="local turma-card">
       <div class="hd"><div class="grow"><div class="t">${esc(t.nome)}</div></div></div>
       <div class="turma-info">${ddl([['Dias e horário', esc(t.horario || '—')], ['Local', esc(localDe(t) || '—')], ['Faixa etária', esc(C.faixaTxt(t))], ['Alunos', `<span class="num">${alunosTxt}</span>`], nSaude && ['Saúde', `<span class="saude-ic">✚</span> ${nSaude} com atenção à saúde`]])}</div>
-      ${t.chamada !== false ? `<button class="mostrar" data-cham="${esc(tid)}">✓ Fazer chamada<span aria-hidden="true">›</span></button>` : ''}
+      ${t.chamada !== false ? `<button class="mostrar" data-cham="${esc(tid)}">✓ Fazer chamada<span aria-hidden="true">›</span></button><button class="mostrar" data-cad="${esc(tid)}">▦ Caderneta de chamada<span aria-hidden="true">›</span></button>` : ''}
       <button class="mostrar" data-pabre="${esc(tid)}" aria-expanded="${aberta}">${aberta ? 'Esconder alunos' : `Mostrar alunos${n ? ` (${n})` : ''}`}<span aria-hidden="true">${aberta ? '▴' : '▾'}</span></button>
       ${aberta ? `<div class="ativ">${al.map(a => `<div class="turma" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}${((pp.saude || {})[a.id] || {}).alerta ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div></div>`).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}</div>` : ''}</div>`;
   };
@@ -2880,6 +2883,7 @@ function tPTurmas(v) {
     <div class="note">Aqui você consulta as suas turmas e os alunos. Para mudar uma turma, fale com a escola. Toque no aluno para ver a saúde e escrever notas.</div>`;
   $('ppbusca').oninput = e => { S.busca = e.target.value; render(); };
   v.querySelectorAll('[data-cham]').forEach(e => e.onclick = () => sheetChamada(e.dataset.cham, e.dataset.chd || null));
+  v.querySelectorAll('[data-cad]').forEach(e => e.onclick = () => sheetCaderneta(e.dataset.cad));
   if ($('pushon')) $('pushon').onclick = async () => { $('pushon').disabled = true; try { await ativarPush(false); if (MOCK) { ls.set('escolinha.push.mock', '1'); render(); } } catch (e) { aviso(msgErro(e)); $('pushon').disabled = false; } };
   v.querySelectorAll('[data-pabre]').forEach(b => b.onclick = () => { const t = b.dataset.pabre; abertas.has(t) ? abertas.delete(t) : abertas.add(t); render(); });
   v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));
@@ -3130,6 +3134,40 @@ async function freqAlunoHTML(alid) {
       ${tudo.seguidas >= 3 ? `<div class="banner alerta" style="margin-top:8px;flex-wrap:nowrap"><span><b>${tudo.seguidas} faltas seguidas.</b> Vale falar com a família.</span>${wa ? `<a class="wa wa-mini" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Falar pelo WhatsApp">${ICO_WA}</a>` : ''}</div>` : ''}</div>`; }).join('');
 }
 
+// caderneta: tabela de presença da turma no mês (alunos x dias de aula), como a caderneta de chamada
+async function cadernetaDados(tid, mes) {
+  if (!S.admin) return profServidor('caderneta', { tid, mes });
+  const chs = (await B.onde(`escolas/${S.eid}/chamadas`, 'data', '>=', mes + '-01')).map(x => x.data).filter(c => c.tid === tid && String(c.data).slice(0, 7) === mes);
+  const na = new Set(chs.flatMap(c => Object.keys(c.pres || {})));
+  return { chamadas: chs, alunos: Object.entries(S.alunas).filter(([id, a]) => (a.turmas || []).includes(tid) && !a.anonimizadoEm && (na.has(id) || (a.ativa !== false && C.ativaNoMes(a, mes)))).map(([id, a]) => ({ id, nome: a.nome })) };
+}
+function sheetCaderneta(tid, mes) {
+  const t = S.turmas[tid]; if (!t) return; mes = mes || mesHoje();
+  const titulo = `<h3>Caderneta · ${esc(t.nome)}</h3><div class="cal-topo"><button type="button" class="icon-btn" id="cdant" aria-label="Mês anterior">‹</button><h2 style="font-size:1.05rem">${esc(nomeMesAno(mes))}</h2><button type="button" class="icon-btn" id="cdprox" aria-label="Próximo mês" ${mes >= mesHoje() ? 'disabled' : ''}>›</button></div>`;
+  const ligar = () => { $('cdant').onclick = () => sheetCaderneta(tid, mesMais(mes, -1)); $('cdprox').onclick = () => mes < mesHoje() && sheetCaderneta(tid, mesMais(mes, 1)); };
+  sheet(titulo + '<div class="empty">Carregando…</div>', ligar);
+  cadernetaDados(tid, mes).then(D => {
+    const L = (D.chamadas || []).sort((a, b) => String(a.data).localeCompare(b.data)), aulas = L.filter(c => !c.semAula);
+    const al = (D.alunos || []).sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR', { sensitivity: 'base' }));
+    const pctDe = id => { const f = C.freqAluno(aulas, id); return f.pct; }, sem = L.length - aulas.length;
+    const medias = al.map(a => pctDe(a.id)).filter(x => x != null), media = medias.length ? Math.round(medias.reduce((s, x) => s + x, 0) / medias.length) : null;
+    const dsem = d => C.DIAS_SEM[diaSem(d)].slice(0, 3);
+    const corpo = !L.length ? `<div class="empty"><b>Nenhuma chamada em ${esc(C.nomeMes(mes))}.</b><span>As chamadas feitas aparecem aqui, uma coluna por aula.</span></div>`
+      : `<div class="ch-res"><div>Aulas<b class="num">${aulas.length}</b></div><div>Presença média<b class="num">${media == null ? '—' : media + '%'}</b></div><div>Sem aula<b class="num">${sem}</b></div></div>
+      <div class="cad-wrap"><table class="cad">
+        <thead><tr><th class="cad-nome">Aluno</th>${L.map(c => `<th class="${c.semAula ? 'cad-sem' : ''}${c.extra ? ' cad-extra' : ''}" data-cdd="${esc(c.data)}" title="${esc(c.semAula ? 'Não teve aula' + (c.motivo ? ': ' + c.motivo : '') : c.extra ? 'Aula extra' : '')}"><b class="num">${Number(c.data.slice(8))}</b><span>${dsem(c.data)}</span></th>`).join('')}<th class="cad-pct">%</th></tr></thead>
+        <tbody>${al.map(a => { const p = pctDe(a.id);
+          return `<tr><td class="cad-nome">${esc(a.nome)}</td>${L.map(c => { const st = c.semAula ? '' : (c.pres || {})[a.id]; return `<td class="${c.semAula ? 'cad-sem' : ''}">${st ? `<i class="${st}">${st.toUpperCase()}</i>` : c.semAula ? '' : '<span class="cad-vazio">·</span>'}</td>`; }).join('')}<td class="cad-pct num ${p != null && p < 75 ? 'baixa' : ''}">${p == null ? '—' : p + '%'}</td></tr>`; }).join('')}</tbody>
+        <tfoot><tr><td class="cad-nome">Presentes</td>${L.map(c => `<td class="num ${c.semAula ? 'cad-sem' : ''}">${c.semAula ? '' : Object.values(c.pres || {}).filter(x => x === 'p').length}</td>`).join('')}<td></td></tr></tfoot>
+      </table></div>
+      <span class="s">P presente · F falta · J falta justificada. Coluna cinza: não teve aula. Toque no dia para abrir a chamada. Em vermelho, presença abaixo de 75%.</span>`;
+    sheet(titulo + corpo + '<button class="btn ghost" data-fechar style="width:100%">Fechar</button>', sh => {
+      ligar();
+      sh.querySelectorAll('[data-cdd]').forEach(th => th.onclick = () => abrirDe(() => sheetCaderneta(tid, mes), () => sheetChamada(tid, th.dataset.cdd)));
+    });
+  }).catch(e => sheet(titulo + `<div class="empty"><b>Não deu para abrir a caderneta.</b><span>${esc(msgErro(e))}</span></div><button class="btn ghost" data-fechar>Fechar</button>`, ligar));
+}
+
 /* ================= Turmas, grupos, professores e locais ================= */
 function cartaoTurma(tid, t) {
   const mes = mesHoje(), al = alunasDaTurma(tid, mes).sort((x, y) => String(x[1].nome).localeCompare(String(y[1].nome), 'pt-BR')), n = al.length;
@@ -3139,7 +3177,7 @@ function cartaoTurma(tid, t) {
   return `<div class="local turma-card">
     <div class="hd"><div class="grow"><div class="t">${esc(t.nome)}</div></div>${S.admin ? `<button class="btn ghost btn-mini" data-et="${esc(tid)}">${ICO_EDIT} Editar</button>` : ''}</div>
     <div class="turma-info">${ddl([S.admin && ['Valor', `<b class="num">${brl(t.preco)}</b> <span class="sub">por mês</span>`], ['Faixa etária', esc(C.faixaTxt(t))], ['Professor(a)', esc(profNome(t) || '—')], ['Local', esc(localDe(t) || '—')], ['Dias e horário', esc(t.horario || '—')], S.admin && ['Pix vai para', esc(nomeRec(C.recDe(t)))], ['Alunos', `<span class="num">${alunosTxt}</span>${nFora ? ` <span class="chip vencido">${nFora} faixa etária</span>` : ''}`]])}</div>
-    ${t.chamada !== false ? `<button class="mostrar" data-cham="${esc(tid)}">✓ Fazer chamada<span aria-hidden="true">›</span></button>` : ''}
+    ${t.chamada !== false ? `<button class="mostrar" data-cham="${esc(tid)}">✓ Fazer chamada<span aria-hidden="true">›</span></button><button class="mostrar" data-cad="${esc(tid)}">▦ Caderneta de chamada<span aria-hidden="true">›</span></button>` : ''}
     <button class="mostrar" data-abre="${esc(tid)}" aria-expanded="${aberta}">${aberta ? 'Esconder alunos' : `Mostrar alunos${n ? ` (${n})` : ''}`}<span aria-hidden="true">${aberta ? '▴' : '▾'}</span></button>
     ${aberta ? `<div class="ativ">${al.map(x => { const [id, a] = x;
       return `<div class="turma" data-al="${esc(id)}">${avatarAluno(id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), respDe(id).nome ? 'Responsável: ' + esc(respDe(id).nome) : '')}</div>${fora(x) ? '<span class="chip vencido">Faixa etária</span>' : ''}</div>`; }).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}
@@ -3199,6 +3237,7 @@ function tTurmas(v) {
   ligarEventos(v);
   v.querySelectorAll('[data-et]').forEach(e => e.onclick = () => sheetTurma(e.dataset.et));
   v.querySelectorAll('[data-cham]').forEach(e => e.onclick = () => sheetChamada(e.dataset.cham));
+  v.querySelectorAll('[data-cad]').forEach(e => e.onclick = () => sheetCaderneta(e.dataset.cad));
   v.querySelectorAll('[data-abre]').forEach(b => b.onclick = () => { S.turmasAbertas = S.turmasAbertas || new Set(); const k = b.dataset.abre; S.turmasAbertas.has(k) ? S.turmasAbertas.delete(k) : S.turmasAbertas.add(k); render(); });
   v.querySelectorAll('[data-al]').forEach(e => e.onclick = () => S.admin ? sheetPerfilAluno(e.dataset.al) : sheetAluna(e.dataset.al));
   v.querySelectorAll('[data-nt]').forEach(e => e.onclick = () => sheetAluna(null, null, e.dataset.nt));
@@ -6251,12 +6290,7 @@ async function semearMock() {
   // chamada: dias de aula, um 2º professor e as chamadas das últimas semanas da Iniciação (falta a mais recente)
   { const D = { t1: [1, 3], t2: [2, 4, 6], t3: [5], t4: [6], t5: [2, 4], t6: [1, 3], t7: [1, 3], t8: [2, 4], t9: [5] };
     for (const [tid, d] of Object.entries(D)) if (await B.get(`${p}/turmas/${tid}`)) await B.set(`${p}/turmas/${tid}`, { dias: d, chamada: tid !== 't9', ...(tid === 't1' ? { chamadaObrig: true, hora: '08:00' } : {}) }, { merge: true });
-    await B.set(`${p}/turmas/t3`, { professoraIds: ['p1'] }, { merge: true });
-    const t1 = Object.keys(alunas).filter(id => (alunas[id].turmas || []).includes('t1')), aulas = [];
-    for (let i = 1; i <= 28; i++) { const d = somaDias(hoje(), -i); if ([1, 3].includes(diaSem(d))) aulas.push(d); }
-    aulas.shift(); aulas.reverse();
-    for (const [k, d] of aulas.entries()) { const pres = Object.fromEntries(t1.map((id, i) => [id, i === 0 && k >= aulas.length - 3 ? 'f' : i === 1 && k === 2 ? 'j' : 'p']));
-      await set(`${p}/chamadas/t1_${d}`, { tid: 't1', data: d, pres, alunos: Object.keys(pres), obs: '', por: { nome: 'Juliana Costa', papel: 'professor', em: new Date(d + 'T21:10:00Z').getTime() }, editado: null, hist: [] }); } }
+    await B.set(`${p}/turmas/t3`, { professoraIds: ['p1'] }, { merge: true }); }
   // taxa dividida com as respostas abertas
   { const ids = Object.keys(alunas), pz = new Date(); pz.setDate(pz.getDate() + 8); pz.setHours(18, 0, 0, 0);
     await set(`${p}/extras/xrt`, { tipo: 'taxa', nome: 'Ônibus para a Copa Nordeste', v: 0, venc: isoDe(new Date(pz.getTime() + 5 * 864e5)), convidados: ids, alunas: [], valores: {}, grupos: [], turmas: [], recebedor: 'escola', origem: { todos: true },
@@ -6316,6 +6350,14 @@ async function semearMock() {
       }
     }
   }
+  // chamadas das últimas semanas da Iniciação (falta a mais recente), com todos os alunos da turma; uma aula sem aula (feriado)
+  { const t1 = (await B.onde(`${p}/alunas`, 'turmas', 'array-contains', 't1')).map(x => x.id), aulas = [];
+    for (let i = 1; i <= 28; i++) { const d = somaDias(hoje(), -i); if ([1, 3].includes(diaSem(d))) aulas.push(d); }
+    aulas.shift(); aulas.reverse();
+    for (const [k, d] of aulas.entries()) {
+      if (k === 3) { await set(`${p}/chamadas/t1_${d}`, { tid: 't1', data: d, pres: {}, alunos: [], semAula: true, motivo: 'Feriado', por: { nome: 'Juliana Costa', papel: 'professor', em: Date.now() } }); continue; }
+      const pres = Object.fromEntries(t1.map((id, i) => [id, i === 0 && k >= aulas.length - 3 ? 'f' : (i * 7 + k) % 11 === 0 ? 'f' : i === 1 && k === 2 ? 'j' : 'p']));
+      await set(`${p}/chamadas/t1_${d}`, { tid: 't1', data: d, pres, alunos: Object.keys(pres), obs: '', por: { nome: 'Juliana Costa', papel: 'professor', em: new Date(d + 'T21:10:00Z').getTime() }, editado: null, hist: [] }); } }
   // documentos de exemplo: Sofia em dia, Luíza com o parecer vencido, Ana Beatriz com o parecer vencendo
   const docFalso = (titulo, nome, w = 900, h = 1200) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
     g.fillStyle = '#fbfaf6'; g.fillRect(0, 0, w, h); g.fillStyle = '#222'; g.font = `bold ${Math.round(w / 22)}px sans-serif`; g.fillText(titulo, w * 0.08, h * 0.1);

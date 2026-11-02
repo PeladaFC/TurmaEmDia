@@ -129,6 +129,20 @@ module.exports = db => {
         return res.json({ ok: true });
       }
 
+      // caderneta: as chamadas de uma turma dele num mês (tabela de presença)
+      if (acao === 'caderneta') {
+        const { tid, mes } = b;
+        if (!idOk(tid) || !C.mesValido(mes)) throw erro('Pedido inválido.', 400);
+        const t = await ler(`escolas/${eid}/turmas/${tid}`);
+        if (!t || !C.daTurma(t, pid)) throw erro('Esta turma não é sua.', 403);
+        const q = await db.collection(`escolas/${eid}/chamadas`).where('data', '>=', mes + '-01').get();
+        const chamadas = q.docs.map(x => x.data()).filter(c => c.tid === tid && String(c.data).slice(0, 7) === mes);
+        const qa = await db.collection(`escolas/${eid}/alunas`).where('turmas', 'array-contains', tid).get();
+        const naLista = new Set(chamadas.flatMap(c => Object.keys(c.pres || {})));
+        const alunos = qa.docs.map(x => ({ id: x.id, ...x.data() })).filter(a => !a.anonimizadoEm && (naLista.has(a.id) || (a.ativa !== false && C.ativaNoMes(a, mes)))).map(a => ({ id: a.id, nome: a.nome || 'Aluno(a)' }));
+        return res.json({ alunos, chamadas: chamadas.map(c => ({ data: c.data, pres: c.pres || {}, semAula: !!c.semAula, motivo: c.motivo || '', extra: !!c.extra })) });
+      }
+
       // aviso da chamada no celular: guarda (ou tira) o aparelho deste professor
       if (acao === 'push') {
         const tk = String(b.token || ''); if (!tk || tk.length > 400) throw erro('Pedido inválido.', 400);
