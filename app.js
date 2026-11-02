@@ -2957,11 +2957,15 @@ function sheetBusca() {
 /* ================= Aviso da chamada no celular (push) =================
    Turma com chamada obrigatória: na hora da aula, os professores da turma recebem o aviso (o servidor manda, avisos.js).
    No iPhone só funciona com o app adicionado à Tela de Início (iOS 16.4 ou mais novo). */
-const PUSH_OK = () => !MOCK && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+// app das lojas (Capacitor, com o plugin do Firebase Messaging) ou site/app da tela de início (web push)
+const NATIVO = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const FMN = () => NATIVO() && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseMessaging;
+const PUSH_OK = () => !MOCK && (!!FMN() || ('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window));
 const ehIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const instalado = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
 let SW_REG = null, PEND_CH = null;
 function registrarSW() {
+  if (FMN()) { FMN().addListener('notificationActionPerformed', e => { const u = ((e.notification || {}).data || {}).url; if (u) { lerLinkChamada(u); render(); } }); return; }
   if (MOCK || !('serviceWorker' in navigator)) return;
   navigator.serviceWorker.register('sw.js').then(r => { SW_REG = r; }).catch(() => { });
   navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.abrir) { lerLinkChamada(e.data.abrir); render(); } });
@@ -2977,6 +2981,12 @@ function abrirChamadaPendente() {
 async function ativarPush(silencioso) {
   if (MOCK) { if (!silencioso) aviso('No app publicado, este celular passa a receber o aviso na hora da aula.'); return; }
   if (!PUSH_OK()) throw new Error('Este celular não recebe avisos do app.');
+  if (FMN()) { // app das lojas: permissão e código do aparelho pelo sistema (Apple ou Android)
+    const p = silencioso ? await FMN().checkPermissions() : await FMN().requestPermissions();
+    if (p.receive !== 'granted') { if (silencioso) return; throw new Error('Os avisos ficaram bloqueados. Libere as notificações do Turma em Dia nas configurações do celular.'); }
+    const { token } = await FMN().getToken(); const k = `escolinha.push.${S.eid}`; if (silencioso && ls.get(k) === token) return;
+    await profServidor('push', { token }); ls.set(k, token); if (!silencioso) { aviso('Pronto! Você recebe o aviso na hora da aula.'); render(); } return;
+  }
   if (silencioso && Notification.permission !== 'granted') return;
   if (!silencioso && (await Notification.requestPermission()) !== 'granted') throw new Error('Os avisos ficaram bloqueados. Libere as notificações do Turma em Dia nas configurações do celular.');
   const reg = SW_REG || await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
@@ -2995,8 +3005,8 @@ function avisosChamadaProf(tids) {
   let out = pend.map(([tid, t]) => `<button class="faixa-resumo alerta" data-cham="${esc(tid)}"><span class="grow"><b>Fazer chamada: ${esc(t.nome)}</b><span class="s">Hoje · a aula começou às ${esc(horaTxt(t.hora))}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
   // convite para receber o aviso no celular (só quem tem turma com chamada obrigatória)
   if (tids.some(tid => chObrig(S.turmas[tid]))) {
-    const perm = 'Notification' in window ? Notification.permission : 'x';
-    if (!MOCK && ehIOS() && !instalado()) out += `<div class="banner"><span><b>Aviso da chamada no celular:</b> no iPhone, primeiro adicione o app à Tela de Início (botão Compartilhar → "Adicionar à Tela de Início"), abra por lá e ative.</span></div>`;
+    const perm = FMN() ? (ls.get(`escolinha.push.${S.eid}`) ? 'granted' : 'default') : 'Notification' in window ? Notification.permission : 'x';
+    if (!MOCK && !NATIVO() && ehIOS() && !instalado()) out += `<div class="banner"><span><b>Aviso da chamada no celular:</b> no iPhone, primeiro adicione o app à Tela de Início (botão Compartilhar → "Adicionar à Tela de Início"), abra por lá e ative.</span></div>`;
     else if (!MOCK && perm === 'denied') out += `<div class="banner"><span><b>Os avisos estão bloqueados.</b> Para receber o aviso da chamada na hora da aula, libere as notificações do Turma em Dia nas configurações do celular.</span></div>`;
     else if (MOCK ? !ls.get('escolinha.push.mock') : (PUSH_OK() && perm !== 'granted')) out += `<div class="banner"><span><b>Receba o aviso da chamada no celular</b>, na hora em que a aula começa.</span><button id="pushon">Ativar</button></div>`;
   }

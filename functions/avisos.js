@@ -49,7 +49,10 @@ module.exports = (db, enviar) => {
       const donos = [];
       eq.docs.forEach(d => (d.data().push || []).forEach(tk => donos.push({ ref: d.ref, tk })));
       if (!donos.length) continue;
-      const msg = { data: { titulo: `Chamada: ${g.nome}`, corpo: `A aula começou (${g.hora.replace(':', 'h')}). Toque para fazer a chamada.`, url: `./?chamada=${g.eid}.${g.tid}` },
+      // serve para o site (web push) e para os apps da Apple e do Android (o mesmo Firebase Cloud Messaging)
+      const titulo = `Chamada: ${g.nome}`, corpo = `A aula começou (${g.hora.replace(':', 'h')}). Toque para fazer a chamada.`;
+      const msg = { notification: { title: titulo, body: corpo }, data: { titulo, corpo, url: `./?chamada=${g.eid}.${g.tid}` },
+        android: { priority: 'high', notification: { sound: 'default' } }, apns: { payload: { aps: { sound: 'default' } } },
         webpush: { headers: { Urgency: 'high', TTL: '3600' } } };
       const r = await enviar(donos.map(d => d.tk), msg);
       for (let i = 0; i < r.length; i++) {
