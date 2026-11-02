@@ -1100,7 +1100,8 @@ function tCobrancas(v) {
   const antigos = atr.porAluna.map(x => ({ ...x, vAntes: C.r2(x.it.filter(i => String(i.venc).slice(0, 7) < mesAtual).reduce((s, i) => s + i.v, 0)) })).filter(x => x.vAntes > 0);
   const cont = { aberto: todos.filter(r => r.aberto > 0).length, vencido: todos.filter(r => r.status === 'vencido').length, antigos: antigos.length, pago: todos.filter(r => r.status === 'pago').length, todas: todos.length };
   const busca = alid => !q || String(S.alunas[alid].nome).toLowerCase().includes(q) || String(respDe(alid).nome || '').toLowerCase().includes(q);
-  const waDe = (alid, itens) => { const r = respDe(alid), wa = waLink(r.telefone, textoMsg('atraso', alid, itens)); return wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome || '')}">${ICO_WA}</a>` : ''; };
+  const WA_VAZIO = '<span class="wa wa-vazio" aria-hidden="true"></span>';
+  const waDe = (alid, itens) => { const r = respDe(alid), wa = waLink(r.telefone, textoMsg('atraso', alid, itens)); return wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome || '')}">${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'; };
   let lista;
   if (filtro === 'antigos') {
     const l = antigos.filter(x => busca(x.alid)), meses = {};
@@ -1118,7 +1119,7 @@ function tCobrancas(v) {
   } else {
     let rows = todos.filter(r => filtro === 'todas' || (filtro === 'aberto' ? r.aberto > 0 : r.status === filtro)).filter(r => busca(r.alid));
     rows.sort((a, b) => b.vencido - a.vencido || b.aberto - a.aberto || String(S.alunas[a.alid].nome).localeCompare(String(S.alunas[b.alid].nome), 'pt-BR'));
-    lista = rows.length ? `<ul class="list">${rows.map(r => linhaAluna(r.alid, r.status === 'pago' ? 0 : r.aberto, r.status, [esc(respDe(r.alid).nome || 'Sem responsável'), r.vencido && r.vencido < r.aberto ? `<span class="num">${cur(r.vencido)} já vencido</span>` : ''], r.vencido ? waDe(r.alid, r.it.filter(i => !i.pago && st(i) === 'vencido')) : '')).join('')}</ul>`
+    lista = rows.length ? `<ul class="list">${rows.map(r => linhaAluna(r.alid, r.status === 'pago' ? 0 : r.aberto, r.status, [esc(respDe(r.alid).nome || 'Sem responsável'), r.vencido && r.vencido < r.aberto ? `<span class="num">${cur(r.vencido)} já vencido</span>` : ''], r.vencido ? waDe(r.alid, r.it.filter(i => !i.pago && st(i) === 'vencido')) : WA_VAZIO)).join('')}</ul>`
       : `<div class="empty">${Object.keys(S.alunas).length ? 'Nenhum aluno neste filtro.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre os alunos na aba Alunos.</span>'}</div>`;
   }
   const ext = Object.entries(S.extras).filter(([, x]) => !eventoNovo(x) || pelaEscola(x)).sort((a, b) => String(b[1].venc).localeCompare(String(a[1].venc)));
@@ -1163,10 +1164,11 @@ const MODELOS_PADRAO = {
   lembrete: 'Olá, {responsavel}! Passando para lembrar das cobranças de {aluno} na {escola}:\n{lista}\nTotal: {total}\n\nPague pelo app, escolhendo o que quer pagar: {link}\n{codigo}',
   atraso: 'Olá, {responsavel}! Tudo bem? Aqui é da {escola}. Consta em aberto, referente a {aluno}:\n{lista}\nTotal: {total}\n\nSe ficar difícil pagar tudo de uma vez, podemos combinar um parcelamento. É só responder esta mensagem.\n\nPague pelo app, escolhendo o que quer pagar: {link}\n{codigo}',
   acordo: 'Olá, {responsavel}! Conforme combinamos, o acordo de {aluno} ficou assim:\n{parcelas}\nTotal: {total}\n\nPague pelo app: {link}\n{codigo}',
-  atestado: 'Olá, {responsavel}! Aqui é da {escola}. Para {aluno} fazer as aulas com segurança, precisamos de um atestado médico dizendo que pode fazer a atividade física.\n\nÉ só tirar uma foto do atestado e enviar pelo app, em Meus filhos: {link}\n{codigo}'
+  atestado: 'Olá, {responsavel}! Aqui é da {escola}. Para {aluno} fazer as aulas com segurança, precisamos de um atestado médico dizendo que pode fazer a atividade física.\n\nÉ só tirar uma foto do atestado e enviar pelo app, em Meus filhos: {link}\n{codigo}',
+  pendencias: 'Olá, {responsavel}! Aqui é da {escola}. Para deixar o cadastro de {aluno} em dia, falta:\n{pendencias}\n\nÉ só fazer pelo app, em Meus filhos: {link}\n{codigo}'
 };
-const MODELOS_NOME = { lembrete: 'Lembrete', atraso: 'Atraso', acordo: 'Acordo', atestado: 'Atestado' };
-const CAMPOS_MSG = [['responsavel', 'Responsável'], ['aluno', 'Aluno(a)'], ['escola', 'Escola'], ['lista', 'Lista de cobranças'], ['total', 'Total'], ['parcelas', 'Parcelas do acordo'], ['link', 'Link do app'], ['codigo', 'Código de acesso']];
+const MODELOS_NOME = { lembrete: 'Lembrete', atraso: 'Atraso', acordo: 'Acordo', atestado: 'Atestado', pendencias: 'Cadastro pendente' };
+const CAMPOS_MSG = [['responsavel', 'Responsável'], ['aluno', 'Aluno(a)'], ['escola', 'Escola'], ['lista', 'Lista de cobranças'], ['total', 'Total'], ['parcelas', 'Parcelas do acordo'], ['pendencias', 'O que falta no cadastro'], ['link', 'Link do app'], ['codigo', 'Código de acesso']];
 const modeloDe = tipo => ((S.cfg.modelos || {})[tipo] || MODELOS_PADRAO[tipo]);
 function preencherModelo(modelo, v) {
   return String(modelo).replace(/\{(\w+)\}/g, (m, k) => v[k] != null ? v[k] : m).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -1179,7 +1181,29 @@ function camposMsg(tipo, alid, itens) {
     lista: itens.map(i => `• ${i.desc}: ${brl(i.v)} (${st(i) === 'vencido' ? 'venceu' : 'vence'} ${dataBR(i.venc)}${i.enc ? ', com multa e juros' : i.perdao && i.perdao.ate ? `, sem multa e juros se pago até ${dataBR(i.perdao.ate)}` : ''})`).join('\n'),
     total: brl(tot) + (A && A.desconto > 0 ? ` (com desconto de ${brl(A.desconto)})` : ''),
     parcelas: A ? A.parcelas.map(q => `• Parcela ${q.n} de ${A.parcelas.length}: ${brl(q.v)}, vence ${dataBR(q.venc)}`).join('\n') : '',
+    pendencias: tipo === 'pendencias' ? faltaCadastro(alid).map(x => '• ' + x).join('\n') : '',
     link: LINK_APP, codigo: r.codigo ? `No primeiro acesso, use o código: ${r.codigo}` : '' };
+}
+// o que falta no cadastro do aluno, para a família resolver pelo app (termo, atestado, documentos, contrato)
+function faltaCadastro(alid) {
+  const a = S.alunas[alid] || {}; if (!C.ativaNoMes(a, mesHoje()) || a.anonimizadoEm) return [];
+  const out = [], x = termoDe(alid);
+  if (x.pend && x.pend.length) out.push('confirmar o termo de matrícula, que mudou');
+  else if (x.st === 'vencido') out.push('atualizar o termo de matrícula (já tem mais de 1 ano)');
+  else if (x.st !== 'ok') out.push('preencher o termo de matrícula');
+  if (x.atest) { const rec = (((S.saude[alid] || {}).atestado) || {}).recusa; out.push(x.as === 'recusado' && rec ? `mandar outro atestado médico (o anterior não deu: ${rec.motivo})` : 'mandar o atestado médico'); }
+  for (const T of tiposDoc()) { const s_ = situacaoDoc(docDe(alid, T.id)).st; if (s_ === 'falta') out.push(`mandar: ${T.nome}`); else if (s_ === 'vencido') out.push(`mandar de novo: ${T.nome} (venceu)`); else if (s_ === 'vence') out.push(`mandar de novo: ${T.nome} (vai vencer)`); }
+  if (ctPede() && !ctAssinado(alid)) out.push('assinar o contrato');
+  return out;
+}
+// botão do WhatsApp (no cabeçalho do responsável) para cobrar o que falta no cadastro dos filhos; sem pendência, nada
+function waPendencias(alids) {
+  const com = alids.map(id => [id, faltaCadastro(id)]).filter(([, f]) => f.length); if (!com.length) return '<span class="wa wa-mini wa-vazio" aria-hidden="true"></span>';
+  const r = respDe(com[0][0]), v = camposMsg('pendencias', com[0][0], []);
+  v.aluno = com.map(([id]) => primeiro((S.alunas[id] || {}).nome)).join(' e ');
+  v.pendencias = com.length === 1 ? com[0][1].map(x => '• ' + x).join('\n') : com.map(([id, f]) => `${primeiro((S.alunas[id] || {}).nome)}:\n${f.map(x => '• ' + x).join('\n')}`).join('\n\n');
+  const wa = waLink(r.telefone, preencherModelo(modeloDe('pendencias'), v));
+  return wa ? `<a class="wa wa-mini" href="${esc(wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Cobrar pelo WhatsApp o que falta no cadastro">${ICO_WA}</a>` : '<span class="wa wa-mini wa-vazio" aria-hidden="true"></span>';
 }
 function textoMsg(tipo, alid, itens) {
   if (tipo === 'acordo' && !Object.values(S.acordos).some(x => x.alid === alid && !x.cancelado && !x.perdao)) tipo = 'lembrete';
@@ -2136,15 +2160,15 @@ function tAlunas(v) {
     ${reps.map(x => `<div class="banner"><span><b>${esc(S.resps[x.a].nome)}</b> (${esc(alunasDoResp(x.a).map(([, a]) => primeiro(a.nome)).join(', ') || 'sem alunos')}) e <b>${esc(S.resps[x.b].nome)}</b> (${esc(alunasDoResp(x.b).map(([, a]) => primeiro(a.nome)).join(', ') || 'sem alunos')}) têm o mesmo ${x.por}. É a mesma pessoa?</span><span class="actions"><button data-junta="${esc(x.par)}">Agrupar</button><button data-nao="${esc(x.par)}" style="color:var(--muted)">Não é</button></span></div>`).join('')}
     <div class="field"><input id="abusca" type="search" placeholder="Buscar aluno(a), responsável ou telefone" value="${esc(S.busca || '')}" aria-label="Buscar"></div>
     ${vis.length ? vis.map(({ rid, r, al }) => `<ul class="list">
-        <li class="resp-cab ${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''}><div class="grow"><div class="label">Responsável</div><div class="resp-l1"><span class="t">${esc(r.nome)}</span>${rid ? `<span class="resp-fone num">– ${esc(foneBR(r.telefone) || 'sem telefone')}</span>` : ''}</div></div>${rid && r.codigo ? `<span class="chip resp-cod">${esc(r.codigo)}</span>` : ''}</li>
-        ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].join(''))}</li>`; }).join('')}
+        <li class="resp-cab ${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''}><div class="grow"><div class="label">Responsável</div><div class="resp-l1"><span class="t">${esc(r.nome)}</span>${rid ? `<span class="resp-fone num">– ${esc(foneBR(r.telefone) || 'sem telefone')}</span>` : ''}</div></div>${rid && r.codigo ? `<span class="chip resp-cod">${esc(r.codigo)}</span>` : ''}${rid && S.admin ? waPendencias(al.map(([id]) => id)) : ''}</li>
+        ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].filter(Boolean).slice(0, 1).join(''))}</li>`; }).join('')}
         ${rid ? `<li class="tap" data-nova="${esc(rid)}" style="min-height:44px"><span class="sub">+ Outro(a) aluno(a) com ${esc(primeiro(r.nome))}</span></li>` : ''}
       </ul>`).join('') : `<div class="empty">${q ? 'Nada encontrado.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre cada aluno(a) com a turma e o responsável. Se o telefone ou o CPF do responsável já existir, o app sugere agrupar os irmãos.</span>'}</div>`}`;
   $('abusca').oninput = e => { S.busca = e.target.value; render(); };
   $('ana').onclick = () => sheetAluna();
   if ($('adocs')) $('adocs').onclick = () => sheetDocsEscola();
-  v.querySelectorAll('[data-resp]').forEach(li => li.onclick = () => sheetResp(li.dataset.resp));
-  v.querySelectorAll('[data-al]').forEach(li => li.onclick = () => S.admin ? sheetPerfilAluno(li.dataset.al) : sheetAluna(li.dataset.al));
+  v.querySelectorAll('[data-resp]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; sheetResp(li.dataset.resp); });
+  v.querySelectorAll('[data-al]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; S.admin ? sheetPerfilAluno(li.dataset.al) : sheetAluna(li.dataset.al); });
   v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vmud));
   v.querySelectorAll('[data-nova]').forEach(li => li.onclick = () => sheetAluna(null, li.dataset.nova));
   v.querySelectorAll('[data-nao]').forEach(b => b.onclick = () => B.set(`escolas/${S.eid}/config/geral`, { naoRepetidos: [...(S.cfg.naoRepetidos || []), b.dataset.nao] }, { merge: true }));
@@ -4686,7 +4710,7 @@ function sheetDocsEscola() {
   const volta = () => sheetDocsEscola(), mes = mesHoje();
   const ativos = porNome(S.alunas).filter(([, a]) => C.ativaNoMes(a, mes) && !a.anonimizadoEm);
   const linha = (alid, tid) => { const a = S.alunas[alid], wa = situacaoDoc(docDe(alid, tid)).st !== 'ok' ? waDoc(alid, tid) : '';
-    return `<li class="tap" data-dal="${esc(alid)}" data-dt="${esc(tid)}"><div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(tipoDoc(tid).nome)}</span></div>${chipDoc(docDe(alid, tid))}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Pedir pelo WhatsApp">${ICO_WA}</a>` : ''}</li>`; };
+    return `<li class="tap" data-dal="${esc(alid)}" data-dt="${esc(tid)}"><div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(tipoDoc(tid).nome)}</span></div>${chipDoc(docDe(alid, tid))}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Pedir pelo WhatsApp">${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'}</li>`; };
   const alertas = [];
   for (const [alid] of ativos) for (const t of docsDoAluno(alid)) { const st = situacaoDoc(docDe(alid, t)).st; if (st === 'vencido' || st === 'vence') alertas.push([alid, t, st]); }
   alertas.sort((x, y) => (x[2] === 'vencido' ? 0 : 1) - (y[2] === 'vencido' ? 0 : 1));
@@ -4988,7 +5012,7 @@ function avisoAtestadosAdm() {
 }
 function sheetAtestadosEscola() {
   const g = atestadosEscola(), volta = () => sheetAtestadosEscola();
-  const linha = (r, dir) => `<li class="tap" data-va="${esc(r.id)}"><div class="dot">${esc(iniciais(r.a.nome))}</div><div class="grow"><div class="t">${esc(r.a.nome)}</div>${linhas(esc(respDe(r.id).nome || 'Sem responsável'), dir)}</div>${r.x.as === 'falta' || r.x.as === 'recusado' ? (() => { const wa = waAtestado(r.id); return wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Pedir pelo WhatsApp" data-nao-abre>${ICO_WA}</a>` : ''; })() : ''}</li>`;
+  const linha = (r, dir) => `<li class="tap" data-va="${esc(r.id)}"><div class="dot">${esc(iniciais(r.a.nome))}</div><div class="grow"><div class="t">${esc(r.a.nome)}</div>${linhas(esc(respDe(r.id).nome || 'Sem responsável'), dir)}</div>${r.x.as === 'falta' || r.x.as === 'recusado' ? (() => { const wa = waAtestado(r.id); return wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Pedir pelo WhatsApp" data-nao-abre>${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'; })() : '<span class="wa wa-vazio" aria-hidden="true"></span>'}</li>`;
   const at = r => (r.x.t.atestado || {});
   sheet(`<h3>Atestados médicos</h3>
     <div class="sub">Dos alunos que marcaram "sim" no questionário de saúde, ou que você anexou. O atestado vale por 1 ano.</div>
