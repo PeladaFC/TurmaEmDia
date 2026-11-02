@@ -23,7 +23,7 @@ function bancoFalso() {
     where: (f, op, v) => col(c, [...filtros, [f, v, op]]),
     doc: id => doc(c + '/' + id),
     add: async d => { const id = 'n' + Math.random().toString(36).slice(2, 10); store.set(c + '/' + id, JSON.parse(JSON.stringify(d))); return { id }; },
-    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
+    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : op === 'array-contains' ? ((store.get(k) || {})[f] || []).includes(v) : op === '>=' ? (store.get(k) || {})[f] >= v : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
   const runTransaction = async fn => fn({ get: r => r.get(), set: (r, d, o) => r.set(d, o), update: (r, d) => r.update(d) });
   return { store, doc, collection: col, runTransaction, getAll: async (...refs) => Promise.all(refs.map(r => r.get())) };
 }
@@ -405,6 +405,20 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     r = resp(); await PR.professor(req({ acao: 'apagarNota', eid: 'e7', alid: 'a1', id: 'adm1' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 403);
     r = resp(); await PR.professor(req({ acao: 'nota', eid: 'e7', alid: 'a1', id: nid, texto: 'Ótimo chute de esquerda' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 200);
     assert.ok(S.get('escolas/e7/notasAlunos/' + nid).editadoEm);
+    // chamada: só nas turmas dele (ou em que é o segundo professor); fica registrado quem fez; frequência
+    r = resp(); await PR.professor(req({ acao: 'chamada', eid: 'e7', tid: 't2', data: H }, 'ok:cam:v'), r); assert.strictEqual(r.code, 403);
+    set7('turmas/t2', { nome: 'Ballet', professoraId: 'p2', professoraIds: ['p1'], preco: 100 });
+    r = resp(); await PR.professor(req({ acao: 'chamada', eid: 'e7', tid: 't2', data: H }, 'ok:cam:v'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.deepStrictEqual(r.body.alunos.map(a => a.id).sort(), ['a2', 'a3']);
+    r = resp(); await PR.professor(req({ acao: 'chamada', eid: 'e7', tid: 't1', data: '2099-01-01' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 400);
+    r = resp(); await PR.professor(req({ acao: 'salvarChamada', eid: 'e7', tid: 't1', data: H, pres: { a1: 'f', a3: 'p', a2: 'p', x: 'p' } }, 'ok:cam:v'), r); assert.strictEqual(r.code, 200);
+    const ch = S.get(`escolas/e7/chamadas/t1_${H}`); assert.deepStrictEqual(ch.pres, { a1: 'f', a3: 'p' }); assert.deepStrictEqual([ch.por.nome, ch.por.papel, ch.editado], ['Camila', 'professor', null]);
+    r = resp(); await PR.professor(req({ acao: 'salvarChamada', eid: 'e7', tid: 't1', data: H, pres: { a1: 'j', a3: 'p' } }, 'ok:cam:v'), r);
+    assert.strictEqual(S.get(`escolas/e7/chamadas/t1_${H}`).por.nome, 'Camila'); assert.ok(S.get(`escolas/e7/chamadas/t1_${H}`).editado);
+    r = resp(); await PR.professor(req({ acao: 'freq', eid: 'e7', alid: 'a1' }, 'ok:cam:v'), r); assert.deepStrictEqual(r.body.chamadas.map(c => c.pres.a1), ['j']);
+    r = resp(); await PR.professor(req({ acao: 'painel', eid: 'e7', mes }, 'ok:cam:v'), r); assert.deepStrictEqual(r.body.chamadas.t1, [H]); assert.ok(r.body.alunos.some(a => a.id === 'a2'));
+    const fr = C.freqAluno([{ data: '2026-10-01', pres: { a: 'p' } }, { data: '2026-10-03', pres: { a: 'f' } }, { data: '2026-10-05', pres: { a: 'j' } }, { data: '2026-10-08', pres: { a: 'f' } }], 'a');
+    assert.deepStrictEqual([fr.p, fr.f, fr.j, fr.pct, fr.seguidas], [1, 2, 1, 33, 2]);
     // a escola troca o e-mail: o acesso antigo acaba
     const P1b = { nome: 'Camila', emailApp: 'novo@x.com' }; set7('professoras/p1', { ...P1b, appUid: 'cam' });
     await E.espelharProf({ params: { eid: 'e7', pid: 'p1' }, data: { before: { exists: true, data: () => P1 }, after: { exists: true, data: () => P1b } } });

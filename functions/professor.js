@@ -15,6 +15,7 @@ const C = require('./calculo');
 const idOk = x => typeof x === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(x);
 const chaveEmail = e => String(e || '').trim().toLowerCase().replace('@', '_at_').replace(/[^a-z0-9_-]/g, '_');
 const hojeRecife = () => new Date(Date.now() - 3 * 36e5).toISOString().slice(0, 10);
+const maisDiasR = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const TAGS = ['desempenho', 'comportamento', 'saude', 'familia', 'outro'];
 
 module.exports = db => {
@@ -44,7 +45,7 @@ module.exports = db => {
   }
   // os alunos que este professor pode ver: os das turmas dele
   async function meusAlunos(eid, pid) {
-    const turmas = await col(`escolas/${eid}/turmas`), minhas = Object.keys(turmas).filter(t => turmas[t] && turmas[t].professoraId === pid);
+    const turmas = await col(`escolas/${eid}/turmas`), minhas = Object.keys(turmas).filter(t => turmas[t] && C.daTurma(turmas[t], pid));
     const alunas = {};
     for (let i = 0; i < minhas.length; i += 30) {
       const q = await db.collection(`escolas/${eid}/alunas`).where('turmas', 'array-contains-any', minhas.slice(i, i + 30)).get();
@@ -96,7 +97,45 @@ module.exports = db => {
         // saúde: o resumo do termo de cada aluno (para a aula ser segura)
         const saude = {};
         if (vis.length) (await db.getAll(...vis.map(id => db.doc(`escolas/${eid}/saude/${id}`)))).forEach(s => { if (s.exists) { const x = C.saudeProfessor(s.data()); if (x) saude[s.id] = x; } });
-        return res.json({ pid, nome: P.nome || '', mes, ...r, fotos, saude });
+        // chamadas feitas nas turmas dele nos últimos 21 dias (para lembrar a que falta fazer)
+        const minhasT = Object.keys(turmas).filter(t => C.daTurma(turmas[t], pid)), feitas = {};
+        const qc = await db.collection(`escolas/${eid}/chamadas`).where('data', '>=', maisDiasR(hojeRecife(), -21)).get();
+        qc.docs.forEach(x => { const c = x.data(); if (minhasT.includes(c.tid)) (feitas[c.tid] = feitas[c.tid] || []).push(c.data); });
+        return res.json({ pid, nome: P.nome || '', mes, ...r, fotos, saude, chamadas: feitas });
+      }
+
+      // chamada: o professor abre e salva a chamada das turmas dele (fica registrado quem fez e cada mudança)
+      if (acao === 'chamada' || acao === 'salvarChamada') {
+        const { tid, data } = b;
+        if (!idOk(tid) || !/^\d{4}-\d{2}-\d{2}$/.test(String(data || ''))) throw erro('Pedido inválido.', 400);
+        const t = await ler(`escolas/${eid}/turmas/${tid}`);
+        if (!t || !C.daTurma(t, pid)) throw erro('Esta turma não é sua.', 403);
+        const h = hojeRecife();
+        if (data > h) throw erro('Ainda não chegou esse dia.', 400);
+        const q = await db.collection(`escolas/${eid}/alunas`).where('turmas', 'array-contains', tid).get();
+        const alunos = q.docs.map(x => ({ id: x.id, ...x.data() })).filter(a => !a.anonimizadoEm && a.ativa !== false && C.ativaNoMes(a, data.slice(0, 7))).map(a => ({ id: a.id, nome: a.nome || 'Aluno(a)' }));
+        const ref = db.doc(`escolas/${eid}/chamadas/${C.chaveChamada(tid, data)}`);
+        if (acao === 'chamada') {
+          const rq = await db.collection(`escolas/${eid}/chamadas`).where('data', '>=', maisDiasR(h, -120)).get();
+          const recentes = rq.docs.map(x => x.data()).filter(c => c.tid === tid && c.data !== data);
+          return res.json({ alunos, doc: (await ref.get()).data() || null, recentes });
+        }
+        if (data < maisDiasR(h, -60)) throw erro('Só dá para mexer na chamada dos últimos 60 dias. Fale com a escola.', 400);
+        const ok = new Set(alunos.map(a => a.id)), pres = {};
+        for (const [id, st] of Object.entries(b.pres || {})) if (ok.has(id) && ['p', 'f', 'j'].includes(st)) pres[id] = st;
+        const quem = { uid: u.uid, nome: P.nome || u.name || 'Professor(a)', papel: 'professor', em: Date.now() };
+        const atual = (await ref.get()).data();
+        await ref.set({ tid, data, pres, alunos: Object.keys(pres), obs: String(b.obs || '').trim().slice(0, 300), por: atual && atual.por ? atual.por : quem, editado: atual ? quem : null, hist: FieldValue.arrayUnion(quem) }, { merge: true });
+        return res.json({ ok: true });
+      }
+
+      // frequência de um aluno das turmas dele
+      if (acao === 'freq') {
+        if (!idOk(b.alid)) throw erro('Pedido inválido.', 400);
+        const { turmas, minhas } = await meusAlunos(eid, pid), a = await ler(`escolas/${eid}/alunas/${b.alid}`);
+        if (!a || !(a.turmas || []).some(t => minhas.includes(t))) throw erro('Este aluno não está nas suas turmas.', 403);
+        const q = await db.collection(`escolas/${eid}/chamadas`).where('alunos', 'array-contains', b.alid).get();
+        return res.json({ chamadas: q.docs.map(x => x.data()).filter(c => minhas.includes(c.tid)).map(c => ({ tid: c.tid, data: c.data, pres: { [b.alid]: (c.pres || {})[b.alid] } })), turmas: Object.fromEntries(minhas.map(t => [t, { nome: (turmas[t] || {}).nome || '' }])) });
       }
 
       if (acao === 'notas' || acao === 'nota' || acao === 'apagarNota') {

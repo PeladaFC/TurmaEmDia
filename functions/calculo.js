@@ -223,8 +223,22 @@
   /* Área do professor: o que ele vê dos alunos das turmas dele, sem dados da família (nada de telefone, CPF ou saúde).
      d = { alunas, turmas, extras, grupos, acordos, cfg, pags: { alid: pagamentos } }, pid, mes 'AAAA-MM', hoje 'AAAA-MM-DD'.
      Os valores são a parte dele: o que cai para ele nas turmas, cobranças e acordos em que ele é o recebedor. */
+  /* Professores da turma: o principal (professoraId) e, se houver, o segundo (professoraIds). Os dois veem a turma e
+     fazem a chamada; a mensalidade vai só para quem a escola escolheu em "recebedor". */
+  const profsTurma = t => [...new Set([t && t.professoraId, ...((t && t.professoraIds) || [])].filter(Boolean))];
+  const daTurma = (t, pid) => !!pid && profsTurma(t).includes(pid);
+  /* Chamada: um documento por turma e dia (chamadas/{tid}_{AAAA-MM-DD}) com pres = { alid: 'p' | 'f' | 'j' }
+     (presente, falta, falta justificada). A frequência conta presentes sobre presentes + faltas (a justificada não pesa). */
+  const DIAS_SEM = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  const chaveChamada = (tid, data) => `${tid}_${data}`;
+  function freqAluno(chamadas, alid, filtro) {
+    const L = (chamadas || []).filter(c => c && c.pres && ['p', 'f', 'j'].includes(c.pres[alid]) && (!filtro || filtro(c))).sort((a, b) => String(a.data).localeCompare(String(b.data)));
+    let p = 0, f = 0, j = 0, seguidas = 0;
+    for (const c of L) { const st = c.pres[alid]; if (st === 'p') { p++; seguidas = 0; } else if (st === 'f') { f++; seguidas++; } else j++; }
+    return { p, f, j, aulas: L.length, pct: p + f ? Math.round(p / (p + f) * 100) : null, seguidas, dias: L.map(c => ({ data: c.data, tid: c.tid, st: c.pres[alid] })) };
+  }
   function painelProfessor(d, pid, mes, hoje) {
-    const turmas = d.turmas || {}, minhas = Object.keys(turmas).filter(t => turmas[t] && turmas[t].professoraId === pid), set = new Set(minhas);
+    const turmas = d.turmas || {}, minhas = Object.keys(turmas).filter(t => turmas[t] && daTurma(turmas[t], pid)), set = new Set(minhas);
     const alunos = [], rec = [], atr = [], ven = [];
     const parteMesPaga = (a, pag, mm) => {
       const pp = stPag(((pag.mensPartes || {})[mm] || {})[pid]); if (pp) return pp;
@@ -329,5 +343,5 @@
     r.alerta = !!(itens.length || r.detalhes || r.alergias || r.remedios || r.semPrimeiros);
     return r;
   }
-  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
+  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, freqAluno };
 });

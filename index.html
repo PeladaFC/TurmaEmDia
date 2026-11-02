@@ -133,6 +133,21 @@ button.chip{cursor:pointer}
 .rt-tit{font-size:1.05rem}
 .rt-fil{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
 .rt-fil .actions{margin:0}
+.ch-dia{display:flex;align-items:center;justify-content:space-between;gap:8px}.ch-dia b{font-size:1.02rem}
+.ch-dia .icon-btn:disabled{opacity:.35}
+.ch-res{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.ch-res div{border:1px solid var(--line);border-radius:5px;padding:8px 6px;text-align:center;font-size:.78rem;color:var(--muted)}
+.ch-res b{display:block;font-size:1rem;color:var(--ink)}
+.ch-lin{display:flex;align-items:center;gap:10px}
+.ch-bt{display:flex;gap:6px;flex:none}
+.ch-bt button{width:44px;height:40px;border-radius:5px;border:1.5px solid var(--line);background:var(--surface);font:700 1rem var(--f-body,inherit);color:var(--muted)}
+.ch-bt button.p{background:var(--in,#1b7f6b);border-color:var(--in,#1b7f6b);color:#fff}
+.ch-bt button.f{background:var(--out);border-color:var(--out);color:#fff}
+.ch-bt button.j{background:var(--warn-soft);border-color:var(--warn);color:var(--ink)}
+.freq{display:flex;gap:4px;flex-wrap:wrap;margin-top:10px}
+.freq i{width:24px;height:24px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font:700 .68rem var(--f-body,system-ui);font-style:normal;color:#fff}
+.freq .p{background:var(--in,#1b7f6b)}.freq .f{background:var(--out)}.freq .j{background:var(--warn);color:var(--ink)}
+.dias-seg{display:grid;grid-template-columns:repeat(7,1fr)}.dias-seg button{padding:8px 0;min-width:0;font-size:.8rem}
 .pl-nome{font-weight:800;font-size:1rem}.pl-ate{font-size:.78rem;color:var(--muted)}.pl-preco{font-size:1.35rem;font-weight:800;margin-top:4px}.pl-mes{font-size:.72rem;color:var(--muted)}
 .pl-meios{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px}
 .pl-add{display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border:0;background:none;color:var(--accent);font:inherit;font-weight:700;font-size:.98rem}.pl-mais{font-size:1.5rem;line-height:1;font-weight:400}

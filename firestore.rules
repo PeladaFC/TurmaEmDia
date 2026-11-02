@@ -170,6 +170,8 @@ service cloud.firestore {
 
       // Turmas, locais, grupos, eventos e taxas: quem paga lê; a administração escreve.
       // A resposta "vai / não vai" da família passa pelo servidor (eventoResposta).
+      // Chamada (presença) de cada turma e dia: a administração lê e grava direto; o professor, pelo servidor.
+      match /chamadas/{doc} { allow read: if admin(eid); allow write: if adminW(eid); }
       match /turmas/{doc} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if adminW(eid); }
       match /locais/{doc} { allow read: if admin(eid) || membro(eid) || equipe(eid); allow write: if adminW(eid); }
       match /grupos/{doc} { allow read: if admin(eid) || membro(eid); allow write: if adminW(eid); }
