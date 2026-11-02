@@ -86,11 +86,11 @@ module.exports = (db, P) => {
     const ant = (await cartaoRef(eid, u.uid, rec).get()).data();
     if (ant && ant.cardId && ant.cardId !== String(r.j.id)) await mpPedir(conta.token, 'DELETE', `/v1/customers/${ant.cid}/cards/${ant.cardId}`).catch(() => null);
     const pm = r.j.payment_method || {};
-    const d = { uid: u.uid, rec, cid: String(cid), cardId: String(r.j.id), metodo: pm.id || null, marca: pm.name || pm.id || 'Cartão', fim: r.j.last_four_digits || '', validade: r.j.expiration_month && r.j.expiration_year ? `${String(r.j.expiration_month).padStart(2, '0')}/${String(r.j.expiration_year).slice(-2)}` : '', auto: !!(ant && ant.auto), em: Date.now() };
+    const d = { uid: u.uid, rec, cid: String(cid), cardId: String(r.j.id), metodo: pm.id || null, bin: r.j.first_six_digits || null, marca: pm.name || pm.id || 'Cartão', fim: r.j.last_four_digits || '', validade: r.j.expiration_month && r.j.expiration_year ? `${String(r.j.expiration_month).padStart(2, '0')}/${String(r.j.expiration_year).slice(-2)}` : '', auto: !!(ant && ant.auto), em: Date.now() };
     await cartaoRef(eid, u.uid, rec).set(d);
     return d;
   }
-  const cartaoPublico = d => d ? { rec: d.rec, cardId: d.cardId, metodo: d.metodo, marca: d.marca, fim: d.fim, validade: d.validade, auto: !!d.auto } : null;
+  const cartaoPublico = d => d ? { rec: d.rec, cardId: d.cardId, metodo: d.metodo, bin: d.bin || null, marca: d.marca, fim: d.fim, validade: d.validade, auto: !!d.auto } : null;
 
   // cobra no cartão; registra a cobrança e, se aprovado, dá baixa na hora
   async function cobrarCartao(eid, u, prep, b) {

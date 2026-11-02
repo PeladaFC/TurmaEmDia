@@ -100,9 +100,9 @@ const ERROS = {
   'network-request-failed': 'Sem internet. Verifique a conexão.', 'popup-closed-by-user': 'O login com Google foi fechado antes de terminar.',
   'permission-denied': 'Você não tem permissão para isso.', 'unavailable': 'Sem conexão com o servidor. Tente de novo.'
 };
-const msgErroTexto = e => ERROS[e && e.code] || (e && e.message && !/firebase|undefined/i.test(e.message) ? e.message : 'Algo deu errado. Tente de novo.');
+const msgErroTexto = e => (e && (e.code === 'permission-denied' || e.code === 'plano-leitura') && typeof planoTrava === 'function' && planoTrava() ? MSG_LEITURA : null) || ERROS[e && e.code] || (e && e.message && !/firebase|undefined/i.test(e.message) ? e.message : 'Algo deu errado. Tente de novo.');
 // erros "esperados" (senha errada, sem internet...) não vão para o registro; o resto vai
-const ERROS_ESPERADOS = new Set(['invalid-credential', 'wrong-password', 'user-not-found', 'email-already-in-use', 'invalid-email', 'weak-password', 'missing-password', 'too-many-requests', 'network-request-failed', 'popup-closed-by-user', 'unavailable', 'cancelled-popup-request', 'popup-blocked']);
+const ERROS_ESPERADOS = new Set(['invalid-credential', 'wrong-password', 'user-not-found', 'email-already-in-use', 'invalid-email', 'weak-password', 'missing-password', 'too-many-requests', 'network-request-failed', 'popup-closed-by-user', 'unavailable', 'cancelled-popup-request', 'popup-blocked', 'plano-leitura', 'reconectar', 'pausada']);
 const msgErro = e => { try { if (e && ((e.code && !ERROS_ESPERADOS.has(e.code)) || e instanceof TypeError || e instanceof ReferenceError || e instanceof RangeError || e instanceof SyntaxError)) registrarErro(e, 'tratado'); } catch (x) { } return msgErroTexto(e); };
 
 /* ================= Registro técnico de erros (igual ao Pelota FC) =================
@@ -692,6 +692,8 @@ async function abrirEscola(eid, tab) {
   const col = (nome, chave, onde) => B.ouvirCol(`${p}/${nome}`, docs => { S[chave] = Object.fromEntries(docs.map(d => [d.id, d.data])); S.carregado.add(chave); agendar(); }, e => console.warn(nome, e), onde);
   OUV.push(B.ouvirDoc(p, d => { if (d) { S.escola = d; agendar(); } }));
   OUV.push(B.ouvirDoc(`${p}/config/geral`, d => { S.cfg = d || {}; S.cfgOk = true; agendar(); }));
+  // plano do app (teste, pago até, bloqueio por atraso): só o servidor grava
+  OUV.push(B.ouvirDoc(`${p}/config/plano`, d => { S.plano = d || null; agendar(); }, () => { S.plano = null; }));
   if (!prof || admin) OUV.push(B.ouvirDoc(`${p}/config/contrato`, d => { S.contratoCfg = d || {}; agendar(); }, () => { }));
   (prof && !admin ? ['locais', 'turmas'] : ['locais', 'turmas', 'grupos', 'extras']).forEach(n => OUV.push(col(n, n)));
   if (prof && !admin) {
@@ -752,24 +754,19 @@ const ONLINE = via => ['pix', 'boleto', 'cartao'].includes(via);
 const nomeVia = p => p.via === 'pix' ? 'Pix automático' : p.via === 'cartao' ? `Cartão${p.parcelas > 1 ? ` em ${p.parcelas}x` : ''}` : NOME_VIA[p.via] || 'Outro';
 // taxas da conta do Mercado Pago (editáveis em Ajustes, porque mudam de conta para conta)
 const TAXAS_PADRAO = { pix: 0.99, boleto: 3.49, cartao: 4.98, parc: { 2: 9.64, 3: 11.23, 4: 12.81, 5: 14.38, 6: 15.94 } };
-const FORMAS_PADRAO = { boleto: true, cartao: true, parcelado: true, maxParcelas: 3 };
+const FORMAS_PADRAO = { boleto: false, cartao: false, parcelado: false, maxParcelas: 3, jurosEscola: false, recorrente: false };
 const taxasCfg = () => ({ ...TAXAS_PADRAO, ...(S.cfg.taxas || {}), parc: { ...TAXAS_PADRAO.parc, ...((S.cfg.taxas || {}).parc || {}) } });
 const formasCfg = () => ({ ...FORMAS_PADRAO, ...(S.cfg.formas || {}) });
 const COMISSAO = 0.01;
 const TAXA_TRANSACAO = () => ((0.0099 + COMISSAO) * 100).toFixed(2).replace('.', ','); // Pix do Mercado Pago + app = 1,99%
-// boleto e cartão ficam guardados para depois; por enquanto só Pix
-const OUTRAS_FORMAS = false;
+// boleto e cartão: a escola liga em Ajustes → Formas de pagamento
+const outrasFormas = () => { const f = formasCfg(); return f.boleto === true || f.cartao === true; };
 // quanto a família paga em cada forma, para uma base (o que a escola tem que receber)
 // valor de cada forma de pagamento; baseRep = parte em que quem paga cobre a taxa (padrão: a escolha da escola)
 function valorForma(base, forma, n, baseRep) {
-  const t = taxasCfg(), r = Math.min(C.r2(base), C.r2(baseRep == null ? (S.cfg.pixRepassa === true ? base : 0) : baseRep));
-  const up = (b, pct) => C.r2(C.r2(b - r) + (r > 0 ? Math.ceil(r / (1 - pct - COMISSAO) * 100 - 1e-6) / 100 : 0));
-  if (forma === 'pix') return { total: up(base, t.pix / 100) };
-  if (forma === 'boleto') return { total: r > 0 ? C.r2(C.r2(base - r) + Math.ceil((r + t.boleto) / (1 - COMISSAO) * 100 - 1e-6) / 100) : C.r2(base) };
-  const vista = up(base, t.cartao / 100);
-  if (forma === 'cartao' && (!n || n < 2)) return { total: vista, parcelas: 1, parcela: vista };
-  const juros = (Number(t.parc[n]) || 0) / 100, total = C.r2(vista * (1 + juros));
-  return { total, parcelas: n, parcela: C.r2(total / n), juros };
+  // mesmo cálculo do servidor (regras.js); no parcelado, os juros o Mercado Pago soma na fatura de quem parcela
+  const { valor } = C.valorForma(base, forma, S.cfg, COMISSAO, baseRep);
+  return { total: valor, parcelas: n || 1, parcela: C.r2(valor / (n || 1)) };
 }
 // janelinha que simula a taxa: com um valor, mostra quanto a família paga e quanto a escola recebe, ligado ou desligado
 function simTaxaHTML(id, v0, semCampo) {
@@ -1034,6 +1031,7 @@ function render() {
   if (comMes) { const muda = n => { S.mes = mesMais(S.mes, n); render(); if (S.papel === 'p') carregarPainelProf(); }; $('mprev').onclick = () => muda(-1); $('mnext').onclick = () => muda(1); }
   faixa();
   const v = $('tela');
+  if (S.plano && sitPlano().fase === 'suspensa') return telaPlanoParado(v);
   if (S.papel === 'f' && S.eu && !S.eu.consentimento) return telaConsentimento(v);
   ({ cobr: tCobrancas, alunas: tAlunas, turmas: tTurmas, eventos: tEventos, fin: tFinanceiro, pagar: tPagar, filhas: tFilhas, lancar: tLancar, pturmas: tPTurmas, pfin: tPFin })[S.tab](v);
   pedirFotos();
@@ -1044,10 +1042,11 @@ function faixa() {
   const PAP = { a: ['administração', 'admin@teste.com'], p: ['professor(a)', 'professor@teste.com'], f: ['responsável', 'familia@teste.com'] };
   const f = $('faixa'); let h = MOCK ? `<div class="banner" style="margin-bottom:8px"><span>Modo de teste, com dados de exemplo. Você está como <b>${PAP[S.papel][0]}</b>.</span><span class="actions">${Object.entries(PAP).filter(([k]) => k !== S.papel).map(([k, [n, e]]) => `<button data-ver="${e}">Ver como ${n}</button>`).join('')}${S.admin ? `<button id="mano">${S.anoRef ? 'Voltar para hoje' : 'Simular janeiro de ' + (Number(hoje().slice(0, 4)) + 1)}</button>` : ''}</span></div>` : '';
   if (S.admin) {
+    h += faixaPlano();
     if (!S.cfg.mpConectadoEm) h += `<div class="banner"><span>O <b>Pix automático</b> ainda não está ligado. Conecte a conta do Mercado Pago da escola para os responsáveis pagarem pelo app.</span><button id="fpix">Ligar Pix</button></div>`;
     else if (S.mpc && S.mpc.conta && S.mpc.confirmada === false) h += `<div class="banner"><span>Confira a conta conectada: <b>${esc(S.mpc.conta.nome || '')}</b> ${esc(S.mpc.conta.doc || '')}</span><button id="fpix">Conferir</button></div>`;
   }
-  f.innerHTML = h; if ($('fpix')) $('fpix').onclick = () => sheetAjustes();
+  f.innerHTML = h; if ($('fpix')) $('fpix').onclick = () => sheetAjustes(); if ($('fplano')) $('fplano').onclick = () => sheetPlano();
   f.querySelectorAll('[data-ver]').forEach(b => b.onclick = () => window.__mock.trocar(b.dataset.ver));
   if ($('mano')) $('mano').onclick = () => { S.anoRef = S.anoRef ? null : Number(hoje().slice(0, 4)) + 1; render(); if (S.anoRef) aviso('Simulando janeiro de ' + S.anoRef + ': veja os avisos de faixa etária.'); };
 }
@@ -1447,41 +1446,197 @@ const opcoesRec = atual => [['escola', (S.escola.nome || 'Escola') + ' (escola)'
 function sheetFormas(chaves) {
   const quer = new Set(chaves), itens = [...new Set(chaves.map(k => k.split(':')[2]))].flatMap(alid => itensDe(alid)).filter(i => quer.has(i.k) && !i.pago);
   const lotes = dividirPorRecebedor(itens), base = C.r2(itens.reduce((x, i) => x + i.v, 0)), f = formasCfg(), N = lotes.length;
-  const tot = (forma, n) => C.r2(lotes.reduce((x, l) => x + valorForma(l.base, forma, n, repLote(l)).total, 0));
-  const ops = [['pix', null, 'Pix', 'Cai na hora · mais barato', ICO.cobr]];
-  if (f.boleto) ops.push(['boleto', null, 'Boleto', 'Compensa em até 3 dias úteis', ICO.caixa]);
-  if (f.cartao) ops.push(['cartao', 1, 'Cartão de crédito à vista', 'Na fatura do cartão', ICO.caixa]);
-  if (f.cartao && f.parcelado) for (let n = 2; n <= Math.min(6, Number(f.maxParcelas) || 1); n++) ops.push(['cartao', n, `Cartão em ${n}x`, '', ICO.caixa]);
-  const pix = tot('pix');
+  const tot = forma => C.r2(lotes.reduce((x, l) => x + valorForma(l.base, forma, 1, repLote(l)).total, 0));
+  const pix = tot('pix'), maxP = f.parcelado ? Math.max(2, Number(f.maxParcelas) || 2) : 1;
+  const ops = [['pix', 'Pix', 'Cai na hora · mais barato', ICO.cobr]];
+  if (f.boleto) ops.push(['boleto', 'Boleto', 'Compensa em até 3 dias úteis', ICO.caixa]);
+  if (f.cartao) ops.push(['cartao', 'Cartão de crédito', f.parcelado ? `À vista ou em até ${maxP}x` : 'À vista, na fatura do cartão', ICO.caixa]);
   sheet(`<h3>Como você quer pagar?</h3>
     <div class="conta">${contaL('Cobranças escolhidas', brl(base))}</div>
-    ${N > 1 ? `<div class="banner"><span>Vai para ${N} recebedores (${lotes.map(l => esc(nomeRec(l.rec))).join(', ')}), então o pagamento é feito em ${N} partes, uma para cada um.</span></div>` : ''}
-    <div class="formas">${ops.map(([fo, n, t, d, ic], i) => { const v = tot(fo, n), par = n > 1 ? C.r2(v / n) : 0;
-      return `<button type="button" class="forma" data-fo="${fo}" data-n="${n || 1}"><span class="vant-ic">${ic}</span><span class="grow"><b>${esc(t)}</b><span class="s">${n > 1 ? `${n}x de ${brl(par)}` : esc(d)}</span></span><span class="valor-col"><b class="num">${brl(v)}</b>${fo !== 'pix' && v > pix ? `<span class="s num">+ ${brl(C.r2(v - pix))} que o Pix</span>` : fo === 'pix' && ops.length > 1 ? '<span class="chip pago">Melhor preço</span>' : ''}</span></button>`; }).join('')}</div>
+    ${N > 1 && ops.length > 1 ? `<div class="banner"><span>Essas cobranças vão para ${N} recebedores (${lotes.map(l => esc(nomeRec(l.rec))).join(', ')}). O Pix já separa sozinho. Para boleto ou cartão, escolha as cobranças de um recebedor por vez.</span></div>` : ''}
+    <div class="formas">${ops.map(([fo, t, d, ic]) => { const v = tot(fo), trava = fo !== 'pix' && N > 1;
+      return `<button type="button" class="forma" data-fo="${fo}" ${trava ? 'disabled' : ''}><span class="vant-ic">${ic}</span><span class="grow"><b>${esc(t)}</b><span class="s">${esc(d)}</span></span><span class="valor-col"><b class="num">${brl(v)}</b>${fo !== 'pix' && v > pix ? `<span class="s num">+ ${brl(C.r2(v - pix))} que o Pix</span>` : fo === 'pix' && ops.length > 1 ? '<span class="chip pago">Melhor preço</span>' : ''}</span></button>`; }).join('')}</div>
+    ${f.cartao && f.parcelado ? '<div class="note">No parcelado, os juros aparecem antes de você confirmar.</div>' : ''}
     <button class="btn ghost" data-fechar>Cancelar</button>`, sh => {
-    sh.querySelectorAll('[data-fo]').forEach(b => b.onclick = () => { const fo = b.dataset.fo, n = Number(b.dataset.n);
-      if (fo === 'pix') abrirDe(() => sheetFormas(chaves), () => sheetPix(chaves)); else abrirDe(() => sheetFormas(chaves), () => sheetOutraForma(chaves, fo, n)); });
+    sh.querySelectorAll('[data-fo]').forEach(b => b.onclick = () => { const fo = b.dataset.fo, volta = () => sheetFormas(chaves);
+      abrirDe(volta, () => fo === 'pix' ? sheetPix(chaves) : fo === 'boleto' ? sheetBoletoFam(chaves) : sheetCartaoFam(chaves)); });
   });
 }
-// boleto e cartão: no app publicado, abre a tela segura do Mercado Pago (o cartão nunca passa pelo app)
-function sheetOutraForma(chaves, forma, n) {
-  sheet(`<h3>${forma === 'boleto' ? 'Pagar com boleto' : n > 1 ? `Cartão em ${n}x` : 'Cartão de crédito'}</h3><div id="ofc" class="empty">Preparando…</div><button class="btn ghost" data-fechar>Fechar</button>`, async () => {
-    let lotes; try { lotes = await pixCriar(chaves); } catch (e) { $('ofc').innerHTML = `<b>Não deu para preparar.</b><span>${esc(msgErro(e))}</span>`; return; }
-    const vals = lotes.map(l => ({ ...l, ...valorForma(l.base, forma, n, repLote(l)) })), total = C.r2(vals.reduce((x, l) => x + l.total, 0));
-    const passo = k => {
-      const l = vals[k], N = vals.length;
-      $('ofc').outerHTML = `<div id="ofc" style="display:flex;flex-direction:column;gap:12px">
-        ${N > 1 ? `<div class="banner"><span>Parte ${k + 1} de ${N} · para ${esc(nomeRec(l.rec))}. Total ${brl(total)}.</span></div>` : ''}
-        <div class="conta">${contaL('Cobranças', brl(l.base))}${l.total > l.base ? contaL(forma === 'boleto' ? 'Taxa do boleto' : n > 1 ? 'Taxas do cartão e do parcelamento' : 'Taxa do cartão', brl(C.r2(l.total - l.base))) : ''}${contaL('<b>Total</b>', `<b>${brl(l.total)}</b>`, 'total')}${n > 1 ? contaL(`${n} parcelas de`, brl(l.parcela)) : ''}</div>
-        <div class="note">${forma === 'boleto' ? 'O boleto é gerado pelo Mercado Pago. Você pode pagar no app do banco ou numa lotérica. Quando compensar (até 3 dias úteis), a baixa é automática.' : 'Você digita o cartão na tela segura do Mercado Pago: o número do cartão não passa pelo app nem fica com a escola. Quando aprovar, a baixa é automática.'}</div>
-        <button class="btn" id="ofir">${forma === 'boleto' ? 'Gerar boleto' : 'Pagar no Mercado Pago'}</button>
-        ${MOCK ? `<button class="btn ghost" id="ofmock">Teste: simular ${forma === 'boleto' ? 'boleto pago' : 'cartão aprovado'}</button>` : ''}
+
+/* ---------- cartão de crédito dentro do app (o número vai direto do celular para o Mercado Pago) ---------- */
+let MP_SDK = null;
+function carregarMP() {
+  if (window.MercadoPago) return Promise.resolve();
+  if (!MP_SDK) MP_SDK = new Promise((ok, nao) => { const s = document.createElement('script'); s.src = 'https://sdk.mercadopago.com/js/v2'; s.onload = ok; s.onerror = () => { MP_SDK = null; nao(new Error('Não deu para abrir o Mercado Pago. Verifique a internet e tente de novo.')); }; document.head.appendChild(s); });
+  return MP_SDK;
+}
+/* campos do cartão: no app publicado, cada campo é uma janelinha do próprio Mercado Pago (o app não lê o número);
+   no modo de teste, campos comuns. ids: { num, val, cvv } (só cvv, para o cartão salvo). */
+async function camposCartao(pk, ids, aoBin) {
+  if (MOCK) {
+    const pl = { num: '0000 0000 0000 0000', val: 'MM/AA', cvv: '123' };
+    for (const [k, id] of Object.entries(ids)) if ($(id)) $(id).innerHTML = `<input inputmode="numeric" aria-label="${k === 'num' ? 'Número do cartão' : k === 'val' ? 'Validade' : 'Código de segurança'}" placeholder="${pl[k]}" id="${id}i">`;
+    if (ids.num && $(ids.num + 'i')) $(ids.num + 'i').addEventListener('input', e => { const d = C.soDigitos(e.target.value); if (d.length >= 6 && aoBin) aoBin(d.slice(0, 6)); });
+    return { mock: true, token: async () => { const d = C.soDigitos(($(ids.num + 'i') || {}).value || '4235647728025682'); if (ids.cvv && !C.soDigitos(($(ids.cvv + 'i') || {}).value).length) throw new Error('Digite o código de segurança.'); return { id: 'tok_' + Date.now(), last_four_digits: d.slice(-4) || '4242', first_six_digits: d.slice(0, 6) }; },
+      metodo: async bin => ({ id: /^5/.test(bin) ? 'master' : 'visa', name: /^5/.test(bin) ? 'Mastercard' : 'Visa' }),
+      parcelas: async (valor, bin, max) => Array.from({ length: max }, (_, i) => { const n = i + 1, tot = C.r2(valor * (n === 1 ? 1 : 1 + 0.0199 * n)); return { n, total: tot, parcela: C.r2(tot / n), juros: n > 1 }; }), sair: () => { } };
+  }
+  await carregarMP();
+  const mp = new window.MercadoPago(pk, { locale: 'pt-BR' }), cor = getComputedStyle(document.body).color || '#222';
+  const est = { style: { fontSize: '16px', color: cor, fontFamily: 'system-ui, sans-serif' } }, f = {};
+  if (ids.num) { f.num = mp.fields.create('cardNumber', { placeholder: '0000 0000 0000 0000', ...est }).mount(ids.num); f.num.on('binChange', e => aoBin && e && e.bin && aoBin(e.bin)); }
+  if (ids.val) f.val = mp.fields.create('expirationDate', { placeholder: 'MM/AA', ...est }).mount(ids.val);
+  f.cvv = mp.fields.create('securityCode', { placeholder: '123', ...est }).mount(ids.cvv);
+  return {
+    token: async extra => { try { return await mp.fields.createCardToken(extra || {}); } catch (e) { const m = JSON.stringify(e || {}); throw new Error(/securityCode|security_code/i.test(m) ? 'Confira o código de segurança.' : /expiration/i.test(m) ? 'Confira a validade do cartão.' : /cardNumber|card_number/i.test(m) ? 'Confira o número do cartão.' : /identification/i.test(m) ? 'Confira o CPF do titular.' : 'Confira os dados do cartão.'); } },
+    metodo: async bin => { const r = await mp.getPaymentMethods({ bin }); const x = (r && r.results || [])[0]; return x ? { id: x.id, name: x.name, emissor: x.issuer && x.issuer.id } : null; },
+    parcelas: async (valor, bin, max) => { const r = await mp.getInstallments({ amount: String(valor), bin, paymentTypeId: 'credit_card' }); const pc = ((r || [])[0] || {}).payer_costs || [];
+      return pc.filter(p => p.installments <= max).map(p => ({ n: p.installments, total: p.total_amount, parcela: p.installment_amount, juros: p.installment_rate > 0 })); },
+    sair: () => Object.values(f).forEach(x => { try { x.unmount(); } catch (e) { } })
+  };
+}
+const linhaParcela = p => p.n === 1 ? `À vista · ${brl(p.total)}` : `${p.n}x de ${brl(p.parcela)}${p.juros ? ` · total ${brl(p.total)}` : ' sem juros'}`;
+// cartões salvos da família nesta escola (um por recebedor), lidos pelo servidor
+async function meusCartoes(recarregar) {
+  if (S.cartoes && !recarregar) return S.cartoes;
+  try { S.cartoes = MOCK ? (MOCK_CARTOES[S.eid] || []) : ((await servidor('pagar', { acao: 'cartoes', eid: S.eid })).cartoes || []); } catch (e) { S.cartoes = []; }
+  return S.cartoes;
+}
+const MOCK_CARTOES = {};
+function sheetCartaoFam(chaves) {
+  let campos = null;
+  const sair = () => { if (campos) campos.sair(); campos = null; };
+  sheet(`<h3>Cartão de crédito</h3><div id="cfc" class="empty">Preparando…</div><button class="btn ghost" data-fechar>Fechar</button>`, async () => {
+    let P;
+    try { P = MOCK ? await mockPagar({ acao: 'preparar', itens: chaves }) : await servidor('pagar', { acao: 'preparar', eid: S.eid, itens: chaves }); }
+    catch (e) { $('cfc').innerHTML = `<b>${e.code === 'reconectar' ? 'Cartão ainda não disponível' : 'Não deu para preparar.'}</b><span>${esc(msgErro(e))}</span>`; return; }
+    let usarSalvo = !!P.cartao, bin = P.cartao ? P.cartao.bin : '', metodo = P.cartao ? { id: P.cartao.metodo, name: P.cartao.marca } : null, ops = [{ n: 1, total: P.valor, parcela: P.valor }];
+    const r = respPagador();
+    const desenhar = async () => {
+      sair();
+      $('cfc').outerHTML = `<div id="cfc" style="display:flex;flex-direction:column;gap:12px">
+        <div class="conta">${contaL('Cobranças', brl(P.base))}${P.valor > P.base ? contaL('Taxa de pagamento', brl(C.r2(P.valor - P.base))) : ''}${contaL('<b>Total</b>', `<b>${brl(P.valor)}</b>`, 'total')}</div>
+        ${P.cartao ? `<div class="pl-meios">
+          <button type="button" class="pl-meio ${usarSalvo ? 'sel' : ''}" id="cfsalvo"><span class="pl-ico" aria-hidden="true">💳</span><span class="grow"><b>${esc(P.cartao.marca)} •••• ${esc(P.cartao.fim)}</b><span class="s">Cartão salvo${P.cartao.validade ? ' · vence ' + esc(P.cartao.validade) : ''}</span></span>${usarSalvo ? '<span class="pl-ok">✓</span>' : ''}</button>
+          <button type="button" class="pl-meio ${usarSalvo ? '' : 'sel'}" id="cfnovo"><span class="pl-ico" aria-hidden="true">＋</span><span class="grow"><b>Usar outro cartão</b></span>${usarSalvo ? '' : '<span class="pl-ok">✓</span>'}</button></div>` : ''}
+        ${usarSalvo ? `<div class="field"><label>Código de segurança do ${esc(P.cartao.marca)} •••• ${esc(P.cartao.fim)}</label><div class="mpcampo" id="cfcvv"></div><span class="s">Os 3 números atrás do cartão (4 na frente, no Amex).</span></div>`
+          : `<div class="field"><label>Número do cartão</label><div class="mpcampo" id="cfnum"></div></div>
+          <div class="two"><div class="field"><label>Validade</label><div class="mpcampo" id="cfval"></div></div><div class="field"><label>Código de segurança</label><div class="mpcampo" id="cfcvv"></div></div></div>
+          <div class="field"><label for="cfnome">Nome no cartão</label><input id="cfnome" autocomplete="cc-name" placeholder="Como está no cartão" value="${esc(r.nome || '')}"></div>
+          <div class="field"><label for="cfdoc">CPF do titular do cartão</label><input id="cfdoc" inputmode="numeric" autocomplete="off" value="${esc(r.cpf ? fmtCpf(r.cpf) : '')}"></div>
+          <label class="liga"><span class="grow"><b>Salvar este cartão</b><span class="s">Na próxima vez, você digita só o código de segurança.</span></span><input type="checkbox" role="switch" id="cfsalvar" checked><span class="trilho" aria-hidden="true"></span></label>
+          ${P.automatico ? '<label class="liga"><span class="grow"><b>Pagar sempre com este cartão</b><span class="s">As próximas cobranças da escola são pagas sozinhas no vencimento. Você desliga quando quiser, na tela Pagar.</span></span><input type="checkbox" role="switch" id="cfauto"><span class="trilho" aria-hidden="true"></span></label>' : ''}`}
+        ${P.maxParcelas > 1 ? `<div class="field"><label for="cfparc">Parcelas</label><select id="cfparc">${ops.map(p => `<option value="${p.n}">${esc(linhaParcela(p))}</option>`).join('')}</select>${bin ? '' : '<span class="s">As opções de parcelas aparecem depois do número do cartão.</span>'}</div>` : ''}
+        <div class="note">🔒 Pagamento seguro pelo Mercado Pago. O número do cartão vai direto para o Mercado Pago: não passa pelo app nem fica com a escola.</div>
+        <div class="err" id="cferr" role="alert"></div>
+        <button class="btn" id="cfpag">Pagar ${brl(P.valor)}</button>
+        ${P.cartao ? '<button type="button" class="link" id="cfesq" style="align-self:center">Esquecer o cartão salvo</button>' : ''}
       </div>`;
-      $('ofir').onclick = () => aviso(MOCK ? 'Na demonstração, use o botão de simular. No app publicado, abre o Mercado Pago.' : 'Disponível quando o servidor for atualizado.');
-      if ($('ofmock')) $('ofmock').onclick = async () => { await mockAprovar(l.chave, forma, n || 1); if (k + 1 < N) { aviso(`Parte para ${primeiro(nomeRec(l.rec))} paga. Agora a próxima.`); passo(k + 1); } else { $('ofc').innerHTML = `<div class="done"><div class="ok">✓</div><h3>Pagamento confirmado!</h3><span class="sub">${brl(total)} ${forma === 'boleto' ? 'no boleto' : 'no cartão'}${n > 1 ? ` em ${n}x` : ''}. Obrigado!</span></div>`; S.sel = null; } };
+      const atualizarParcelas = async () => {
+        if (!(P.maxParcelas > 1) || !bin || !campos) return;
+        try { const l = await campos.parcelas(P.valor, bin, P.maxParcelas); if (l && l.length) { ops = l; if ($('cfparc')) $('cfparc').innerHTML = ops.map(p => `<option value="${p.n}">${esc(linhaParcela(p))}</option>`).join(''); } } catch (e) { }
+      };
+      const aoBin = async b => { if (b === bin) return; bin = b; try { metodo = await campos.metodo(b); } catch (e) { metodo = null; } atualizarParcelas(); };
+      try { campos = await camposCartao(P.publicKey, usarSalvo ? { cvv: 'cfcvv' } : { num: 'cfnum', val: 'cfval', cvv: 'cfcvv' }, aoBin); }
+      catch (e) { $('cferr').textContent = msgErro(e); $('cfpag').disabled = true; return; }
+      if (usarSalvo) atualizarParcelas();
+      if ($('cfdoc')) $('cfdoc').addEventListener('input', e => { e.target.value = fmtCpf(e.target.value); });
+      if ($('cfsalvo')) $('cfsalvo').onclick = () => { if (!usarSalvo) { usarSalvo = true; bin = P.cartao.bin || ''; metodo = { id: P.cartao.metodo, name: P.cartao.marca }; ops = [{ n: 1, total: P.valor, parcela: P.valor }]; desenhar(); } };
+      if ($('cfnovo')) $('cfnovo').onclick = () => { if (usarSalvo) { usarSalvo = false; bin = ''; metodo = null; ops = [{ n: 1, total: P.valor, parcela: P.valor }]; desenhar(); } };
+      if ($('cfesq')) duploToque($('cfesq'), async () => { try { if (MOCK) MOCK_CARTOES[S.eid] = []; else await servidor('pagar', { acao: 'esquecer', eid: S.eid, rec: P.rec }); S.cartoes = null; P.cartao = null; usarSalvo = false; aviso('Cartão esquecido'); desenhar(); } catch (e) { $('cferr').textContent = msgErro(e); } }, 'Toque de novo para esquecer');
+      $('cfpag').onclick = async () => {
+        const err = m => { $('cferr').textContent = m; $('cfpag').disabled = false; $('cfpag').textContent = `Pagar ${brl(P.valor)}`; };
+        const parcelas = $('cfparc') ? Number($('cfparc').value) || 1 : 1;
+        let corpo;
+        $('cfpag').disabled = true; $('cfpag').textContent = 'Pagando…'; $('cferr').textContent = '';
+        try {
+          if (usarSalvo) { const t = await campos.token({ cardId: P.cartao.cardId }); corpo = { token: t.id, cardId: P.cartao.cardId, parcelas }; }
+          else {
+            const nome = $('cfnome').value.trim(), doc = C.soDigitos($('cfdoc').value);
+            if (nome.length < 3) return err('Escreva o nome como está no cartão.');
+            if (!C.cpfValido(doc)) return err('O CPF do titular não está certo.');
+            if (!metodo) { try { metodo = bin ? await campos.metodo(bin) : null; } catch (e) { } }
+            if (!metodo) return err('Confira o número do cartão.');
+            const dados = { cardholderName: nome, identificationType: 'CPF', identificationNumber: doc };
+            const t = await campos.token(dados), salvar = $('cfsalvar').checked;
+            // para guardar o cartão, um segundo código (cada código vale uma vez só)
+            let t2 = null; if (salvar) { try { t2 = await campos.token(dados); } catch (e) { } }
+            corpo = { token: t.id, token2: t2 && t2.id, salvar, auto: !!($('cfauto') && $('cfauto').checked), metodo: metodo.id, emissor: metodo.emissor || null, doc, parcelas, fim: t.last_four_digits, bin: t.first_six_digits };
+          }
+        } catch (e) { return err(msgErro(e)); }
+        try {
+          const R = MOCK ? await mockPagar({ acao: 'cartao', itens: chaves, ...corpo, marca: metodo && metodo.name }) : await servidor('pagar', { acao: 'cartao', eid: S.eid, itens: chaves, ...corpo });
+          if (R.cartao) S.cartoes = null;
+          sair(); S.sel = null;
+          $('cfc').innerHTML = `<div class="done"><div class="ok">✓</div><h3>Pagamento aprovado!</h3><span class="sub">${brl(R.valor || P.valor)} no cartão${R.parcelas > 1 ? ` em ${R.parcelas}x` : ''}. A baixa já foi feita. Obrigado!</span>${R.cartao ? `<span class="s">Cartão ${esc(R.cartao.marca)} •••• ${esc(R.cartao.fim)} salvo${R.cartao.auto ? ', com cobrança automática ligada' : ''}.</span>` : ''}</div>`;
+        } catch (e) { err(msgErro(e)); }
+      };
     };
-    passo(0);
+    desenhar();
+  }, sair);
+}
+// nome, CPF e endereço de quem paga, do cadastro do responsável (para boleto e cartão)
+function respPagador() {
+  const r = Object.values(S.resps || {})[0] || {};
+  return { nome: r.nome || (EU && EU.nome) || '', cpf: r.cpf || '', endereco: r.endereco || '' };
+}
+function sheetBoletoFam(chaves) {
+  const r = respPagador(), salvo = (() => { try { return JSON.parse(ls.get('escolinha.boleto') || 'null') || {}; } catch (e) { return {}; } })();
+  sheet(`<h3>Pagar com boleto</h3><div id="bfc" style="display:flex;flex-direction:column;gap:12px"><div class="empty">Preparando…</div></div><button class="btn ghost" data-fechar>Fechar</button>`, async () => {
+    let P;
+    try { P = MOCK ? await mockPagar({ acao: 'preparar', itens: chaves, forma: 'boleto' }) : await servidor('pagar', { acao: 'preparar', eid: S.eid, itens: chaves, forma: 'boleto' }); }
+    catch (e) { if (e.code !== 'reconectar') { $('bfc').innerHTML = `<div class="empty"><b>Não deu para preparar.</b><span>${esc(msgErro(e))}</span></div>`; return; } P = null; }
+    const conta = v => `<div class="conta">${contaL('Cobranças', brl(v.base))}${v.valor > v.base ? contaL('Taxa de pagamento', brl(C.r2(v.valor - v.base))) : ''}${contaL('<b>Total</b>', `<b>${brl(v.valor)}</b>`, 'total')}</div>`;
+    $('bfc').innerHTML = `${P ? conta(P) : ''}
+      <div class="sub">O banco pede o nome, o CPF e o endereço de quem paga o boleto.</div>
+      <div class="field"><label for="bfnome">Nome completo</label><input id="bfnome" autocomplete="name" value="${esc(salvo.nome || r.nome)}"></div>
+      <div class="field"><label for="bfcpf">CPF</label><input id="bfcpf" inputmode="numeric" value="${esc(fmtCpf(salvo.cpf || r.cpf || ''))}"></div>
+      <div class="two"><div class="field"><label for="bfcep">CEP</label><input id="bfcep" inputmode="numeric" autocomplete="postal-code" value="${esc(salvo.cep || '')}" placeholder="00000-000"></div><div class="field"><label for="bfnum">Número</label><input id="bfnum" value="${esc(salvo.numero || '')}"></div></div>
+      <div class="field"><label for="bfrua">Rua</label><input id="bfrua" autocomplete="address-line1" value="${esc(salvo.rua || '')}"></div>
+      <div class="field"><label for="bfbai">Bairro</label><input id="bfbai" value="${esc(salvo.bairro || '')}"></div>
+      <div class="two"><div class="field"><label for="bfcid">Cidade</label><input id="bfcid" autocomplete="address-level2" value="${esc(salvo.cidade || '')}"></div><div class="field"><label for="bfuf">Estado</label><select id="bfuf"><option value="">—</option>${UFS.map(u => `<option ${salvo.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
+      <div class="err" id="bferr" role="alert"></div>
+      <button class="btn" id="bfok">Gerar boleto</button>`;
+    $('bfcpf').addEventListener('input', e => { e.target.value = fmtCpf(e.target.value); });
+    $('bfcep').addEventListener('input', async e => {
+      const d = C.soDigitos(e.target.value).slice(0, 8); e.target.value = d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d;
+      if (d.length !== 8 || MOCK) return;
+      try { const j = await (await fetch(`https://viacep.com.br/ws/${d}/json/`)).json(); if (j && !j.erro) { if (j.logradouro) $('bfrua').value = j.logradouro; if (j.bairro) $('bfbai').value = j.bairro; if (j.localidade) $('bfcid').value = j.localidade; if (j.uf) $('bfuf').value = j.uf; $('bfnum').focus(); } } catch (x) { }
+    });
+    $('bfok').onclick = async () => {
+      const x = { nome: $('bfnome').value.trim(), cpf: C.soDigitos($('bfcpf').value), cep: C.soDigitos($('bfcep').value), numero: $('bfnum').value.trim(), rua: $('bfrua').value.trim(), bairro: $('bfbai').value.trim(), cidade: $('bfcid').value.trim(), uf: $('bfuf').value };
+      const err = m => { $('bferr').textContent = m; $('bfok').disabled = false; };
+      if (x.nome.split(/\s+/).length < 2) return err('Escreva o nome completo.');
+      if (!C.cpfValido(x.cpf)) return err('O CPF não está certo.');
+      if (x.cep.length !== 8 || !x.numero || !x.rua || !x.bairro || !x.cidade || !x.uf) return err('Preencha o endereço completo, com CEP.');
+      $('bfok').disabled = true; $('bfok').textContent = 'Gerando…';
+      try {
+        const R = MOCK ? await mockPagar({ acao: 'boleto', itens: chaves, pagador: x }) : await servidor('pagar', { acao: 'boleto', eid: S.eid, itens: chaves, pagador: x });
+        try { ls.set('escolinha.boleto', JSON.stringify(x)); } catch (e) { }
+        const b = R.boleto;
+        $('bfc').innerHTML = `${conta(b)}
+          <div class="pl-boleto"><div class="lb">Linha digitável</div><div class="num" style="word-break:break-all">${esc(b.linha)}</div><div class="s">Vence em ${dataBR(new Date(b.expira - 3 * 36e5).toISOString().slice(0, 10))} · pague no app do banco ou numa lotérica</div></div>
+          <div class="actions"><button class="btn ghost" id="bfcop">Copiar código</button>${b.link ? `<a class="btn" href="${esc(b.link)}" target="_blank" rel="noopener">Abrir boleto</a>` : ''}</div>
+          <div class="note">Quando o banco compensar (até 3 dias úteis), a baixa aparece sozinha no app.</div>
+          ${MOCK ? '<button class="btn ghost" id="bfmock">Teste: simular boleto pago</button>' : ''}`;
+        $('bfcop').onclick = () => copiar(String(b.linha).replace(/\s/g, ''), 'Código do boleto copiado. Cole no app do banco.');
+        if ($('bfmock')) $('bfmock').onclick = async () => { await mockAprovar(b.chave, 'boleto'); S.sel = null; $('bfc').innerHTML = '<div class="done"><div class="ok">✓</div><h3>Boleto pago!</h3><span class="sub">A baixa já foi feita. Obrigado!</span></div>'; };
+      } catch (e) { $('bfok').textContent = 'Gerar boleto'; err(msgErro(e)); }
+    };
   });
+}
+// modo de teste: o que o servidor "pagar" faria
+async function mockPagar(b) {
+  const lotes = await pixCriar(b.itens);
+  if (lotes.length > 1) throw new Error('Essas cobranças vão para contas diferentes. No cartão ou no boleto, pague as de um recebedor por vez (ou use o Pix).');
+  const l = lotes[0], forma = b.acao === 'boleto' || b.forma === 'boleto' ? 'boleto' : 'cartao', { valor } = C.valorForma(l.base, forma, S.cfg, COMISSAO, repLote(l)), f = formasCfg();
+  if (b.acao === 'preparar') return { rec: l.rec, base: l.base, valor, publicKey: 'TEST-PUB', maxParcelas: f.parcelado ? Number(f.maxParcelas) || 1 : 1, cartao: (MOCK_CARTOES[S.eid] || [])[0] || null, automatico: false };
+  if (b.acao === 'boleto') return { boleto: { chave: l.chave, valor, base: l.base, linha: `23793.38128 60082.677324 15000.063304 8 ${String(9500 + Math.round(valor)).padStart(10, '0')}`, link: '', expira: Date.now() + 3 * 864e5 } };
+  if (b.token === 'tok_recusa' || /0000$/.test(b.fim || '')) throw new Error('O cartão foi recusado. Tente outro cartão ou o Pix.');
+  await mockAprovar(l.chave, 'cartao', b.parcelas || 1);
+  let cartao = null;
+  if (b.salvar) { cartao = { rec: l.rec, cardId: 'card1', metodo: b.metodo, marca: b.marca || 'Visa', fim: b.fim || '4242', bin: b.bin || '423564', validade: '08/30', auto: false }; MOCK_CARTOES[S.eid] = [cartao]; }
+  return { ok: true, valor, parcelas: b.parcelas || 1, cartao };
 }
 function sheetPix(chaves, voltar) {
   let parar = null;
@@ -3051,6 +3206,7 @@ function tPagar(v) {
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
     ${avisoEventosFamilia()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}
+    ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
       ${totVenc > 0 ? `<div style="text-align:right"><div class="label">Vencido</div><div class="num" style="font-weight:800;font-size:1.15rem;color:var(--out)">${brl(totVenc)}</div></div>` : ''}</div>
@@ -3067,7 +3223,7 @@ function tPagar(v) {
     ${pagos.length ? `<section><h2>Pagos recentemente</h2><ul class="list">${pagos.map(i => `<li><div class="grow"><div class="t">${esc(i.desc)}</div>${linhas(esc(primeiro(i.nome)), `<span class="num">${nomeVia(i.pago)}${i.pago.d ? ' em ' + dataBR(i.pago.d) : ''}</span>`)}</div>${valorCol(brl(i.v), '<span class="chip pago">Pago</span>', 'in')}</li>`).join('')}</ul></section>` : ''}
     ${(() => { const pd = Object.values(S.acordos || {}).filter(A => A.perdao && !A.cancelado && S.alunas[A.alid]); return pd.length ? `<section><h2>Perdoado pela escola</h2><ul class="list">${pd.map(A => `<li><div class="grow"><div class="t">${esc(A.resumo || 'Cobranças atrasadas')}</div>${linhas(esc(primeiro(S.alunas[A.alid].nome)), `em ${dataBR(A.criadoEm)}`)}</div>${valorCol(brl(A.original), '<span class="chip pago">Perdoado</span>', 'in')}</li>`).join('')}</ul></section>` : ''; })()}
     ${nfFamLigada() ? `<button type="button" class="linha-botao" id="pnfam" style="margin-top:12px"><span class="grow"><b>Notas fiscais</b><span class="s">Baixar as notas dos pagamentos, ou pedir e dispensar a nota</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>` : ''}
-    ${abertos.length ? `<div class="paybar"><div class="grow"><div class="label">${marcados.length ? (() => { const n = dividirPorRecebedor(marcados).length; return `${marcados.length} ite${marcados.length === 1 ? 'm' : 'ns'}${n > 1 ? ` · ${n} Pix` : ''}`; })() : 'Escolha o que pagar'}</div><b class="num" style="font-size:1.25rem">${brl(totSel)}</b></div><button class="btn" id="ppagar" ${pixOk && totSel > 0 ? '' : 'disabled'}>${OUTRAS_FORMAS ? 'Pagar' : 'Pagar com Pix'}</button></div>` : ''}`;
+    ${abertos.length ? `<div class="paybar"><div class="grow"><div class="label">${marcados.length ? (() => { const n = dividirPorRecebedor(marcados).length; return `${marcados.length} ite${marcados.length === 1 ? 'm' : 'ns'}${n > 1 ? ` · ${n} Pix` : ''}`; })() : 'Escolha o que pagar'}</div><b class="num" style="font-size:1.25rem">${brl(totSel)}</b></div><button class="btn" id="ppagar" ${pixOk && totSel > 0 ? '' : 'disabled'}>${outrasFormas() ? 'Pagar' : 'Pagar com Pix'}</button></div>` : ''}`;
   v.querySelectorAll('[data-k]').forEach(c => c.onchange = () => { c.checked ? S.sel.add(c.dataset.k) : S.sel.delete(c.dataset.k); render(); });
   v.querySelectorAll('[data-tudo]').forEach(b => b.onclick = () => { const ab = itensDe(b.dataset.tudo).filter(i => !i.pago), todos = ab.every(i => S.sel.has(i.k)); ab.forEach(i => todos ? S.sel.delete(i.k) : S.sel.add(i.k)); render(); });
   v.querySelectorAll('[data-vinc]').forEach(b => b.onclick = async () => { b.disabled = true; try { await vinculosServidor('vincular', b.dataset.vinc); S.sug = S.sug.filter(x => x.rid !== b.dataset.vinc); S.sel = null; aviso('Pronto! Agora você vê essas cobranças também.'); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
@@ -3076,9 +3232,12 @@ function tPagar(v) {
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-ctass]').forEach(b => b.onclick = () => sheetAssinarContrato(b.dataset.ctass));
   v.querySelectorAll('[data-irfilhos]').forEach(b => b.onclick = () => irPara('filhas'));
-  if ($('ppagar')) $('ppagar').onclick = () => (OUTRAS_FORMAS ? sheetFormas : sheetPix)(marcados.map(i => i.k));
+  if ($('ppagar')) $('ppagar').onclick = () => (outrasFormas() ? sheetFormas : sheetPix)(marcados.map(i => i.k));
   if ($('pvenc')) $('pvenc').onclick = () => { abertos.filter(i => i.venc < h).forEach(i => S.sel.add(i.k)); render(); };
   if ($('pnfam')) $('pnfam').onclick = () => sheetNotasFamilia();
+  if (formasCfg().cartao && !S.cartoesPedido) { S.cartoesPedido = true; meusCartoes(true).then(() => agendar()); }
+  if ($('pfdesl')) $('pfdesl').onclick = () => { const recD = $('pfdesl').dataset.rec; confirmar('Desligar a cobrança automática?', 'As próximas cobranças voltam a ser pagas por você, pelo app. O cartão continua salvo.', 'Desligar', async () => {
+    try { if (!MOCK) await servidor('pagar', { acao: 'automatico', eid: S.eid, rec: recD, ligar: false }); (S.cartoes || []).forEach(c => c.auto = false); aviso('Cobrança automática desligada'); render(); } catch (e) { aviso(msgErro(e)); } }); };
   if ($('plimpa')) $('plimpa').onclick = () => { S.sel.clear(); render(); };
 }
 function tFilhas(v) {
@@ -3410,8 +3569,8 @@ async function sheetNotasPlataforma(mes, editar) {
   });
 }
 // abas do painel do dono: visão geral e notas fiscais
-const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Visão geral</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas fiscais</button><button type="button" data-dono="erros" aria-pressed="${at === 'erros'}">Erros</button></div>`;
-function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; ({ geral: sheetPainelDono, notas: sheetNotasPlataforma, erros: sheetErros })[b.dataset.dono](); }); }
+const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Visão geral</button><button type="button" data-dono="escolas" aria-pressed="${at === 'escolas'}">Escolas</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas fiscais</button><button type="button" data-dono="erros" aria-pressed="${at === 'erros'}">Erros</button></div>`;
+function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; ({ geral: sheetPainelDono, escolas: () => sheetEscolasDono(true), notas: sheetNotasPlataforma, erros: sheetErros })[b.dataset.dono](); }); }
 // registro técnico de erros, agrupado pelo tipo de erro (só o dono da plataforma lê: regras do Firestore)
 const topN = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${k} (${v})`).join(', ') || '—';
 const dataHoraErro = ms => new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -4845,38 +5004,52 @@ function sheetAtestadosEscola() {
 
 /* ================= Formas de pagamento (administração) ================= */
 function sheetFormasEscola() {
-  const f = formasCfg(), t = taxasCfg(), num = v => String(v).replace('.', ','), ex = 300;
+  const f = formasCfg(), t = taxasCfg(), ex = 100, n2 = x => String(x).replace('.', ',');
+  const tx = (pct, fixo) => fixo != null ? `R$ ${n2(fixo.toFixed(2))} + ${n2(COMISSAO * 100)}%` : `${n2(C.r2(pct + COMISSAO * 100))}%`;
+  const semChave = S.cfg.mpConectadoEm && !S.cfg.mpChave;
   sheet(`<h3>Formas de pagamento</h3>
     <div class="sub">O Pix fica sempre ligado: é o mais barato e cai na hora. Ligue as outras formas se quiser dar opção às famílias.</div>
+    ${semChave ? '<div class="banner"><span>Para aceitar <b>cartão</b>, conecte o Mercado Pago de novo uma vez (a conexão antiga não traz o que o cartão precisa). O Pix continua funcionando.</span><button type="button" id="frecon">Conectar de novo</button></div>' : ''}
     <div class="checks" style="max-height:none">
-      <label><input type="checkbox" checked disabled><span class="grow"><b>Pix</b><span class="s">Taxa de pagamento ${num(C.r2(t.pix + COMISSAO * 100))}% · cai na hora</span></span></label>
-      <label><input type="checkbox" id="fbol" ${f.boleto ? 'checked' : ''}><span class="grow"><b>Boleto</b><span class="s">Taxa de pagamento R$ ${num(t.boleto)} + ${num(COMISSAO * 100)}% por boleto pago · cai em 3 dias</span></span></label>
-      <label><input type="checkbox" id="fcar" ${f.cartao ? 'checked' : ''}><span class="grow"><b>Cartão de crédito à vista</b><span class="s">Taxa de pagamento ${num(C.r2(t.cartao + COMISSAO * 100))}% · cai em 7 dias</span></span></label>
-      <label><input type="checkbox" id="fpar" ${f.parcelado ? 'checked' : ''}><span class="grow"><b>Cartão parcelado</b><span class="s">A escola paga ${num(C.r2(t.cartao + COMISSAO * 100))}%; os juros do parcelamento ficam com quem paga</span></span></label>
+      <label><input type="checkbox" checked disabled><span class="grow"><b>Pix</b><span class="s">Taxa de pagamento ${tx(t.pix)} · cai na hora</span></span></label>
+      <label><input type="checkbox" id="fbol" ${f.boleto ? 'checked' : ''}><span class="grow"><b>Boleto</b><span class="s">Taxa de pagamento ${tx(0, t.boleto)} por boleto pago · cai em até 3 dias úteis</span></span></label>
+      <label><input type="checkbox" id="fcar" ${f.cartao ? 'checked' : ''}><span class="grow"><b>Cartão de crédito</b><span class="s">Taxa de pagamento ${tx(t.cartao)} · o prazo para cair depende da sua conta</span></span></label>
+      <label><input type="checkbox" id="fpar" ${f.parcelado ? 'checked' : ''}><span class="grow"><b>Cartão parcelado</b><span class="s">A família escolhe em quantas vezes, até o limite abaixo</span></span></label>
     </div>
-    <div class="field" id="fmaxw"><label for="fmax">Parcelar em até</label><select id="fmax">${[2, 3, 4, 5, 6].map(n => `<option value="${n}" ${Number(f.maxParcelas) === n ? 'selected' : ''}>${n}x</option>`).join('')}</select></div>
+    <div id="fparw">
+      <div class="field"><label for="fmax">Parcelar em até</label><select id="fmax">${[2, 3, 4, 5, 6, 8, 10, 12].map(n => `<option value="${n}" ${Number(f.maxParcelas) === n ? 'selected' : ''}>${n}x</option>`).join('')}</select></div>
+      <div class="field"><span class="lb">Quem paga os juros do parcelamento</span><div class="seg" id="fjur"><button type="button" data-jur="familia" aria-pressed="${f.jurosEscola !== true}">A família</button><button type="button" data-jur="escola" aria-pressed="${f.jurosEscola === true}">A escola</button></div>
+        <span class="s" id="fjurtx"></span></div>
+    </div>
+    <label class="liga" id="frecw"><span class="grow"><b>Cobrança automática no cartão</b><span class="s">A família pode deixar o cartão salvo e as cobranças são pagas sozinhas no vencimento. Ela liga e desliga quando quiser. Começa a funcionar assim que o Mercado Pago liberar para o Turma em Dia; até lá, a família paga com o cartão salvo digitando só o código de segurança.</span></span><input type="checkbox" role="switch" id="frec" ${f.recorrente ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
     <details class="historico"><summary><span class="grow"><b>Taxas da sua conta no Mercado Pago</b><span class="s">Confira no app do Mercado Pago, em "Todas as taxas", e ajuste aqui</span></span><span class="seta" aria-hidden="true">▾</span></summary>
       <div style="padding:0 14px 14px;display:flex;flex-direction:column;gap:10px">
-        <div class="two"><div class="field"><label for="tpix">Pix (%)</label><input id="tpix" inputmode="decimal" value="${num(t.pix)}"></div><div class="field"><label for="tbol">Boleto (R$)</label><input id="tbol" inputmode="decimal" value="${num(t.boleto)}"></div></div>
-        <div class="two"><div class="field"><label for="tcar">Cartão (%)</label><input id="tcar" inputmode="decimal" value="${num(t.cartao)}"></div><div></div></div>
-        <div class="lb" style="font-size:.82rem;font-weight:700;color:var(--muted)">Juros do parcelamento pagos pelo cliente (%)</div>
-        <div class="two">${[2, 3, 4, 5, 6].map(n => `<div class="field"><label for="tp${n}">${n}x</label><input id="tp${n}" inputmode="decimal" value="${num(t.parc[n])}"></div>`).join('')}</div>
+        <div class="two"><div class="field"><label for="tpix">Pix (%)</label><input id="tpix" inputmode="decimal" value="${n2(t.pix)}"></div><div class="field"><label for="tbol">Boleto (R$)</label><input id="tbol" inputmode="decimal" value="${n2(t.boleto)}"></div></div>
+        <div class="two"><div class="field"><label for="tcar">Cartão (%)</label><input id="tcar" inputmode="decimal" value="${n2(t.cartao)}"></div><div></div></div>
+        <span class="s">Na taxa de pagamento, o app soma ${n2(COMISSAO * 100)}% a cada taxa da sua conta.</span>
       </div></details>
     <div class="field"><span class="lb">Exemplo: uma cobrança de ${brl(ex)}</span><div class="conta" id="fex"></div></div>
-    <div class="note">As taxas acima já são o total de cada forma de pagamento. ${S.cfg.pixRepassa === true ? 'Como "quem paga cobre a taxa" está ligado, a família paga a taxa da forma que escolher e a escola recebe o valor cheio.' : 'Como "quem paga cobre a taxa" está desligado, as taxas saem do valor que a escola recebe.'}</div>
+    <div class="note" id="fnota"></div>
     <div class="err" id="ferr2" role="alert"></div>
-    <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="fok2">Salvar</button></div>`, () => {
-    const ler = () => { const pn = id => parseValor($(id).value); return { formas: { boleto: $('fbol').checked, cartao: $('fcar').checked, parcelado: $('fcar').checked && $('fpar').checked, maxParcelas: Number($('fmax').value) },
-      taxas: { pix: pn('tpix'), boleto: pn('tbol'), cartao: pn('tcar'), parc: Object.fromEntries([2, 3, 4, 5, 6].map(n => [n, pn('tp' + n)])) } }; };
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="fok2">Salvar</button></div>`, sh => {
+    let jurosEscola = f.jurosEscola === true;
+    const ler = () => { const pn = id => parseValor($(id).value); return { formas: { boleto: $('fbol').checked, cartao: $('fcar').checked, parcelado: $('fcar').checked && $('fpar').checked, maxParcelas: Number($('fmax').value), jurosEscola, recorrente: $('fcar').checked && $('frec').checked },
+      taxas: { pix: pn('tpix'), boleto: pn('tbol'), cartao: pn('tcar') } }; };
     const ver = () => { const l = ler(), old = S.cfg; S.cfg = { ...old, formas: l.formas, taxas: l.taxas };
-      $('fmaxw').hidden = !(l.formas.cartao && l.formas.parcelado); $('fpar').disabled = !l.formas.cartao;
-      const linhas_ = [['Pix', valorForma(ex, 'pix').total]]; if (l.formas.boleto) linhas_.push(['Boleto', valorForma(ex, 'boleto').total]);
-      if (l.formas.cartao) linhas_.push(['Cartão à vista', valorForma(ex, 'cartao', 1).total]);
-      if (l.formas.cartao && l.formas.parcelado) for (let n = 2; n <= l.formas.maxParcelas; n++) { const v = valorForma(ex, 'cartao', n); linhas_.push([`Cartão em ${n}x (${n}x de ${brl(v.parcela)})`, v.total]); }
-      S.cfg = old; $('fex').innerHTML = linhas_.map(([a, v]) => contaL(esc(a), brl(v))).join(''); };
-    document.querySelectorAll('.sheet input, .sheet select').forEach(el => el.addEventListener('input', ver)); ver();
+      $('fparw').hidden = !(l.formas.cartao && l.formas.parcelado); $('fpar').disabled = !l.formas.cartao; $('frecw').hidden = !l.formas.cartao;
+      sh.querySelectorAll('[data-jur]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.jur === 'escola') === jurosEscola)));
+      $('fjurtx').textContent = jurosEscola ? `Para a família parcelar sem juros, ligue também o "parcelamento sem juros" na sua conta do Mercado Pago, até ${l.formas.maxParcelas}x. O Mercado Pago desconta os juros do que a escola recebe.` : 'O Mercado Pago soma os juros na fatura de quem parcela. A família vê o total antes de confirmar.';
+      const rec = pct => C.r2(ex * (1 - pct / 100 - COMISSAO)), linhas_ = [['Pix', valorForma(ex, 'pix').total]];
+      if (l.formas.boleto) linhas_.push(['Boleto', valorForma(ex, 'boleto').total]);
+      if (l.formas.cartao) linhas_.push([l.formas.parcelado ? 'Cartão (à vista; parcelado + juros)' : 'Cartão', valorForma(ex, 'cartao').total]);
+      S.cfg = old;
+      $('fex').innerHTML = `<div class="label">A família paga</div>` + linhas_.map(([a, v]) => contaL(esc(a), brl(v))).join('');
+      $('fnota').textContent = S.cfg.pixRepassa === true ? 'Como "quem paga cobre a taxa" está ligado, a família paga a taxa da forma que escolher e a escola recebe o valor cheio.' : `Como "quem paga cobre a taxa" está desligado, a taxa sai do valor que a escola recebe (no cartão, de ${brl(ex)} a escola recebe cerca de ${brl(rec(l.taxas.cartao || 0))}).`; };
+    sh.querySelectorAll('[data-jur]').forEach(b => b.onclick = () => { jurosEscola = b.dataset.jur === 'escola'; ver(); });
+    sh.querySelectorAll('input, select').forEach(el => el.addEventListener('input', ver)); sh.querySelectorAll('input[type=checkbox]').forEach(el => el.addEventListener('change', ver)); ver();
+    if ($('frecon')) $('frecon').onclick = async () => { $('frecon').disabled = true; try { await mpConta('conectar'); if (MOCK) sheetFormasEscola(); } catch (e) { $('ferr2').textContent = msgErro(e); $('frecon').disabled = false; } };
     $('fok2').onclick = async () => { const l = ler();
-      if ([l.taxas.pix, l.taxas.boleto, l.taxas.cartao, ...Object.values(l.taxas.parc)].some(v => !(v >= 0) || v > 50)) return $('ferr2').textContent = 'Confira as taxas: use números como 4,98.';
+      if ([l.taxas.pix, l.taxas.boleto, l.taxas.cartao].some(v => !(v >= 0) || v > 30)) return $('ferr2').textContent = 'Confira as taxas: use números como 4,98.';
       $('fok2').disabled = true;
       try { await B.set(`escolas/${S.eid}/config/geral`, l, { merge: true }); fecharSheet(); aviso('Formas de pagamento salvas'); } catch (e) { $('ferr2').textContent = msgErro(e); $('fok2').disabled = false; } };
   });
@@ -4923,7 +5096,7 @@ function blocoAdms(raiz) {
 }
 
 /* ================= Privacidade e dados (LGPD) ================= */
-const VERSAO_TERMOS = 1, VERSAO_PRIVACIDADE = 1;
+const VERSAO_TERMOS = 2, VERSAO_PRIVACIDADE = 2;
 const linksLegais = () => `<div class="legal"><button type="button" class="link" data-doc="privacidade">Política de privacidade</button><span aria-hidden="true">·</span><button type="button" class="link" data-doc="termos">Termos de uso</button></div>`;
 // os textos ficam em privacidade.html e termos.html; aqui abrem dentro do app
 document.addEventListener('click', e => { const b = e.target.closest('[data-doc]'); if (!b) return; e.preventDefault(); e.stopPropagation(); abrirDocLegal(b.dataset.doc); });
@@ -5039,6 +5212,244 @@ function sheetPrivEscola() {
   });
 }
 
+/* ================= Plano da escola (o que a escola paga para usar o app) =================
+   Preço pela quantidade de alunos ativos; 30 dias de teste; cartão (cobrança automática) ou Pix a cada mês.
+   Com o plano atrasado: até 5 dias, aviso; de 6 a 30, só leitura; mais de 30, suspensa. Quem decide é o servidor (config/plano). */
+const sitPlano = () => C.situacaoPlano(S && S.plano, hoje());
+const planoTrava = () => !!(S && S.admin && S.plano && (S.plano.bloqueio || ['leitura', 'suspensa'].includes(sitPlano().fase)));
+const MSG_LEITURA = 'O plano do app está atrasado e a escola está só para leitura. Pague em Ajustes → Plano para voltar a editar.';
+const MSG_PAUSA = 'O acesso da escola ao app e seus serviços está pausado. Fale com a escola.';
+// com o plano atrasado, a administração não grava (as regras do Firestore também não deixam); o que o servidor grava passa
+function travarEscritas(b) {
+  const livres = /\/(config\/plano|cobrancas|planoPag|cartoes)(\/|$)/, pode = p => !(planoTrava() && String(p).startsWith(`escolas/${S.eid}`) && !livres.test(String(p)));
+  const trava = () => Object.assign(new Error(MSG_LEITURA), { code: 'plano-leitura' });
+  for (const k of ['set', 'del', 'tirar']) if (typeof b[k] === 'function') { const o = b[k]; b[k] = async (p, ...r) => { if (!pode(p)) throw trava(); return o(p, ...r); }; }
+  const ol = b.lote; b.lote = async ops => { if (ops.some(o => !pode(o.p))) throw trava(); return ol(ops); };
+}
+const chamarPlano = corpo => MOCK ? mockPlano(corpo) : servidor('plano', { eid: S.eid, ...corpo });
+// faixa no alto da tela (administração)
+function faixaPlano() {
+  if (!S.admin || !S.plano) return '';
+  const s = sitPlano(), bt = '<button id="fplano">Ver plano</button>', ate = d => dataBRA(d);
+  if (s.fase === 'teste' && s.restam <= 7) return `<div class="banner"><span><b>Teste grátis:</b> ${s.restam === 0 ? 'termina hoje' : `falta${s.restam > 1 ? 'm' : ''} ${s.restam} dia${s.restam > 1 ? 's' : ''}`}. Escolha como pagar para a escola seguir usando o app.</span>${bt}</div>`;
+  if (s.fase === 'aviso') return `<div class="banner"><span><b>O plano do app venceu</b> em ${ate(s.venc)}. Pague até ${ate(C.maisDias(s.venc, 5))} para a escola não ficar só para leitura.</span><button id="fplano">Pagar</button></div>`;
+  if (s.fase === 'leitura') return `<div class="banner alerta"><span><b>Só leitura:</b> o plano está atrasado desde ${ate(s.venc)}. As famílias continuam pagando pelo app, mas a escola não edita nem registra dinheiro. Pague até ${ate(C.maisDias(s.venc, 30))} para não suspender.</span><button id="fplano">Pagar</button></div>`;
+  return '';
+}
+// mais de 30 dias: a administração vê só o pagamento; as famílias e os professores, o aviso de pausa
+function telaPlanoParado(v) {
+  const s = sitPlano();
+  if (!S.admin) { v.innerHTML = `<div class="empty pausa"><b>${MSG_PAUSA}</b></div>`; return; }
+  v.innerHTML = `<div class="empty pausa"><b>A conta da escola está suspensa</b>
+    <span>O plano do app venceu em ${dataBRA(s.venc)}. As famílias veem: "${MSG_PAUSA}"</span>
+    ${s.encerrar ? '<span class="s"><b>Aviso de encerramento:</b> já passaram 90 dias do vencimento. Se o plano não for pago, a conta da escola pode ser encerrada.</span>' : ''}
+    <span>Pague para liberar tudo na hora.</span><button class="btn" id="spag">Pagar o plano</button></div>`;
+  $('spag').onclick = () => sheetPlano();
+}
+function sheetPlano() {
+  let R = null, ciclo = (S.plano && S.plano.ciclo) || 'mensal', pixAberto = false, parar = null;
+  const corpo = h => `<h3>Plano da escola</h3>${h}<button class="btn ghost" data-fechar style="width:100%;margin-top:8px">Fechar</button>`;
+  const carregar = async () => { try { R = await chamarPlano({ acao: 'estado' }); ciclo = R.plano.ciclo || ciclo; desenhar(); } catch (e) { sheet(corpo(`<div class="empty"><b>Não deu para abrir o plano.</b><span>${esc(msgErro(e))}</span></div>`)); } };
+  const desenhar = () => {
+    const p = R.plano, s = R.situacao, pr = ciclo === 'anual' ? R.anual : R.mensal, pl = pr.plano, lim = pl.ate || Math.max(R.alunos, 1), pct = Math.min(100, Math.round(R.alunos / lim * 100));
+    const d = pr.desconto, faixa = s.fase === 'teste' ? `<div class="banner ok"><span><b>Teste grátis</b> · ${s.restam ? `faltam ${s.restam} dia${s.restam > 1 ? 's' : ''} (até ${dataBRA(s.venc)})` : 'termina hoje'}. Tudo liberado.</span></div>`
+      : s.fase === 'cortesia' ? `<div class="banner ok"><span><b>Grátis até ${dataBRA(p.cortesiaAte)}</b>, cortesia do Turma em Dia.${p.forma === 'cartao' ? ' O cartão volta a ser cobrado depois disso.' : ''}</span></div>`
+      : s.fase === 'ativo' ? `<div class="banner ok"><span><b>Em dia</b> · pago até ${dataBRA(p.pagoAte)}.</span></div>`
+      : s.fase === 'aviso' ? `<div class="banner"><span><b>Venceu em ${dataBRA(s.venc)}.</b> Pague até ${dataBRA(C.maisDias(s.venc, 5))} para não ficar só para leitura.</span></div>`
+      : ['leitura', 'suspensa'].includes(s.fase) ? `<div class="banner alerta"><span><b>${s.fase === 'leitura' ? 'Só leitura' : 'Suspensa'}</b> · atrasado desde ${dataBRA(s.venc)}. Pague para liberar na hora.</span></div>` : '';
+    const precoTxt = v => brl(v).replace(',00', '');
+    sheet(corpo(`${faixa}
+      ${!p.doc ? `<div class="field"><label for="pldoc">CPF ou CNPJ de quem responde pela escola</label><div class="pl-docrow"><input id="pldoc" inputmode="numeric" placeholder="Só números"><button type="button" class="btn ghost" id="pldocok">Salvar</button></div><span class="s">O teste grátis é um por CPF ou CNPJ.</span></div>` : ''}
+      <div class="pl-uso"><div class="pl-uso-t"><span>Alunos ativos</span><b class="num">${R.alunos}${pl.ate ? ' de ' + pl.ate : ''}</b></div><div class="pl-barra"><i style="width:${pct}%"></i></div><span class="s">Plano <b>${esc(pl.nome)}</b>. O plano muda sozinho quando a escola muda de faixa.</span></div>
+      <div class="seg pl-per"><button type="button" data-per="mensal" aria-pressed="${ciclo === 'mensal'}">Mensal</button><button type="button" data-per="anual" aria-pressed="${ciclo === 'anual'}">Anual · 2 meses grátis</button></div>
+      <div class="pl-grade">${C.PLANOS.map(x => `<div class="pl-card ${x.id === pl.id ? 'sel' : ''}"><span class="pl-nome">${x.nome}</span><span class="pl-ate">${x.ate ? 'até ' + x.ate + ' alunos' : 'acima de 250'}</span><span class="pl-preco num">${precoTxt(ciclo === 'anual' ? x.mes * 10 / 12 : x.mes)}</span><span class="pl-mes">${ciclo === 'anual' ? 'por mês, no anual' : 'por mês'}</span></div>`).join('')}</div>
+      <div class="conta">${contaL(`Plano ${esc(pl.nome)} · ${ciclo === 'anual' ? '1 ano' : '1 mês'}`, brl(pr.cheio))}${d ? contaL(`Desconto do Turma em Dia${d.pct ? ` (${d.pct}%)` : ''}${d.ate ? ` até ${dataBRA(d.ate)}` : ''}`, '− ' + brl(C.r2(pr.cheio - pr.valor)), 'desc') : ''}${contaL(`<b>${ciclo === 'anual' ? 'Total do ano' : 'Total por mês'}</b>`, `<b>${brl(pr.valor)}</b>`, 'total')}</div>
+      <div class="lb" style="margin:4px 0 8px">Como pagar</div>
+      <div class="pl-meios">
+        ${p.cartao ? `<div class="pl-meio sel"><span class="pl-ico" aria-hidden="true">💳</span><span class="grow"><b>${esc(p.cartao.marca)} •••• ${esc(p.cartao.fim)}</b><span class="s">Cobrança automática ${p.ciclo === 'anual' ? 'todo ano' : 'todo mês'}${p.proxCobranca ? ` · próxima em ${dataBRA(p.proxCobranca)}` : ''}</span></span><span class="pl-ok">✓</span></div>
+          <div class="actions"><button type="button" class="btn ghost" id="pltroca">Trocar cartão</button><button type="button" class="btn ghost" id="pltira" style="color:var(--out)">Tirar cartão</button></div>`
+          : R.publicKey || MOCK ? `<button type="button" class="pl-add" id="pladd"><span class="pl-mais">+</span> Adicionar um cartão de crédito</button>` : '<div class="pl-meio"><span class="pl-ico">💳</span><span class="grow"><b>Cartão de crédito</b><span class="s">Em breve</span></span></div>'}
+        <button type="button" class="pl-meio" id="plpix"><span class="pl-ico pl-pix" aria-hidden="true">◆</span><span class="grow"><b>Pagar com Pix · ${brl(pr.valor)}</b><span class="s">${ciclo === 'anual' ? 'Paga o ano inteiro de uma vez' : 'Você paga a cada mês pelo QR Code'}</span></span><span aria-hidden="true">›</span></button>
+      </div>
+      <div id="plpixc"></div>
+      <div class="err" id="plerr" role="alert"></div>
+      <div class="note">${p.cartao ? 'O cartão é cobrado sozinho no vencimento. ' : s.fase === 'teste' ? 'Com o cartão, a primeira cobrança é no fim do teste grátis. ' : ''}O Turma em Dia não vê nem guarda o número do cartão: ele vai direto para o Mercado Pago.</div>`), sh => {
+      const err = m => $('plerr').textContent = m;
+      sh.querySelectorAll('[data-per]').forEach(b => b.onclick = async () => { if (b.dataset.per === ciclo) return; ciclo = b.dataset.per; if (parar) parar(); pixAberto = false; desenhar();
+        if (R.plano.cartao) { try { R = await chamarPlano({ acao: 'ciclo', ciclo }); aviso(ciclo === 'anual' ? 'O cartão passa a ser cobrado uma vez por ano' : 'O cartão passa a ser cobrado todo mês'); desenhar(); } catch (e) { err(msgErro(e)); } } });
+      if ($('pldoc')) { $('pldoc').addEventListener('input', e => { const x = C.soDigitos(e.target.value); e.target.value = x.length > 11 ? fmtCnpj(x) : fmtCpf(x); });
+        $('pldocok').onclick = async () => { $('pldocok').disabled = true; try { R = await chamarPlano({ acao: 'documento', doc: $('pldoc').value }); if (R.aviso) aviso(R.aviso); else aviso('Salvo'); desenhar(); } catch (e) { err(msgErro(e)); $('pldocok').disabled = false; } }; }
+      const abrirCartao = () => abrirDe(() => desenhar(), () => sheetCartaoPlano(R, ciclo, novo => { R = novo; desenhar(); }));
+      if ($('pladd')) $('pladd').onclick = abrirCartao;
+      if ($('pltroca')) $('pltroca').onclick = abrirCartao;
+      if ($('pltira')) duploToque($('pltira'), async () => { try { R = await chamarPlano({ acao: 'tirarCartao' }); aviso('Cartão tirado. Pague por Pix a cada mês.'); desenhar(); } catch (e) { err(msgErro(e)); } }, 'Toque de novo para tirar');
+      $('plpix').onclick = async () => {
+        if (pixAberto) return; pixAberto = true; $('plpixc').innerHTML = '<div class="empty">Gerando o Pix…</div>';
+        try {
+          const { pix } = await chamarPlano({ acao: 'pix', ciclo });
+          $('plpixc').innerHTML = `<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px"><div class="tot"><span>Pix do plano (${ciclo === 'anual' ? '1 ano' : '1 mês'})</span><b class="num">${brl(pix.valor)}</b></div>
+            <div class="qrbox">${pix.qr64 ? `<img src="data:image/png;base64,${pix.qr64}" alt="QR Code do Pix">` : qrSVG(pix.qr)}</div><div class="code">${esc(pix.qr)}</div>
+            <button class="btn" id="plcop">Copiar código Pix</button><div class="pix-st" id="plst"><i></i>Aguardando o pagamento. Esta tela muda sozinha quando o Pix cair.</div>
+            ${MOCK ? '<button class="btn ghost" id="plmock">Teste: simular Pix pago</button>' : ''}</div>`;
+          $('plcop').onclick = () => copiar(pix.qr, 'Código Pix copiado. Cole no app do banco.');
+          if ($('plmock')) $('plmock').onclick = () => mockPlano({ acao: 'mockPago', ciclo });
+          const antes = (S.plano || {}).pagoAte || '';
+          if (parar) parar();
+          parar = B.ouvirDoc(`escolas/${S.eid}/config/plano`, d => { if (d && (d.pagoAte || '') !== antes && $('plst')) { if (parar) parar(); parar = null; pixAberto = false; aviso('Pix do plano recebido. Obrigado!'); carregar(); } }, () => { });
+        } catch (e) { pixAberto = false; $('plpixc').innerHTML = ''; err(msgErro(e)); }
+      };
+    }, () => { if (parar) parar(); parar = null; });
+  };
+  sheet(corpo('<div class="empty">Carregando…</div>'));
+  carregar();
+}
+// cartão da escola para o plano (na conta do Mercado Pago da empresa do app)
+function sheetCartaoPlano(R, ciclo, pronto) {
+  let campos = null, bin = '', metodo = null;
+  const sair = () => { if (campos) campos.sair(); campos = null; };
+  sheet(`<h3>Adicionar cartão</h3>
+    <div class="pl-cartao-img"><span>•••• •••• •••• ••••</span><small>${esc((S.escola.nome || '').toUpperCase().slice(0, 30))}</small></div>
+    <div class="field"><label>Número do cartão</label><div class="mpcampo" id="ccnum"></div></div>
+    <div class="two"><div class="field"><label>Validade</label><div class="mpcampo" id="ccval"></div></div><div class="field"><label>Código de segurança</label><div class="mpcampo" id="cccvv"></div></div></div>
+    <div class="field"><label for="ccnome">Nome no cartão</label><input id="ccnome" autocomplete="cc-name" placeholder="Como está no cartão"></div>
+    <div class="field"><label for="ccdoc">CPF ou CNPJ do titular</label><input id="ccdoc" inputmode="numeric"></div>
+    <div class="note">🔒 O número vai direto para o Mercado Pago. O Turma em Dia não vê nem guarda o número do cartão. ${R.situacao.fase === 'teste' || R.situacao.fase === 'cortesia' ? `A primeira cobrança é em ${dataBRA(R.situacao.venc)}.` : 'A primeira cobrança é agora.'}</div>
+    <div class="err" id="ccerr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" id="ccvolta">Voltar</button><button class="btn" id="ccok">Salvar cartão</button></div>`, async () => {
+    $('ccvolta').onclick = () => { sair(); pronto(R); };
+    $('ccdoc').addEventListener('input', e => { const x = C.soDigitos(e.target.value); e.target.value = x.length > 11 ? fmtCnpj(x) : fmtCpf(x); });
+    try { campos = await camposCartao(R.publicKey || 'TEST-PUB', { num: 'ccnum', val: 'ccval', cvv: 'cccvv' }, async b => { bin = b; try { metodo = await campos.metodo(b); } catch (e) { } }); }
+    catch (e) { $('ccerr').textContent = msgErro(e); $('ccok').disabled = true; return; }
+    $('ccok').onclick = async () => {
+      const nome = $('ccnome').value.trim(), doc = C.soDigitos($('ccdoc').value), err = m => { $('ccerr').textContent = m; $('ccok').disabled = false; $('ccok').textContent = 'Salvar cartão'; };
+      if (nome.length < 3) return err('Escreva o nome como está no cartão.');
+      if (!(doc.length === 11 ? C.cpfValido(doc) : doc.length === 14)) return err('Confira o CPF ou CNPJ do titular.');
+      $('ccok').disabled = true; $('ccok').textContent = 'Salvando…';
+      try {
+        const t = await campos.token({ cardholderName: nome, identificationType: doc.length === 11 ? 'CPF' : 'CNPJ', identificationNumber: doc });
+        const novo = await chamarPlano({ acao: 'cartao', token: t.id, ciclo, marca: (metodo && metodo.name) || 'Cartão', fim: t.last_four_digits });
+        sair(); aviso('Cartão salvo. A cobrança é automática.'); pronto(novo);
+      } catch (e) { err(msgErro(e)); }
+    };
+  }, sair);
+}
+// modo de teste: o que o servidor "plano" faria
+async function mockPlano(b) {
+  const ref = `escolas/${S.eid}/config/plano`, h = hoje(), n = Object.values(S.alunas).filter(a => a.ativa !== false && C.ativaNoMes(a, h.slice(0, 7))).length;
+  let p = (await B.get(ref)) || null;
+  const gravar = async mud => { const x = { ...(p || {}), ...mud }, s = C.situacaoPlano(x, h); p = { ...x, bloqueio: s.bloqueio, fase: s.fase }; await B.set(ref, p); return p; };
+  const pub = () => ({ plano: p, situacao: C.situacaoPlano(p, h), alunos: n, mensal: C.precoPlano(n, 'mensal', p, h), anual: C.precoPlano(n, 'anual', p, h), publicKey: 'TEST-PUB' });
+  if (!p) await gravar({ inicio: h, testeAte: C.maisDias(h, 30), ciclo: 'mensal' });
+  if (b.acao === 'documento') { const d = C.soDigitos(b.doc); if (!(d.length === 11 ? C.cpfValido(d) : d.length === 14)) throw new Error('Confira o CPF ou CNPJ.'); await gravar({ doc: d.length === 11 ? `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**` : `**.***.${d.slice(5, 8)}/${d.slice(8, 12)}-**` }); return { ...pub(), aviso: null }; }
+  if (b.acao === 'ciclo') { await gravar({ ciclo: b.ciclo }); return pub(); }
+  if (b.acao === 'pix') { const v = C.precoPlano(n, b.ciclo, p, h).valor; return { pix: { mpId: 'mock', valor: v, ciclo: b.ciclo, qr: `00020126580014br.gov.bcb.pix0136turmaemdia-plano5204000053039865802BR5911TURMA EM DIA6006RECIFE62070503***6304PLAN`, expira: Date.now() + 864e5 } }; }
+  if (b.acao === 'mockPago') { const venc = [p.testeAte || '', p.pagoAte || ''].sort().pop(); await gravar({ pagoAte: C.maisMeses(venc < C.maisDias(h, -30) ? h : venc, b.ciclo === 'anual' ? 12 : 1), pix: null }); return pub(); }
+  if (b.acao === 'cartao') { const venc = [p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(); await gravar({ forma: 'cartao', ciclo: b.ciclo, cartao: { marca: b.marca, fim: b.fim }, proxCobranca: venc > h ? venc : h, ...(venc > h ? {} : { pagoAte: C.maisMeses(h, b.ciclo === 'anual' ? 12 : 1) }) }); return pub(); }
+  if (b.acao === 'tirarCartao') { await gravar({ forma: null, cartao: null, proxCobranca: null }); return pub(); }
+  return pub();
+}
+
+/* ---------- Painel do dono: escolas, meses grátis e desconto (como no Pelota FC) ---------- */
+let DONO_ESC = null, DONO_F = { q: '', sit: 'todas' };
+const FASE_TXT = { teste: ['Teste', 'aberto'], ativo: ['Em dia', 'pago'], cortesia: ['Grátis', 'pago'], aviso: ['Venceu', 'vencido'], leitura: ['Só leitura', 'vencido'], suspensa: ['Suspensa', 'vencido'], livre: ['Sem plano', ''] };
+async function sheetEscolasDono(recarregar) {
+  const casca = h => `${abasDono('escolas')}<h3>Escolas</h3><div class="sub">Todas as escolas do app. Dê meses grátis ou desconto no plano de quem você escolher.</div>${h}<button class="btn ghost" data-fechar>Fechar</button>`;
+  if (!DONO_ESC || recarregar) {
+    sheet(casca('<div class="empty">Carregando as escolas…</div>'), () => ligarAbasDono());
+    try { DONO_ESC = (MOCK ? await mockDono({ acao: 'donoEscolas' }) : await servidor('plano', { acao: 'donoEscolas' })).escolas || []; }
+    catch (e) { sheet(casca(`<div class="empty"><b>Não deu para carregar.</b><span>${esc(msgErro(e))}</span></div>`), () => ligarAbasDono()); return; }
+  }
+  const lista = () => { const q = DONO_F.q.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    return DONO_ESC.filter(e => (!q || `${e.nome} ${e.cidade} ${e.uf}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(q))
+      && (DONO_F.sit === 'todas' || (DONO_F.sit === 'atraso' ? ['aviso', 'leitura', 'suspensa'].includes(e.fase) : DONO_F.sit === 'beneficio' ? !!(e.desconto || e.cortesiaAte) : e.fase === DONO_F.sit))); };
+  const cartao = e => { const [ft, cls] = FASE_TXT[e.fase] || ['', ''], d = e.desconto;
+    return `<li class="nf-card dono-esc"><div class="grow"><div class="nf-lin"><b>${esc(e.nome)}</b><span class="chip ${cls}">${ft}</span></div>
+      <span class="s">${esc([e.cidade, e.uf].filter(Boolean).join(' · ') || 'Sem cidade')} · ${e.alunos} aluno${e.alunos === 1 ? '' : 's'} · ${e.pix ? 'Pix ligado' : 'sem Pix'}</span>
+      <span class="s">Plano ${esc(e.plano)} ${e.ciclo === 'anual' ? 'anual' : 'mensal'}: ${d ? `<s>${brl(e.cheio)}</s> <b>${brl(e.valor)}</b>` : `<b>${brl(e.valor)}</b>`}${e.forma === 'cartao' ? ' · no cartão' : ''}${e.venc ? ` · vence ${dataBRA(e.venc)}` : ''}</span>
+      ${e.cortesiaAte ? `<span class="s dono-ben">🎁 Grátis até ${dataBRA(e.cortesiaAte)}${e.cortesiaMotivo ? ' · ' + esc(e.cortesiaMotivo) : ''}</span>` : ''}
+      ${d ? `<span class="s dono-ben">🏷️ Desconto ${d.valor != null ? brl(d.valor) + ' por mês' : d.pct + '%'}${d.ate ? ' até ' + dataBRA(d.ate) : ', sem prazo'}${d.motivo ? ' · ' + esc(d.motivo) : ''}</span>` : ''}
+      <div class="actions dono-acoes"><button type="button" class="btn ghost btn-mini" data-dcort="${esc(e.eid)}">Meses grátis</button><button type="button" class="btn ghost btn-mini" data-ddesc="${esc(e.eid)}">Desconto</button></div></div></li>`; };
+  sheet(casca(`<div class="field" style="margin:8px 0"><input type="search" id="dqe" value="${esc(DONO_F.q)}" placeholder="Nome ou cidade da escola" aria-label="Procurar escola"></div>
+    <div class="seg" style="margin-bottom:10px;flex-wrap:wrap">${[['todas', 'Todas'], ['teste', 'Teste'], ['ativo', 'Em dia'], ['atraso', 'Atrasadas'], ['beneficio', 'Com benefício']].map(([v, t]) => `<button type="button" data-dsit="${v}" aria-pressed="${DONO_F.sit === v}">${t}</button>`).join('')}</div>
+    <div class="sub" id="dqn" style="margin-bottom:8px"></div><ul class="list" id="dql"></ul>`), sh => {
+    ligarAbasDono();
+    const pinta = () => { const L = lista(); $('dqn').textContent = `${L.length} escola${L.length === 1 ? '' : 's'}`; $('dql').innerHTML = L.map(cartao).join('') || '<li class="empty">Nenhuma escola com esses filtros.</li>';
+      $('dql').querySelectorAll('[data-dcort]').forEach(b => b.onclick = () => abrirDe(() => sheetEscolasDono(), () => sheetCortesiaDono(DONO_ESC.find(x => x.eid === b.dataset.dcort))));
+      $('dql').querySelectorAll('[data-ddesc]').forEach(b => b.onclick = () => abrirDe(() => sheetEscolasDono(), () => sheetDescontoDono(DONO_ESC.find(x => x.eid === b.dataset.ddesc)))); };
+    $('dqe').addEventListener('input', e => { DONO_F.q = e.target.value; pinta(); });
+    sh.querySelectorAll('[data-dsit]').forEach(b => b.onclick = () => { DONO_F.sit = b.dataset.dsit; sh.querySelectorAll('[data-dsit]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); pinta(); });
+    pinta();
+  });
+}
+async function acaoDono(corpo, ok) {
+  DONO_ESC = (MOCK ? await mockDono(corpo) : await servidor('plano', corpo)).escolas || DONO_ESC; aviso(ok); sheetEscolasDono();
+}
+function sheetCortesiaDono(e) {
+  let meses = 3;
+  sheet(`<h3>Meses grátis</h3><div class="sub"><b>${esc(e.nome)}</b> · plano ${esc(e.plano)}, ${brl(e.valor)} ${e.ciclo === 'anual' ? 'por ano' : 'por mês'}.</div>
+    ${e.cortesiaAte ? `<div class="banner ok"><span>🎁 Já está grátis até <b>${dataBRA(e.cortesiaAte)}</b>. Os meses que você der agora somam a partir daí.</span></div>` : ''}
+    <div class="field"><span class="lb">Quantos meses</span><div class="seg" id="dcm">${[1, 3, 6, 12].map(n => `<button type="button" data-m="${n}" aria-pressed="${n === meses}">${n}</button>`).join('')}<button type="button" data-m="outro" aria-pressed="false">Outro</button></div></div>
+    <div class="field" id="dcow" hidden><label for="dco">Número de meses</label><input id="dco" inputmode="numeric" placeholder="De 1 a 36"></div>
+    <div class="field"><label for="dcmot">Motivo (só você vê)</label><input id="dcmot" maxlength="200" placeholder="Ex.: parceria, indicação, problema no app"></div>
+    <div class="sub" id="dcate"></div>
+    <div class="note">A escola vê "Grátis até a data", sem pagar nada nesse período. Se ela paga no cartão, a cobrança fica pausada e volta sozinha no fim.</div>
+    <div class="err" id="dcerr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" id="dcvolta">Voltar</button><button type="button" class="btn" id="dcok">Dar meses grátis</button></div>
+    ${e.cortesiaAte ? '<button type="button" class="link" id="dctira" style="align-self:center;color:var(--out)">Cancelar os meses grátis</button>' : ''}`, sh => {
+    const base = () => [hoje(), e.venc || '', e.cortesiaAte || ''].sort().pop();
+    const ver = () => { const m = meses === 'outro' ? Number($('dco').value) : meses; $('dcate').innerHTML = m >= 1 && m <= 36 ? `Fica grátis até <b>${dataBRA(C.maisMeses(base(), m))}</b>.` : ''; };
+    sh.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { meses = b.dataset.m === 'outro' ? 'outro' : Number(b.dataset.m); sh.querySelectorAll('[data-m]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); $('dcow').hidden = meses !== 'outro'; ver(); });
+    $('dco').addEventListener('input', ver); ver();
+    $('dcvolta').onclick = () => sheetEscolasDono();
+    $('dcok').onclick = async () => { const m = meses === 'outro' ? Number($('dco').value) : meses; if (!(m >= 1 && m <= 36)) return $('dcerr').textContent = 'Escolha de 1 a 36 meses.';
+      $('dcok').disabled = true; try { await acaoDono({ acao: 'donoCortesia', eid: e.eid, meses: m, motivo: $('dcmot').value }, `${m} ${m === 1 ? 'mês grátis' : 'meses grátis'} para ${e.nome}`); } catch (x) { $('dcerr').textContent = msgErro(x); $('dcok').disabled = false; } };
+    if ($('dctira')) duploToque($('dctira'), async () => { try { await acaoDono({ acao: 'donoTirarCortesia', eid: e.eid }, 'Meses grátis cancelados'); } catch (x) { $('dcerr').textContent = msgErro(x); } }, 'Toque de novo para cancelar');
+  });
+}
+function sheetDescontoDono(e) {
+  const d = e.desconto || {}; let tipo = d.valor != null ? 'valor' : 'pct', prazo = d.ate ? 'data' : 'sempre';
+  sheet(`<h3>Desconto no plano</h3><div class="sub"><b>${esc(e.nome)}</b> · plano ${esc(e.plano)}, ${brl(e.cheio)} ${e.ciclo === 'anual' ? 'por ano' : 'por mês'} sem desconto.</div>
+    <div class="field"><span class="lb">Tipo de desconto</span><div class="seg" id="ddt"><button type="button" data-t="pct" aria-pressed="${tipo === 'pct'}">Porcentagem</button><button type="button" data-t="valor" aria-pressed="${tipo === 'valor'}">Valor fixo por mês</button></div></div>
+    <div class="field" id="ddpw"><label for="ddp">Desconto (%)</label><input id="ddp" inputmode="numeric" value="${esc(d.pct != null ? String(d.pct) : '')}" placeholder="Ex.: 50"></div>
+    <div class="field" id="ddvw"><label for="ddv">A escola paga por mês (R$)</label><input id="ddv" inputmode="decimal" value="${esc(d.valor != null ? fmtValor(d.valor) : '')}" placeholder="Ex.: 29,90"></div>
+    <div class="field"><span class="lb">Por quanto tempo</span><div class="seg" id="ddz"><button type="button" data-z="sempre" aria-pressed="${prazo === 'sempre'}">Sem prazo</button><button type="button" data-z="data" aria-pressed="${prazo === 'data'}">Até uma data</button></div></div>
+    <div class="field" id="ddaw"><label for="dda">Último dia do desconto</label><input type="date" id="dda" value="${esc(d.ate || '')}" min="${hoje()}"></div>
+    <div class="field"><label for="ddmot">Motivo (só você vê)</label><input id="ddmot" maxlength="200" value="${esc(d.motivo || '')}" placeholder="Ex.: escola parceira, projeto social"></div>
+    <div class="sub" id="ddres"></div>
+    <div class="err" id="dderr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" id="ddvolta">Voltar</button><button type="button" class="btn" id="ddok">${e.desconto ? 'Salvar desconto' : 'Dar desconto'}</button></div>
+    ${e.desconto ? '<button type="button" class="link" id="ddtira" style="align-self:center;color:var(--out)">Tirar o desconto</button>' : ''}`, sh => {
+    const mensal = e.ciclo === 'anual' ? e.cheio / 10 : e.cheio;
+    const ver = () => { $('ddpw').hidden = tipo !== 'pct'; $('ddvw').hidden = tipo !== 'valor'; $('ddaw').hidden = prazo !== 'data';
+      sh.querySelectorAll('[data-t]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.t === tipo))); sh.querySelectorAll('[data-z]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.z === prazo)));
+      const v = tipo === 'pct' ? C.r2(mensal * (1 - Math.min(100, Number($('ddp').value) || 0) / 100)) : Math.min(mensal, parseValor($('ddv').value));
+      $('ddres').innerHTML = v >= 0 ? `A escola passa a pagar <b>${brl(v)}</b> por mês${e.ciclo === 'anual' ? ` (${brl(C.r2(v * 10))} no anual)` : ''}${prazo === 'data' && $('dda').value ? ` até ${dataBRA($('dda').value)}` : ''}.` : ''; };
+    sh.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tipo = b.dataset.t; ver(); });
+    sh.querySelectorAll('[data-z]').forEach(b => b.onclick = () => { prazo = b.dataset.z; ver(); });
+    ['ddp', 'ddv', 'dda'].forEach(id => $(id).addEventListener('input', ver)); ver();
+    $('ddvolta').onclick = () => sheetEscolasDono();
+    $('ddok').onclick = async () => {
+      const corpo = { acao: 'donoDesconto', eid: e.eid, motivo: $('ddmot').value, ate: prazo === 'data' ? $('dda').value : null, ...(tipo === 'pct' ? { pct: Number($('ddp').value) } : { valor: parseValor($('ddv').value) }) };
+      if (tipo === 'pct' && !(corpo.pct >= 1 && corpo.pct <= 100)) return $('dderr').textContent = 'O desconto vai de 1% a 100%.';
+      if (tipo === 'valor' && !(corpo.valor >= 0)) return $('dderr').textContent = 'Digite o valor que a escola paga por mês.';
+      if (prazo === 'data' && !corpo.ate) return $('dderr').textContent = 'Escolha o último dia do desconto.';
+      $('ddok').disabled = true; try { await acaoDono(corpo, `Desconto salvo para ${e.nome}`); } catch (x) { $('dderr').textContent = msgErro(x); $('ddok').disabled = false; } };
+    if ($('ddtira')) duploToque($('ddtira'), async () => { try { await acaoDono({ acao: 'donoTirarDesconto', eid: e.eid }, 'Desconto retirado'); } catch (x) { $('dderr').textContent = msgErro(x); } }, 'Toque de novo para tirar');
+  });
+}
+// modo de teste: as escolas do painel do dono
+const MOCK_DONO = {};
+async function mockDono(b) {
+  const h = hoje(), base = [['e1', 'Escolinha Movimento', 'Recife', 'PE', 64, { testeAte: C.maisDias(h, 23) }], ['e2', 'Ballet Arte', 'Olinda', 'PE', 28, { testeAte: '2026-08-01', pagoAte: C.maisDias(h, 12), forma: 'cartao' }], ['e3', 'Escola de Futebol Craques do Amanhã', 'Recife', 'PE', 132, { testeAte: '2026-09-01', pagoAte: C.maisDias(h, -9) }], ['e4', 'Judô Kids', 'Caruaru', 'PE', 18, { testeAte: '2026-06-01', pagoAte: C.maisDias(h, -40) }]];
+  for (const [eid, nome, cidade, uf, alunos, p] of base) if (!MOCK_DONO[eid]) MOCK_DONO[eid] = { eid, nome, cidade, uf, alunos, pix: eid !== 'e4', ciclo: 'mensal', ...p };
+  const x = MOCK_DONO[b.eid];
+  if (b.acao === 'donoCortesia') { const bs = [h, x.testeAte || '', x.pagoAte || '', x.cortesiaAte || ''].sort().pop(); x.cortesiaAte = C.maisMeses(bs, b.meses); x.cortesiaMotivo = b.motivo || ''; }
+  if (b.acao === 'donoTirarCortesia') { x.cortesiaAte = null; x.cortesiaMotivo = ''; }
+  if (b.acao === 'donoDesconto') x.desconto = { ...(b.pct != null ? { pct: b.pct } : { valor: b.valor }), ate: b.ate || null, motivo: b.motivo || '' };
+  if (b.acao === 'donoTirarDesconto') x.desconto = null;
+  return { escolas: Object.values(MOCK_DONO).map(e => { const s = C.situacaoPlano(e, h), pr = C.precoPlano(e.alunos, e.ciclo, e, h); return { ...e, fase: s.fase, venc: s.venc, plano: pr.plano.nome, cheio: pr.cheio, valor: pr.valor }; }).sort((a, c) => a.nome.localeCompare(c.nome, 'pt-BR')) };
+}
+
 /* ================= Ajustes ================= */
 // conta do Mercado Pago de um(a) professor(a): o link para ele(a) autorizar, ou desligar (o servidor apaga a chave)
 async function mpProf(acao, pid) {
@@ -5051,7 +5462,7 @@ async function mpProf(acao, pid) {
 async function mpConta(acao) {
   if (MOCK) {
     if (acao === 'desconectar') { await B.set(`escolas/${S.eid}/config/geral`, { mpConectadoEm: null }, { merge: true }); await B.set(`escolas/${S.eid}/config/mp`, { conta: null, confirmada: false }, { merge: true }); return {}; }
-    await B.set(`escolas/${S.eid}/config/geral`, { mpConectadoEm: Date.now(), mpTaxaApp: 0.01 }, { merge: true }); await B.set(`escolas/${S.eid}/config/mp`, { conta: { nome: 'Maria Teste da Silva', doc: '***.456.789-**' }, confirmada: false }, { merge: true }); aviso('Mercado Pago conectado (teste)'); return {};
+    await B.set(`escolas/${S.eid}/config/geral`, { mpConectadoEm: Date.now(), mpTaxaApp: 0.01, mpChave: 'TEST-PUB' }, { merge: true }); await B.set(`escolas/${S.eid}/config/mp`, { conta: { nome: 'Maria Teste da Silva', doc: '***.456.789-**' }, confirmada: false }, { merge: true }); aviso('Mercado Pago conectado (teste)'); return {};
   }
   const t = await B.token().catch(() => null); if (!t) throw new Error('Entre na sua conta de novo.');
   let r; try { r = await fetch(URLF('mpConectar'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ eid: S.eid, acao, volta: LINK_APP }) }); }
@@ -5078,7 +5489,10 @@ function sheetAjustes() {
     });
   }
   const c = S.cfg, conta = (S.mpc || {}).conta, taxaTot = (0.0099 + (Number(c.mpTaxaApp) || 0.01)) * 100;
+  const sp = sitPlano(), pl = S.plano;
+  const planoTxt = !pl ? 'Planos, teste grátis e como pagar' : sp.fase === 'teste' ? `Teste grátis · ${sp.restam ? `faltam ${sp.restam} dia${sp.restam > 1 ? 's' : ''}` : 'termina hoje'}` : sp.fase === 'cortesia' ? `Grátis até ${dataBRA(pl.cortesiaAte)}` : sp.fase === 'ativo' ? `Em dia · pago até ${dataBRA(pl.pagoAte)}${pl.cartao ? ' · cartão' : ''}` : sp.fase === 'aviso' ? `Venceu em ${dataBRA(sp.venc)}` : sp.fase === 'leitura' ? 'Atrasado · só leitura' : sp.fase === 'suspensa' ? 'Suspenso' : 'Planos e como pagar';
   sheet(`<h3>Ajustes da escola</h3>
+    <section><h2>Plano do app</h2><button type="button" class="linha-botao" id="jplano"><span class="grow"><b>Plano da escola</b><span class="s">${esc(planoTxt)}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
     <section><h2>Pix automático</h2>
       ${c.mpConectadoEm ? `<div class="banner ok"><span>Conectado${conta ? ` à conta de <b>${esc(conta.nome)}</b> ${esc(conta.doc || '')}` : ''}.</span></div>
         ${conta && S.mpc.confirmada === false ? `<div class="sub">É essa a conta que deve receber os pagamentos?</div><div class="actions"><button class="btn ok" id="mpsim">Sim, é essa conta</button><button class="btn ghost" id="mpout">Não, conectar outra</button></div>` : ''}
@@ -5107,7 +5521,7 @@ function sheetAjustes() {
       <div class="field"><label for="jmul">Mais de uma atividade (%)</label><input id="jmul" type="number" min="0" max="100" value="${esc(Math.round((Number(c.descMulti) || 0) * 100))}"></div></div>
       <div class="note">Estes são os percentuais dos botões rápidos. O desconto só vale para o(a) aluno(a) em que você escolher, no cadastro dele(a).</div>
     </section>
-    ${OUTRAS_FORMAS ? `<section><h2>Formas de pagamento</h2>
+    ${true ? `<section><h2>Formas de pagamento</h2>
       <button type="button" class="linha-botao" id="jformas"><span class="grow"><b>Pix${formasCfg().boleto ? ', boleto' : ''}${formasCfg().cartao ? ', cartão' : ''}${formasCfg().cartao && formasCfg().parcelado ? ` (até ${formasCfg().maxParcelas}x)` : ''}</b><span class="s">Escolha o que a família pode usar e confira as taxas da sua conta</span></span><span aria-hidden="true">›</span></button>
     </section>` : ''}
     <section><h2>Multa e juros por atraso</h2>
@@ -5146,6 +5560,7 @@ function sheetAjustes() {
     $('jpriv').onclick = () => abrirDe(sheetAjustes, sheetPrivEscola);
     blocoAdms($('jadms'));
     if ($('jformas')) $('jformas').onclick = () => abrirDe(sheetAjustes, sheetFormasEscola);
+    $('jplano').onclick = () => abrirDe(sheetAjustes, () => sheetPlano());
     const acao = (id, a) => { if ($(id)) $(id).onclick = async () => { $(id).disabled = true; try { await mpConta(a); if (a !== 'conectar' || MOCK) sheetAjustes(); } catch (e) { err(msgErro(e)); $(id).disabled = false; } }; };
     acao('mpcon', 'conectar'); acao('mpinfo', 'info'); acao('mpout', 'conectar');
     if ($('mpdes')) $('mpdes').onclick = () => confirmar('Desconectar o Mercado Pago?', 'Os responsáveis não vão conseguir pagar por Pix no app até você conectar de novo. Os pagamentos já feitos continuam registrados.', 'Desconectar', () => mpConta('desconectar'));
@@ -5244,11 +5659,18 @@ async function semearMock() {
   await B.cadastrar('Juliana Costa', 'professor@teste.com', '123456'); const uP = window.__mock.cur().uid; await B.sair();
   await B.cadastrar('Paula Diretora', 'admin@teste.com', '123456'); const uA = window.__mock.cur().uid;
   const eid = 'esc1', p = `escolas/${eid}`, m = mesHoje(), m1 = mesMais(m, -1), m2 = mesMais(m, -2), set = (q, d) => B.set(q, d);
-  const cfg = { atraso: { ativo: true, multa: 2, juros: 1 }, vencDia: 10, pixRepassa: false, descIrmas: 0.1, descMulti: 0.15, mpConectadoEm: Date.now(), mpTaxaApp: 0.01, pixChave: '12.345.678/0001-90' };
+  const qs = new URLSearchParams(location.search), formasTeste = qs.has('formas');
+  const cfg = { atraso: { ativo: true, multa: 2, juros: 1 }, vencDia: 10, pixRepassa: false, descIrmas: 0.1, descMulti: 0.15, mpConectadoEm: Date.now(), mpTaxaApp: 0.01, mpChave: 'TEST-PUB', pixChave: '12.345.678/0001-90',
+    ...(formasTeste ? { pixRepassa: true, formas: { boleto: true, cartao: true, parcelado: true, maxParcelas: 6, recorrente: true } } : {}) };
   // ?mock=1&marca=1: a escola de exemplo com cor e escudo próprios (para ver a abertura com a cara da escola)
   if (/[?&]marca=1/.test(location.search)) { cfg.cor = '#1E5A8A'; cfg.logo = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path d='M40 4 70 14v24c0 19-13 32-30 38C23 70 10 57 10 38V14z' fill='#1E5A8A'/><path d='M40 12 62 19v19c0 14-9 24-22 29-13-5-22-15-22-29V19z' fill='#fff'/><text x='40' y='47' text-anchor='middle' font-family='Arial Black,Arial' font-weight='900' font-size='19' fill='#1E5A8A'>EM</text></svg>"); }
   await set(p, { nome: 'Escolinha Movimento', dono: uA, admins: [uA], adminsInfo: { [uA]: { nome: 'Paula Diretora', email: 'admin@teste.com', em: Date.now() - 200 * 864e5 } } });
   await set(`${p}/config/geral`, cfg);
+  // plano do app no teste: ?plano=aviso | leitura | suspensa | ativo (padrão: teste grátis com 23 dias)
+  { const h = hoje(), fase = qs.get('plano'), venc = { aviso: -3, leitura: -12, suspensa: -40 }[fase];
+    const pl = fase === 'ativo' ? { inicio: '2026-08-01', testeAte: '2026-09-01', pagoAte: C.maisDias(h, 18), ciclo: 'mensal', forma: 'cartao', cartao: { marca: 'Visa', fim: '4821' }, proxCobranca: C.maisDias(h, 18) }
+      : venc != null ? { inicio: '2026-08-01', testeAte: C.maisDias(h, venc), ciclo: 'mensal' } : { inicio: C.maisDias(h, -7), testeAte: C.maisDias(h, 23), ciclo: 'mensal' };
+    const sit = C.situacaoPlano(pl, h); await set(`${p}/config/plano`, { ...pl, bloqueio: sit.bloqueio, fase: sit.fase }); }
   await set(`${p}/config/mp`, { conta: { nome: 'Paula Diretora Souza', doc: '***.456.789-**' }, confirmada: true });
   await set(`${p}/locais/l1`, { nome: 'Unidade Centro', ordem: 1 }); await set(`${p}/locais/l2`, { nome: 'Unidade Praia', ordem: 2 });
   await set(`${p}/equipe/${uP}`, { pid: 'p1', email: 'professor@teste.com', nome: 'Juliana Costa', em: Date.now() - 3 * 864e5 });
@@ -5327,7 +5749,7 @@ async function semearMock() {
 /* ================= Início ================= */
 (async () => {
   mostrarAbertura();
-  try { B = MOCK ? backendMock() : await backendReal(); }
+  try { B = MOCK ? backendMock() : await backendReal(); travarEscritas(B); }
   catch (e) { RAIZ().innerHTML = `<div class="login"><div class="logo">Ops<span>.</span></div><p>Não deu para carregar o app. Verifique a internet e tente de novo.</p></div>`; return; }
   if (!MOCK && (!CFG.firebase || /COLE-AQUI|SEU-PROJETO/.test(JSON.stringify(CFG.firebase)))) { RAIZ().innerHTML = `<div class="login"><div class="logo">Quase lá<span>.</span></div><p>Falta colocar os dados do projeto Firebase no arquivo <b>config.js</b>. Para ver o app funcionando com dados de exemplo, abra com <b>?mock=1</b> no fim do endereço.</p></div>`; return; }
   if (MOCK) await semearMock();

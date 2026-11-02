@@ -107,6 +107,28 @@ button.chip{cursor:pointer}
 .banner{background:var(--warn-soft);border-radius:5px;padding:10px 12px;font-size:.88rem;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .banner button{border:0;background:transparent;color:var(--warn);font-weight:800;padding:4px 0}
 .banner.ok{background:var(--in-soft)}
+.banner.alerta{background:var(--out-soft)} .banner.alerta button{color:var(--out)}
+.forma:disabled{opacity:.5}
+/* plano da escola e cartão dentro do app */
+.pl-uso{margin:4px 0 14px;display:flex;flex-direction:column;gap:6px}.pl-uso-t{display:flex;justify-content:space-between;font-size:.88rem}.pl-uso .s{font-size:.8rem;color:var(--muted)}.pl-barra{height:8px;border-radius:4px;background:var(--surface2,var(--line));overflow:hidden}.pl-barra i{display:block;height:100%;background:var(--accent)}
+.pl-per{margin-bottom:12px}
+.pl-grade{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.pl-card{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 6px 10px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);text-align:center}
+.pl-card.sel{border-color:var(--accent);background:var(--accent-soft)}
+.pl-nome{font-weight:800;font-size:1rem}.pl-ate{font-size:.78rem;color:var(--muted)}.pl-preco{font-size:1.35rem;font-weight:800;margin-top:4px}.pl-mes{font-size:.72rem;color:var(--muted)}
+.pl-meios{display:flex;flex-direction:column;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px}
+.pl-add{display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border:0;background:none;color:var(--accent);font:inherit;font-weight:700;font-size:.98rem}.pl-mais{font-size:1.5rem;line-height:1;font-weight:400}
+.pl-meio{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);border-radius:8px;background:var(--surface);font:inherit;color:var(--ink);text-align:left;width:100%}
+.pl-meio.sel{border-color:var(--in,#34C759)}.pl-meio .grow{display:flex;flex-direction:column;min-width:0}.pl-meio .s{font-size:.8rem;color:var(--muted)}
+.pl-ico{font-size:1.3rem;width:28px;text-align:center;flex:none}.pl-pix{color:#32BCAD}.pl-ok{color:var(--in,#34C759);font-weight:800}
+.pl-cartao-img{height:140px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#1c2b44);color:#fff;display:flex;flex-direction:column;justify-content:flex-end;padding:18px;gap:6px;margin-bottom:14px;font-family:ui-monospace,monospace}.pl-cartao-img span{font-size:1.15rem;letter-spacing:.08em}.pl-cartao-img small{opacity:.8}
+.pl-boleto{border:1px dashed var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}.pl-boleto .lb{font-size:.8rem;color:var(--muted);font-weight:700}.pl-boleto .s{font-size:.8rem;color:var(--muted)}
+.pl-docrow{display:flex;gap:8px}.pl-docrow input{flex:1;min-width:0}
+.mpcampo{height:46px;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:0 12px;display:flex;align-items:center}
+.mpcampo iframe{width:100%;height:42px;border:0}
+.mpcampo input{border:0!important;padding:0!important;background:transparent!important;width:100%;height:100%;font-size:16px;outline:none}
+.empty.pausa{gap:10px;padding:28px 18px;text-align:center}
+.dono-esc .headrow{gap:8px}.dono-ben{color:var(--in,#1f7a3a)!important;font-weight:600}.dono-acoes{margin-top:2px;justify-content:flex-start}
 .tree{display:flex;flex-direction:column;gap:12px}
 .local{background:var(--surface);border:1px solid var(--line);border-radius:5px;overflow:hidden}
 .local>.hd{display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer}
