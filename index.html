@@ -147,11 +147,10 @@ button.chip{cursor:pointer}
 .freq{display:flex;gap:4px;flex-wrap:wrap;margin-top:10px}
 .freq i{width:24px;height:24px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font:700 .68rem var(--f-body,system-ui);font-style:normal;color:#fff}
 .freq .p{background:var(--in,#1b7f6b)}.freq .f{background:var(--out)}.freq .j{background:var(--warn);color:var(--ink)}
-.ch-outros{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between}
-.ch-outros .link{font-weight:700;color:var(--accent);font-size:.88rem;position:relative}
-.ch-outros input[type=date]{width:150px;flex:none;padding:6px 10px;min-height:36px;font-size:.88rem}
-.ch-sem{border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:5px;padding:7px 12px;font:600 .85rem var(--f-body,inherit)}
-.ch-sem[aria-pressed="true"]{border-color:var(--warn);background:var(--warn-soft)}
+.ch-outros{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ch-op{position:relative;display:flex;align-items:center;justify-content:center;text-align:center;min-height:44px;padding:6px 10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:5px;font:600 .88rem/1.2 var(--f-body,inherit);cursor:pointer;overflow:hidden}
+.ch-op[aria-pressed="true"]{border-color:var(--warn);background:var(--warn-soft)}
+.ch-op input[type=date]{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;padding:0;margin:0;cursor:pointer}
 .ch-sair{display:flex;flex-direction:column;gap:8px;padding:14px;border:1.5px solid var(--out);border-radius:6px;background:var(--out-soft,#f8e3dd)}
 .ch-sair span{font-size:.9rem;color:var(--muted)}.ch-sair .actions{margin:4px 0 0}
 .dias-seg{display:grid;grid-template-columns:repeat(7,1fr)}.dias-seg button{padding:8px 0;min-width:0;font-size:.8rem}
