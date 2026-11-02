@@ -9,6 +9,7 @@ const { onRequest } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 const admin = require('firebase-admin');
 const { FieldValue } = require('firebase-admin/firestore');
+const C = require('./calculo');
 
 const idOk = x => typeof x === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(x);
 const chaveEmail = e => String(e || '').trim().toLowerCase().replace('@', '_at_').replace(/[^a-z0-9_-]/g, '_');
@@ -73,6 +74,14 @@ module.exports = db => {
     const ref = db.doc(`escolas/${eid}/extras/${xid}`);
     await db.runTransaction(async t => {
       const x = (await t.get(ref)).data();
+      // taxa dividida: a família diz se o filho participa, até o dia e horário que a escola marcou
+      if (x && x.tipo === 'taxa' && x.rateio) {
+        if (!(x.convidados || []).includes(alid)) throw erro('Esta taxa não é para este aluno.', 403);
+        if (!['interesse', 'nao'].includes(st)) throw erro('Pedido inválido.', 400);
+        if (C.rateioFechado(x)) throw erro('As respostas já fecharam. Fale com a escola.', 409);
+        t.update(ref, { [`part.${alid}`]: { st, em: Date.now(), por: u.uid, quem: 'familia' } });
+        return;
+      }
       if (!x || !(x.tipo === 'evento' || x.tipo === 'competicao') || !(x.semCobranca || x.cobranca === 'app')) throw erro('Evento não encontrado.', 404);
       if (!(x.convidados || []).includes(alid)) throw erro('Este evento não é para este aluno.', 403);
       // evento encerrado ou prazo de resposta passado: a família não muda mais nada (só a escola)

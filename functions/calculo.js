@@ -77,9 +77,18 @@
   // aluno que entra depois do vencimento do mês: o primeiro mês vence alguns dias depois da matrícula (vencPrimeiro), sem multa
   const vencAluna = (a, mes, cfg) => { const v = vencMens(mes, cfg); return a && a.vencPrimeiro && a.inicio === mes && a.vencPrimeiro > v ? a.vencPrimeiro : v; };
   // valor de uma cobrança extra para um aluno: o valor padrão, ou o valor ajustado só para ele
-  const valorExtra = (x, alid) => r2(x && x.valores && x.valores[alid] != null ? x.valores[alid] : (x || {}).v);
+  /* Taxa dividida (rateio): a escola lança um valor total e convida alunos; quem quer participar responde no app.
+     Ninguém é cobrado enquanto as respostas estão abertas. Fecha no dia e horário (prazoEm) ou quando a escola fechar
+     (fechadoEm). Fechado, cada participante paga o total dividido, arredondado para cima no centavo (todos iguais;
+     a sobra de centavos fica no caixa). Ao fechar pela escola, o valor e a lista ficam gravados (v, alunas). */
+  const rateioFechado = (x, agora = Date.now()) => !!(x && x.rateio) && (!!x.rateio.fechadoEm || (Number(x.rateio.prazoEm) || 0) <= agora);
+  const rateioParticipantes = x => (x.convidados || []).filter(id => (((x.part || {})[id]) || {}).st === 'interesse');
+  const rateioCada = (total, n) => n > 0 ? Math.ceil(Math.round(Number(total) * 100) / n) / 100 : 0;
+  const valorExtra = (x, alid) => x && x.rateio && !x.rateio.fechadoEm ? rateioCada(x.rateio.total, rateioParticipantes(x).length)
+    : r2(x && x.valores && x.valores[alid] != null ? x.valores[alid] : (x || {}).v);
   // alunas que uma cobrança extra alcança: grupos + turmas + avulsas
   function alvoExtra(x, alunas, grupos) {
+    if (x.rateio && !x.rateio.fechadoEm) return new Set(rateioFechado(x) ? rateioParticipantes(x) : []);
     const s = new Set(x.alunas || x.quem || []);
     for (const g of x.grupos || []) for (const id of ((grupos || {})[g] || {}).alunas || []) s.add(id);
     if ((x.turmas || []).length) for (const [id, a] of Object.entries(alunas || {})) if ((a.turmas || []).some(t => x.turmas.includes(t))) s.add(id);
@@ -320,5 +329,5 @@
     r.alerta = !!(itens.length || r.detalhes || r.alergias || r.remedios || r.semPrimeiros);
     return r;
   }
-  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
+  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor };
 });

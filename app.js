@@ -1148,7 +1148,7 @@ function tCobrancas(v) {
     <section><div class="headrow"><h2>Taxas e cobranças extras</h2><button class="add" id="xnovo">+ Lançar</button></div>
       ${ext.length ? `<ul class="list">${ext.map(([xid, x]) => { const alvo = [...C.alvoExtra(x, S.alunas, S.grupos)], pg = alvo.filter(a => C.stPag(((S.pags[a] || {}).extras || {})[xid])).length;
         const o = x.origem || x, para = [...(o.todos ? ['Todos os alunos'] : []), ...(o.eventos || []).map(k => { const e = S.extras[k.slice(3)]; return e ? ({ i: 'Inscrição confirmada · ', v: 'Disseram que vão · ', n: 'Não vão · ', s: 'Não responderam · ' }[k[1]] || 'Disseram que vão · ') + e.nome : ''; }), ...(o.grupos || []).map(g => (S.grupos[g] || {}).nome), ...(o.turmas || []).map(t => (S.turmas[t] || {}).nome)].filter(Boolean), tot = C.r2(alvo.reduce((t, id) => t + C.valorExtra(x, id), 0));
-        return `<li class="tap" data-x="${esc(xid)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(`<span class="num">${ehEvento(x) && x.data ? `Evento ${x.dataFim && x.dataFim !== x.data ? 'de ' : 'em '}${periodoTxt(x)}` : esc(C.TIPOS_EXTRA[x.tipo] || 'Extra')} · vence ${dataBR(x.venc)}</span>`, para.length ? 'Para: ' + esc(para.join(', ')) : '', `<span class="num">${alvo.length} aluno${alvo.length === 1 ? '' : 's'} · ${Object.keys(x.valores || {}).length ? 'valores diferentes' : brl(x.v) + ' cada'}</span>`, 'Recebe: ' + esc(nomeRec(C.recDe(x))))}</div>${valorCol(cur(tot), `<span class="s num">${pg} de ${alvo.length} pagas</span>`)}</li>`; }).join('')}</ul>`
+        return `<li class="tap" data-x="${esc(xid)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(`<span class="num">${ehEvento(x) && x.data ? `Evento ${x.dataFim && x.dataFim !== x.data ? 'de ' : 'em '}${periodoTxt(x)}` : esc(C.TIPOS_EXTRA[x.tipo] || 'Extra')} · vence ${dataBR(x.venc)}</span>`, para.length ? 'Para: ' + esc(para.join(', ')) : '', (x.rateio ? `<span class="num">${rateioLinha(x)}</span>` : `<span class="num">${alvo.length} aluno${alvo.length === 1 ? '' : 's'} · ${Object.keys(x.valores || {}).length ? 'valores diferentes' : brl(x.v) + ' cada'}</span>`), 'Recebe: ' + esc(nomeRec(C.recDe(x))))}</div>${x.rateio && !C.rateioFechado(x) ? valorCol(cur(x.rateio.total), '<span class="chip aberto">Respostas abertas</span>') : valorCol(cur(tot), `<span class="s num">${pg} de ${alvo.length} pagas</span>`)}</li>`; }).join('')}</ul>`
         : `<div class="empty"><span>Lance aqui taxas, como a da federação, ajuda de custo ou uniforme. Dá para lançar só para os inscritos de um evento. Escolha para quais grupos, turmas ou alunos cada um vale e o vencimento de cada um.</span></div>`}
     </section>`;
   ligarFaixa(v);
@@ -1847,6 +1847,8 @@ function sheetExtra(xid, op = {}) {
   const x = xid ? S.extras[xid] : null, ed = !!x;
   if (x && eventoNovo(x)) return sheetVerEvento(xid);
   if (!ed && op.tipo === 'evento') return sheetEvento(null);
+  if (x && x.rateio) return sheetRateio(xid);
+  let dividir = false;
   const pagou = id => !!(x && C.stPag(((S.pags[id] || {}).extras || {})[xid]));
   const temPag = ed && Object.keys(S.pags).some(pagou), legado = ed && ehEvento(x);
   const pre = op.pre || {};
@@ -1859,25 +1861,32 @@ function sheetExtra(xid, op = {}) {
     ${ed ? '' : `<div class="seg">${TIPOS_LANCAR.map(([k, n]) => `<button type="button" data-t="${k}" aria-pressed="${k === 'taxa'}">${n}</button>`).join('')}</div>`}
     <div class="field"><label for="xnome">Descrição</label><input id="xnome" maxlength="60" value="${esc(x ? x.nome : pre.nome || '')}" placeholder="Ex.: Ajuda de custo, uniforme, taxa da federação"></div>
     ${legado ? `<div class="note">Evento ${esc(periodoTxt(x))}${x.local ? ' · ' + esc(x.local) : ''}. Esta é uma cobrança antiga, feita pelo app.</div>` : ''}
-    <div class="two"><div class="field"><label for="xval">Valor padrão (R$)</label><input id="xval" inputmode="decimal" value="${esc(fmtValor(x && x.v))}" placeholder="0,00" ${temPag ? 'disabled' : ''}></div>
+    ${ed || evento ? '' : `<div class="field"><span class="lb">Como cobrar</span><div class="insc-ops" id="xmodo">
+      <button type="button" class="insc-op" data-xm="aluno" aria-pressed="true"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>Valor por aluno</b><span class="s">Cada aluno marcado paga o mesmo valor.</span></span></button>
+      <button type="button" class="insc-op" data-xm="dividir" aria-pressed="false"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>Dividir um valor total</b><span class="s">Convide os alunos. Quem quiser participar marca no app e o total é dividido entre eles.</span></span></button></div></div>
+    <div id="xdivw" hidden><div class="field"><label for="xtot">Valor total (R$)</label><input id="xtot" inputmode="decimal" placeholder="0,00"></div>
+      <div class="field" style="margin-top:14px"><span class="lb">Responder até</span><div class="two"><input id="xpdia" type="date" aria-label="Dia" value="${esc(somaDias(hoje(), 7))}"><input id="xphora" type="time" aria-label="Horário" value="18:00"></div>
+      <span class="s">Depois desse dia e horário, ninguém mais entra e o valor é dividido. A escola também pode fechar antes.</span></div></div>`}
+    <div class="two"><div class="field" id="xvalw"><label for="xval">Valor padrão (R$)</label><input id="xval" inputmode="decimal" value="${esc(fmtValor(x && x.v))}" placeholder="0,00" ${temPag ? 'disabled' : ''}></div>
     <div class="field"><label for="xven">Vencimento</label><input id="xven" type="date" value="${esc(x ? x.venc : hoje())}" ${temPag ? 'disabled' : ''}></div></div>
     ${temPag ? '<div class="note">Já há pagamentos desta cobrança: o valor padrão e o vencimento não mudam mais. Quem já pagou fica como está; dá para incluir alunos e mudar o valor de quem ainda não pagou.</div>' : ''}
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
     ${!legado && evsTaxa.length ? `<div class="field"><label for="xev">É de um evento?</label><select id="xev"><option value="">Não, taxa avulsa</option>${evsTaxa.map(([id, e]) => `<option value="${esc(id)}" ${id === evento ? 'selected' : ''}>${esc(e.nome)} · ${esc(periodoTxt(e))}</option>`).join('')}</select>
       <span class="sub" id="xevnota"></span></div>` : ''}
     ${blocoNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.', x && x.recebedor)}
-    <div class="field"><span class="lb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
+    <div class="field"><span class="lb" id="xparalb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
     <div class="xresumo" id="xcont"></div>
     <div class="err" id="xerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="xok">Salvar</button></div>
     ${ed ? `<button class="btn ghost" id="xdel" style="color:var(--out)">Excluir cobrança</button>` : ''}`, s => {
     const resumo = () => {
+      if (dividir) { const n = [...selA].filter(id => S.alunas[id]).length; $('xcont').innerHTML = n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'} convidado${n === 1 ? '' : 's'}. Ninguém é cobrado agora: a cobrança chega só para quem participar, quando as respostas fecharem.</div>` : '<div class="note">Nenhum aluno convidado ainda.</div>'; return; }
       const ids = [...selA].filter(id => S.alunas[id]), tot = C.r2(ids.reduce((t, id) => t + sel.valDe(id), 0)), dif = ids.filter(id => vals[id] != null && vals[id] !== padrao());
       $('xcont').innerHTML = ids.length ? `<details class="historico"><summary><span class="grow"><b>${ids.length} aluno${ids.length === 1 ? '' : 's'} · total ${brl(tot)}</b><span class="s">${dif.length ? `${dif.length} com valor diferente do padrão` : padrao() ? `${brl(padrao())} cada` : 'Informe o valor padrão'} · toque para ver a lista</span></span><span class="seta" aria-hidden="true">▾</span></summary>
         <div class="conta" style="padding:0 14px 14px">${porNome(Object.fromEntries(ids.map(id => [id, S.alunas[id]]))).map(([id, a]) => contaL(esc(a.nome), brl(sel.valDe(id)), vals[id] != null && vals[id] !== padrao() ? 'dif' : '')).join('')}${contaL('<b>Total</b>', `<b>${brl(tot)}</b>`, 'total')}</div></details>`
         : '<div class="note">Nenhum aluno marcado ainda.</div>';
     };
-    const opSel = () => ({ quadros, selA, usados, vals, comValor: true, padrao, travado: pagou, subDe: id => { if (pagou(id)) return 'Já pagou'; const e = evento && S.extras[evento], st = e && partDe(e, id); return st === 'inscrito' ? 'Inscrição confirmada' : st === 'interesse' ? 'Disse que vai' : turmasTxt(S.alunas[id]) || 'Sem turma'; }, aoMudar: () => resumo() });
+    const opSel = () => ({ quadros, selA, usados, vals, comValor: !dividir, padrao, travado: pagou, subDe: id => { if (pagou(id)) return 'Já pagou'; const e = evento && S.extras[evento], st = e && partDe(e, id); return st === 'inscrito' ? 'Inscrição confirmada' : st === 'interesse' ? 'Disse que vai' : turmasTxt(S.alunas[id]) || 'Sem turma'; }, aoMudar: () => resumo() });
     let sel = seletorAtletas($('xquadros'), opSel());
     // taxa de um evento: os quadros desse evento vêm primeiro e quem já confirmou a inscrição (ou, se ninguém, quem disse que vai) já vem marcado
     const escolherEvento = (marcar) => {
@@ -1892,6 +1901,12 @@ function sheetExtra(xid, op = {}) {
       else if ($('xevnota')) $('xevnota').textContent = '';
       sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
     ligarBlocoNota('xnota', 'xrec');
+    s.querySelectorAll('[data-xm]').forEach(b => b.onclick = () => { dividir = b.dataset.xm === 'dividir';
+      s.querySelectorAll('[data-xm]').forEach(c => c.setAttribute('aria-pressed', String(c === b)));
+      $('xdivw').hidden = !dividir; $('xvalw').hidden = dividir; if ($('xev')) $('xev').closest('.field').hidden = dividir;
+      $('xparalb').textContent = dividir ? 'Quem pode participar? Toque num quadro para escolher os atletas' : 'Para quem? Toque num quadro para escolher os atletas';
+      if (dividir && $('xven').value < $('xpdia').value) $('xven').value = somaDias($('xpdia').value, 5);
+      $('xok').textContent = dividir ? 'Convidar' : 'Salvar'; sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); resumo(); });
     if ($('xev')) $('xev').onchange = () => { evento = $('xev').value || null; escolherEvento(true); };
     if (evento) setTimeout(() => escolherEvento(false), 0);
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'evento') sheetEvento(null); });
@@ -1899,6 +1914,21 @@ function sheetExtra(xid, op = {}) {
     sel.desenhar();
     $('xok').onclick = async () => {
       const nome = $('xnome').value.trim(), v = padrao(), venc = $('xven').value, err = m => $('xerr').textContent = m;
+      if (dividir) {
+        const total = parseValor($('xtot').value), dia = $('xpdia').value, hora = $('xphora').value || '18:00';
+        if (!nome) { $('xnome').focus(); return err('Preencha a descrição, como "Ônibus para a Copa".'); }
+        if (!(total > 0)) return err('Informe o valor total a dividir, como 1.000,00.');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return err('Escolha até que dia as famílias podem responder.');
+        const prazoEm = new Date(`${dia}T${hora}:00-03:00`).getTime();
+        if (!(prazoEm > Date.now())) return err('O prazo para responder precisa ser depois de agora.');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(venc)) return err('Escolha a data de vencimento.');
+        if (venc < dia) return err('O vencimento precisa ser no dia em que as respostas fecham ou depois.');
+        const ids = [...selA].filter(id => S.alunas[id]); if (!ids.length) return err('Toque num quadro e marque quem pode participar.');
+        $('xok').disabled = true;
+        try { await B.set(`escolas/${S.eid}/extras/${novoId()}`, { tipo: 'taxa', nome, v: 0, venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: [], valores: {}, grupos: [], turmas: [], part: {}, rateio: { total: C.r2(total), prazoEm, fechadoEm: null }, origem: sel.origem(), evento: null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: Date.now() });
+          fecharSheet(); aviso('Convite enviado às famílias'); } catch (e) { err(msgErro(e)); $('xok').disabled = false; }
+        return;
+      }
       if (!nome) { $('xnome').focus(); $('xnome').scrollIntoView({ block: 'center', behavior: 'smooth' }); return err('Preencha a descrição da taxa, como "Ajuda de custo · Copa" ou "Taxa da federação".'); }
       if (!(v > 0)) return err('Informe o valor padrão por aluno(a), como 85,00.');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(venc)) return err('Escolha a data de vencimento.');
@@ -2014,6 +2044,71 @@ function waEvento(xid, id) {
   const x = S.extras[xid], r = respDe(id), a = S.alunas[id] || {};
   const txt = `Olá, ${primeiro(r.nome) || 'tudo bem'}! Aqui é da ${S.escola.nome || 'escola'}. Vamos participar de ${x.nome} (${periodoTxt(x)}${x.local ? ', ' + x.local : ''}). ${primeiro(a.nome)} vai?${x.prazo ? ` Responda até ${dataBR(x.prazo)}.` : ''}\n\nÉ só responder pelo app, em Meus filhos: ${LINK_APP}`;
   return waLink(r.telefone, txt);
+}
+/* ---- Taxa dividida (rateio): convite, respostas até dia e horário, fechar e cobrar ---- */
+const quandoRT = ms => { const d = new Date(Number(ms) - 3 * 36e5), hh = d.toISOString().slice(11, 16); return `${dataBR(d.toISOString().slice(0, 10))} às ${hh.endsWith(':00') ? String(Number(hh.slice(0, 2))) + 'h' : hh.replace(':', 'h')}`; };
+const rtConv = x => (x.convidados || []).filter(id => S.alunas[id]);
+const rtSt = (x, id) => (((x.part || {})[id]) || {}).st || null;
+function rateioLinha(x) {
+  const n = C.rateioParticipantes(x).length;
+  if (x.rateio.fechadoEm) return `Dividido: ${brl(x.v)} para cada um de ${(x.alunas || []).length}`;
+  if (C.rateioFechado(x)) return `Respostas fechadas · ${n ? `${brl(C.rateioCada(x.rateio.total, n))} para cada um de ${n}` : 'ninguém aderiu'}`;
+  return `${brl(x.rateio.total)} divididos · ${n} de ${rtConv(x).length} vão participar · respostas até ${quandoRT(x.rateio.prazoEm)}`;
+}
+function waRateio(xid, id) {
+  const x = S.extras[xid], r = respDe(id), a = S.alunas[id] || {}, n = C.rateioParticipantes(x).length;
+  const txt = `Olá, ${primeiro(r.nome) || 'tudo bem'}! Aqui é da ${S.escola.nome || 'escola'}. Vamos dividir ${brl(x.rateio.total)} de "${x.nome}" entre os alunos que participarem${n ? ` (até agora, ${n} vão: cerca de ${brl(C.rateioCada(x.rateio.total, n))} para cada um)` : ''}. ${primeiro(a.nome)} vai participar? Responda até ${quandoRT(x.rateio.prazoEm)}.\n\nÉ só responder pelo app, na tela Pagar: ${LINK_APP}`;
+  return waLink(r.telefone, txt);
+}
+// a escola abre uma taxa que fechou pelo horário: grava o valor e a lista (assim mais nada muda)
+async function congelarRateio(xid) {
+  const x = S.extras[xid]; if (!x || !x.rateio || x.rateio.fechadoEm || !C.rateioFechado(x)) return;
+  const ids = C.rateioParticipantes(x).filter(id => S.alunas[id]);
+  await B.set(`escolas/${S.eid}/extras/${xid}`, { rateio: { ...x.rateio, fechadoEm: Math.min(Date.now(), Number(x.rateio.prazoEm) || Date.now()) }, alunas: ids, v: C.rateioCada(x.rateio.total, ids.length) }, { merge: true });
+}
+function sheetRateio(xid) {
+  const x = S.extras[xid]; if (!x) return fecharSheet();
+  if (S.admin && !x.rateio.fechadoEm && C.rateioFechado(x)) { congelarRateio(xid).then(() => sheetRateio(xid)).catch(() => { }); }
+  const conv = rtConv(x), fechado = C.rateioFechado(x), part = x.rateio.fechadoEm ? (x.alunas || []).filter(id => S.alunas[id]) : C.rateioParticipantes(x).filter(id => S.alunas[id]);
+  const nNao = conv.filter(id => rtSt(x, id) === 'nao').length, nSem = conv.length - part.length - nNao, cada = x.rateio.fechadoEm ? x.v : C.rateioCada(x.rateio.total, part.length);
+  const pagou = id => !!C.stPag(((S.pags[id] || {}).extras || {})[xid]), nPg = part.filter(pagou).length;
+  const ordem = id => ({ interesse: 0, nao: 2 }[rtSt(x, id)] ?? 1);
+  const lista = [...conv].sort((a, b) => ordem(a) - ordem(b) || String(S.alunas[a].nome).localeCompare(S.alunas[b].nome)).map(id => {
+    const st = x.rateio.fechadoEm ? (part.includes(id) ? 'interesse' : rtSt(x, id) === 'nao' ? 'nao' : null) : rtSt(x, id), wa = !fechado && !st ? waRateio(xid, id) : '';
+    const dir = fechado ? (st === 'interesse' ? (pagou(id) ? '<span class="chip pago">Pagou</span>' : '<span class="chip aberto">Participa</span>') : `<span class="s">${st === 'nao' ? 'Não vai' : 'Não respondeu'}</span>`)
+      : `<div class="seg rt-seg"><button type="button" data-rp="${esc(id)}" data-rs="interesse" aria-pressed="${st === 'interesse'}">Vai</button><button type="button" data-rp="${esc(id)}" data-rs="nao" aria-pressed="${st === 'nao'}">Não</button></div>`;
+    return `<li><div class="grow"><div class="t">${esc(S.alunas[id].nome)}</div>${linhas(esc(primeiro(respDe(id).nome || '')))}</div>${dir}${fechado ? '' : wa ? `<a class="wa wa-mini" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Perguntar pelo WhatsApp">${ICO_WA}</a>` : WA_MINI_VAZIO}</li>`; }).join('');
+  sheet(`<h3>${esc(x.nome)}</h3>
+    <div class="rt-big"><span>${brl(x.rateio.total)} ÷ ${part.length} participante${part.length === 1 ? '' : 's'}</span><b class="num">${part.length ? brl(cada) : '—'}</b></div>
+    <div class="rt-conta"><div>Vão participar<b class="num">${part.length}</b></div><div>Não vão<b class="num">${nNao}</b></div><div>${fechado ? 'Pagaram' : 'Sem resposta'}<b class="num">${fechado ? nPg : nSem}</b></div></div>
+    <div class="note">${x.rateio.fechadoEm || fechado ? `Respostas fechadas. Cada participante recebeu a cobrança de ${brl(cada)}, com vencimento em ${dataBR(x.venc)}.${part.length && C.r2(cada * part.length) > x.rateio.total ? ` A divisão não é exata: os ${brl(C.r2(cada * part.length - x.rateio.total))} a mais ficam no caixa.` : ''}`
+      : `As respostas fecham sozinhas em ${quandoRT(x.rateio.prazoEm)}. Ao fechar, cada participante recebe a cobrança, com vencimento em ${dataBR(x.venc)}. Ninguém é cobrado antes disso.${nSem ? ' O botão verde pergunta pelo WhatsApp a quem ainda não respondeu.' : ''}`}</div>
+    <ul class="list rt-lista">${lista || '<li class="empty">Ninguém convidado.</li>'}</ul>
+    <div class="err" id="rterr" role="alert"></div>
+    ${fechado ? '<button class="btn ghost" data-fechar>Fechar</button>' : `<div class="actions"><button class="btn ghost" data-fechar>Voltar</button><button class="btn" id="rtfim">Fechar agora e cobrar</button></div>`}
+    ${!nPg ? '<button class="btn ghost" id="rtdel" style="color:var(--out)">Excluir taxa</button>' : ''}`, sh => {
+    sh.querySelectorAll('[data-rp]').forEach(b => b.onclick = async () => { const id = b.dataset.rp, st = rtSt(x, id) === b.dataset.rs ? null : b.dataset.rs;
+      try { await B.set(`escolas/${S.eid}/extras/${xid}`, { part: { [id]: st ? { st, em: Date.now(), por: EU.uid, quem: 'escola' } : null } }, { merge: true }); setTimeout(() => sheetRateio(xid), 60); } catch (e) { $('rterr').textContent = msgErro(e); } });
+    if ($('rtfim')) $('rtfim').onclick = () => { if (!part.length) return $('rterr').textContent = 'Ninguém disse que vai participar ainda. Não há com quem dividir.';
+      duploToque($('rtfim'), async () => { try { await B.set(`escolas/${S.eid}/extras/${xid}`, { rateio: { ...x.rateio, fechadoEm: Date.now() }, alunas: part, v: cada }, { merge: true }); aviso(`Cobrança de ${brl(cada)} enviada a ${part.length} participante${part.length === 1 ? '' : 's'}`); setTimeout(() => sheetRateio(xid), 60); } catch (e) { $('rterr').textContent = msgErro(e); } }, `Cobrar ${brl(cada)} de ${part.length}?`); };
+    if ($('rtdel')) $('rtdel').onclick = () => confirmar('Excluir taxa?', `"${esc(x.nome)}" sai da lista de todos.`, 'Excluir', () => B.del(`escolas/${S.eid}/extras/${xid}`));
+  });
+}
+// família: o convite das taxas divididas com as respostas abertas (na tela Pagar)
+function avisoRateioFam() {
+  return Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.rateio && !C.rateioFechado(x)).map(([xid, x]) => {
+    const meus = (x.convidados || []).filter(id => S.alunas[id]); if (!meus.length) return '';
+    const n = C.rateioParticipantes(x).length;
+    return `<div class="rt-card"><b class="rt-tit">${esc(x.nome)}</b>
+      <span class="s">A escola vai dividir <b>${brl(x.rateio.total)}</b> entre os alunos que participarem. ${n ? `Até agora, <b>${n} ${n === 1 ? 'vai' : 'vão'} participar</b>: cerca de <b>${brl(C.rateioCada(x.rateio.total, n))}</b> para cada um. ` : ''}Quanto mais gente, menor o valor.</span>
+      ${meus.map(id => { const st = rtSt(x, id);
+        return `<div class="rt-fil"><div class="ev-ja-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span>${st ? `<span class="s">${st === 'interesse' ? 'Vai participar' : 'Não vai'}</span>` : '<span class="ev-pend">Resposta pendente</span>'}</div>
+          <div class="actions"><button type="button" class="btn ghost" data-rtx="${esc(xid)}" data-rti="${esc(id)}" data-rts="nao" aria-pressed="${st === 'nao'}">Não vou</button><button type="button" class="btn ${st === 'interesse' ? 'ok' : ''}" data-rtx="${esc(xid)}" data-rti="${esc(id)}" data-rts="interesse" aria-pressed="${st === 'interesse'}">${st === 'interesse' ? '✓ Vai participar' : 'Quero participar'}</button></div></div>`; }).join('')}
+      <span class="s">Responda até ${quandoRT(x.rateio.prazoEm)}. A cobrança chega aqui quando as respostas fecharem.</span></div>`; }).join('');
+}
+function ligarRateioFam(v) {
+  v.querySelectorAll('[data-rtx]').forEach(b => b.onclick = async () => { b.disabled = true;
+    try { await marcarPart(b.dataset.rtx, b.dataset.rti, b.dataset.rts); aviso(b.dataset.rts === 'interesse' ? 'Combinado! A cobrança chega quando as respostas fecharem.' : 'Resposta enviada'); setTimeout(render, 60); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
 }
 const marcarPart = (xid, id, st) => { if (!MOCK && S.papel === 'f') return servidor('eventoResposta', { eid: S.eid, xid, alid: id, st });
   const x = S.extras[xid], d = { part: { [id]: { st, em: Date.now(), por: EU.uid, quem: S.papel === 'f' ? 'familia' : 'escola' } } };
@@ -3327,7 +3422,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
+    ${avisoRateioFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
     ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
@@ -3363,6 +3458,7 @@ function tPagar(v) {
   if ($('pfdesl')) $('pfdesl').onclick = () => { const recD = $('pfdesl').dataset.rec; confirmar('Desligar a cobrança automática?', 'As próximas cobranças voltam a ser pagas por você, pelo app. O cartão continua salvo.', 'Desligar', async () => {
     try { if (!MOCK) await servidor('pagar', { acao: 'automatico', eid: S.eid, rec: recD, ligar: false }); (S.cartoes || []).forEach(c => c.auto = false); aviso('Cobrança automática desligada'); render(); } catch (e) { aviso(msgErro(e)); } }); };
   if ($('plimpa')) $('plimpa').onclick = () => { S.sel.clear(); render(); };
+  ligarRateioFam(v);
 }
 // Meus filhos: termo, atestado, documentos e contrato numa lista só (nome à esquerda, situação à direita; toque para agir)
 function docsFilhaHTML(id) {
@@ -5900,6 +5996,10 @@ async function semearMock() {
   await set(`${p}/grupos/g2`, { nome: 'Vai ao Estadual', alunas: ['al1', 'al4'] });
   await set(`${p}/extras/x1`, { tipo: 'evento', semCobranca: true, nome: 'Torneio Regional', data: `${mesMais(m, 1)}-06`, dataFim: `${mesMais(m, 1)}-09`, local: 'Caruaru', organizador: 'Federação Pernambucana', valorInscricao: 85, prazo: `${m}-28`, convidados: ['al1', 'al3', 'al4'], origem: { grupos: ['g1'] }, part: { al3: { st: 'inscrito', em: Date.now() - 3 * 864e5, quem: 'escola' }, al4: { st: 'interesse', em: Date.now() - 864e5, quem: 'familia' } }, v: 0, alunas: [], grupos: [], turmas: [] });
   await set(`${p}/extras/x2`, { tipo: 'taxa', nome: 'Taxa da federação 2027', v: 40, venc: `${m}-12`, grupos: ['g2'], turmas: [], alunas: [], recebedor: 'escola' });
+  // taxa dividida com as respostas abertas
+  { const ids = Object.keys(alunas), pz = new Date(); pz.setDate(pz.getDate() + 8); pz.setHours(18, 0, 0, 0);
+    await set(`${p}/extras/xrt`, { tipo: 'taxa', nome: 'Ônibus para a Copa Nordeste', v: 0, venc: isoDe(new Date(pz.getTime() + 5 * 864e5)), convidados: ids, alunas: [], valores: {}, grupos: [], turmas: [], recebedor: 'escola', origem: { todos: true },
+      part: Object.fromEntries(ids.slice(2, 9).map((id, i) => [id, { st: i === 3 ? 'nao' : 'interesse', quem: 'familia' }])), rateio: { total: 1000, prazoEm: pz.getTime(), fechadoEm: null }, criadoEm: Date.now() }); }
   await set(`${p}/extras/x3`, { tipo: 'evento', nome: 'Festival de fim de ano', data: `${mesMais(m, 1)}-29`, local: 'Ginásio da escola', v: 60, venc: `${mesMais(m, 1)}-05`, grupos: [], turmas: ['t1', 't2', 't3', 't4', 't5', 't6'], alunas: [], recebedor: 'escola' });
   await set(`${p}/extras/x6`, { tipo: 'evento', cobranca: 'app', semCobranca: false, nome: 'Copa de Futebol Sub-8', data: `${mesMais(m, 1)}-14`, dataFim: `${mesMais(m, 1)}-15`, local: 'Olinda', organizador: 'Liga Olindense', convidados: ['al5'], origem: { turmas: ['t5'] }, part: { al5: { st: 'interesse', em: Date.now() - 2 * 864e5, quem: 'familia' } }, v: 50, venc: `${mesMais(m, 1)}-05`, recebedor: 'escola', valores: {}, alunas: ['al5'], grupos: [], turmas: [] });
   await set(`${p}/extras/x4`, { tipo: 'evento', semCobranca: true, nome: 'Copa Nordeste', data: `${Number(m.slice(0, 4)) + 1}-03-19`, dataFim: `${Number(m.slice(0, 4)) + 1}-03-22`, local: 'Fortaleza', organizador: 'Confederação', valorInscricao: 120, convidados: ['al1', 'al3', 'al4'], origem: { grupos: ['g1'] }, part: {}, v: 0, alunas: [], grupos: [], turmas: [] });

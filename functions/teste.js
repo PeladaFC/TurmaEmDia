@@ -256,6 +256,22 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.deepStrictEqual(S.get('escolas/e1/extras/ev1').alunas, ['a1']); assert.ok(C.itensAluna({ ...d(), extras: { ev1: S.get('escolas/e1/extras/ev1') } }, 'a1', H).some(i => i.k === 'x:ev1:a1' && i.v === 70));
     r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'ev1', alid: 'a1', st: 'nao' }, 'ok:mae'), r); assert.deepStrictEqual(S.get('escolas/e1/extras/ev1').alunas, []);
   });
+  await t('taxa dividida: ninguém é cobrado com as respostas abertas; fechou, cada participante paga o total dividido, igual para todos', async () => {
+    const futuro = Date.now() + 864e5;
+    S.set('escolas/e1/extras/rt1', { tipo: 'taxa', nome: 'Ônibus', v: 0, venc: '2026-11-15', convidados: ['a1', 'a2', 'a3'], alunas: [], grupos: [], turmas: [], part: {}, rateio: { total: 1000, prazoEm: futuro } });
+    const A = require('./acoes')(db), it = id => C.itensAluna({ ...d(), extras: { rt1: S.get('escolas/e1/extras/rt1') } }, id, H).find(i => i.xid === 'rt1');
+    let r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'rt1', alid: 'a1', st: 'interesse' }, 'ok:mae'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'rt1', alid: 'a1', st: 'inscrito' }, 'ok:mae'), r); assert.strictEqual(r.code, 400);
+    S.set('escolas/e1/extras/rt1', { ...S.get('escolas/e1/extras/rt1'), part: { a1: { st: 'interesse' }, a2: { st: 'interesse' }, a3: { st: 'interesse' } } });
+    assert.strictEqual(it('a1'), undefined); // aberto: ninguém é cobrado
+    S.set('escolas/e1/extras/rt1', { ...S.get('escolas/e1/extras/rt1'), rateio: { total: 1000, prazoEm: Date.now() - 1000 } });
+    assert.deepStrictEqual([it('a1').v, it('a2').v], [333.34, 333.34]); // arredonda para cima: sobram 2 centavos no caixa
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'rt1', alid: 'a1', st: 'nao' }, 'ok:mae'), r); assert.strictEqual(r.code, 409); // fechou pelo horário
+    assert.strictEqual(C.rateioCada(1000, 20), 50); assert.strictEqual(C.rateioCada(100, 0), 0);
+    S.set('escolas/e1/extras/rt1', { ...S.get('escolas/e1/extras/rt1'), v: 500, alunas: ['a1', 'a2'], rateio: { total: 1000, prazoEm: futuro, fechadoEm: Date.now() } });
+    assert.deepStrictEqual([it('a1').v, it('a3')], [500, undefined]); // a escola fechou: vale o que ficou gravado
+    S.delete('escolas/e1/extras/rt1');
+  });
   await t('evento em que a família se inscreve: ela confirma "Já fiz a inscrição" e pode desfazer só o que ela confirmou', async () => {
     S.set('escolas/e1/extras/ev2', { tipo: 'evento', cobranca: 'familia', semCobranca: true, nome: 'Festival', data: '2026-11-20', convidados: ['a1'], alunas: [], part: {} });
     const A = require('./acoes')(db);
