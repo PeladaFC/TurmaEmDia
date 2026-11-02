@@ -1,7 +1,7 @@
 {
   "name": "Turma em Dia",
   "short_name": "T.E.D.",
-  "description": "Cobranças, turmas, chamada e famílias da sua escolinha, num só app.",
+  "description": "Tudo da sua escolinha em um só lugar.",
   "lang": "pt-BR",
   "start_url": "./",
   "scope": "./",
