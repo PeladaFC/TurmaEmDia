@@ -121,11 +121,11 @@ module.exports = db => {
           return res.json({ alunos, doc: (await ref.get()).data() || null, recentes });
         }
         if (data < maisDiasR(h, -60)) throw erro('Só dá para mexer na chamada dos últimos 60 dias. Fale com a escola.', 400);
-        const ok = new Set(alunos.map(a => a.id)), pres = {};
-        for (const [id, st] of Object.entries(b.pres || {})) if (ok.has(id) && ['p', 'f', 'j'].includes(st)) pres[id] = st;
+        const ok = new Set(alunos.map(a => a.id)), pres = {}, semAula = b.semAula === true;
+        if (!semAula) for (const [id, st] of Object.entries(b.pres || {})) if (ok.has(id) && ['p', 'f', 'j'].includes(st)) pres[id] = st;
         const quem = { uid: u.uid, nome: P.nome || u.name || 'Professor(a)', papel: 'professor', em: Date.now() };
         const atual = (await ref.get()).data();
-        await ref.set({ tid, data, pres, alunos: Object.keys(pres), obs: String(b.obs || '').trim().slice(0, 300), por: atual && atual.por ? atual.por : quem, editado: atual ? quem : null, hist: FieldValue.arrayUnion(quem) }, { merge: true });
+        await ref.set({ tid, data, pres, alunos: Object.keys(pres), obs: String(b.obs || '').trim().slice(0, 300), semAula, motivo: semAula ? String(b.motivo || '').trim().slice(0, 120) : '', extra: !!(t.dias || []).length && !t.dias.includes(new Date(data + 'T12:00:00Z').getUTCDay()), por: atual && atual.por ? atual.por : quem, editado: atual ? quem : null, hist: FieldValue.arrayUnion(quem) }, { merge: true });
         return res.json({ ok: true });
       }
 

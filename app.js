@@ -657,15 +657,19 @@ let ABAS_ATUAIS = [];
 })();
 function sheet(html, montar, aoFechar) {
   try { const l = (new Error().stack || '').split('\n').map(x => (x.match(/(?:at\s+)?([A-Za-z_$][\w$]*)/) || [])[1]).filter(x => x && !['Error', 'sheet', 'at', 'async'].includes(x)); TELA_SHEET = l[0] || 'janela'; } catch (x) { TELA_SHEET = 'janela'; }
+  SHEET_SAIR = null;
   if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); }
   SHEET_VOLTAR = PROX_VOLTAR; PROX_VOLTAR = null; travarFundo(true);
   $('overlay').innerHTML = `<div class="sheet-bg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
   $('sbg').onclick = e => { if (e.target.id === 'sbg') fecharSheet(); };
-  $('overlay').querySelectorAll('[data-fechar]').forEach(b => b.onclick = fecharSheet);
+  $('overlay').querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => fecharSheet());
   SHEET_FECHA = aoFechar || null;
   montar && montar($('overlay').querySelector('.sheet'));
 }
-function fecharSheet() { TELA_SHEET = ''; if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); } SHEET_VOLTAR = null; $('overlay').innerHTML = ''; travarFundo(false); }
+// uma tela pode pedir para confirmar antes de fechar (ex.: chamada com marcações sem salvar). Devolve true para segurar.
+let SHEET_SAIR = null;
+window.addEventListener('beforeunload', e => { if (SHEET_SAIR && SHEET_SAIR.sujo && SHEET_SAIR.sujo()) { e.preventDefault(); e.returnValue = ''; } });
+function fecharSheet(forcar) { if (!forcar && SHEET_SAIR && SHEET_SAIR(() => fecharSheet(true))) return; SHEET_SAIR = null; TELA_SHEET = ''; if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); } SHEET_VOLTAR = null; $('overlay').innerHTML = ''; travarFundo(false); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('overlay').innerHTML) fecharSheet(); });
 function confirmar(titulo, texto, botao, acao) {
   sheet(`<h3>${esc(titulo)}</h3><p class="sub" style="margin:0">${texto}</p><div class="err" id="kerr" role="alert"></div>
@@ -2802,9 +2806,9 @@ async function profMock(acao, d) {
     if (!minhas.includes(d.tid)) throw new Error('Esta turma não é sua.'); if (d.data > hoje()) throw new Error('Ainda não chegou esse dia.');
     const als = Object.entries(alunas).filter(([, a]) => (a.turmas || []).includes(d.tid) && a.ativa !== false && C.ativaNoMes(a, d.data.slice(0, 7))).map(([id, a]) => ({ id, nome: a.nome })), ref = `${p}/chamadas/${C.chaveChamada(d.tid, d.data)}`, atual = await B.get(ref);
     if (acao === 'chamada') return { alunos: als, doc: atual, recentes: Object.values(await colMock(`${p}/chamadas`)).filter(c => c.tid === d.tid && c.data !== d.data) };
-    const ok = new Set(als.map(a => a.id)), pres = Object.fromEntries(Object.entries(d.pres || {}).filter(([id, st]) => ok.has(id) && ['p', 'f', 'j'].includes(st)));
+    const ok = new Set(als.map(a => a.id)), pres = d.semAula ? {} : Object.fromEntries(Object.entries(d.pres || {}).filter(([id, st]) => ok.has(id) && ['p', 'f', 'j'].includes(st)));
     const quem = { uid: EU.uid, nome: P.nome || 'Professor(a)', papel: 'professor', em: Date.now() };
-    await B.set(ref, { tid: d.tid, data: d.data, pres, alunos: Object.keys(pres), obs: String(d.obs || '').slice(0, 300), por: atual && atual.por ? atual.por : quem, editado: atual ? quem : null, hist: [...((atual || {}).hist || []), quem] }); return { ok: true };
+    await B.set(ref, { tid: d.tid, data: d.data, pres, alunos: Object.keys(pres), obs: String(d.obs || '').slice(0, 300), semAula: !!d.semAula, motivo: d.semAula ? String(d.motivo || '').slice(0, 120) : '', extra: !ehAula(turmas[d.tid], d.data), por: atual && atual.por ? atual.por : quem, editado: atual ? quem : null, hist: [...((atual || {}).hist || []), quem] }); return { ok: true };
   }
   if (acao === 'freq') { if (!alunas[d.alid]) throw new Error('Este aluno não está nas suas turmas.');
     return { chamadas: Object.values(await colMock(`${p}/chamadas`)).filter(c => minhas.includes(c.tid) && (c.alunos || []).includes(d.alid)), turmas: Object.fromEntries(minhas.map(t => [t, { nome: (turmas[t] || {}).nome || '' }])) }; }
@@ -2961,48 +2965,75 @@ async function chamadaDados(tid, data) {
   const [doc, rec] = await Promise.all([B.get(`escolas/${S.eid}/chamadas/${C.chaveChamada(tid, data)}`), B.onde(`escolas/${S.eid}/chamadas`, 'data', '>=', somaDias(hoje(), -120))]);
   return { alunos, doc, recentes: rec.map(x => x.data).filter(c => c.tid === tid && c.data !== data) };
 }
-async function chamadaSalvar(tid, data, pres, obs, atual) {
-  if (!S.admin) return profServidor('salvarChamada', { tid, data, pres, obs });
+async function chamadaSalvar(tid, data, pres, obs, atual, mais = {}) {
+  if (!S.admin) return profServidor('salvarChamada', { tid, data, pres, obs, ...mais });
   const quem = { uid: EU.uid, nome: (S.eu && S.eu.nome) || EU.nome || EU.email || 'Escola', papel: 'escola', em: Date.now() };
-  await B.set(`escolas/${S.eid}/chamadas/${C.chaveChamada(tid, data)}`, { tid, data, pres, alunos: Object.keys(pres), obs: String(obs || '').trim().slice(0, 300), por: atual && atual.por ? atual.por : quem, editado: atual ? quem : null, hist: [...((atual || {}).hist || []).slice(-30), quem] });
+  await B.set(`escolas/${S.eid}/chamadas/${C.chaveChamada(tid, data)}`, { tid, data, pres, alunos: Object.keys(pres), obs: String(obs || '').trim().slice(0, 300), semAula: !!mais.semAula, motivo: mais.motivo || '', extra: !ehAula(S.turmas[tid], data), por: atual && atual.por ? atual.por : quem, editado: atual ? quem : null, hist: [...((atual || {}).hist || []).slice(-30), quem] });
 }
+// rascunho da chamada no aparelho: se a pessoa sair do app no meio, as marcações voltam quando abrir de novo
+const RASC_CH = (tid, data) => `chRasc_${S.eid}_${tid}_${data}`;
+const lerRasc = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
+const gravarRasc = (k, v) => { try { v ? localStorage.setItem(k, JSON.stringify(v)) : localStorage.removeItem(k); } catch (e) { } };
 function sheetChamada(tid, data) {
   const t = S.turmas[tid]; if (!t) return;
   data = data || ultimaAula(t);
   const casca = h => `<h3>Chamada · ${esc(t.nome)}</h3>${h}`;
   sheet(casca('<div class="empty">Carregando…</div>'));
   chamadaDados(tid, data).then(D => {
-    const pres = { ...((D.doc || {}).pres || {}) };
-    const ant = passoAula(t, data, -1), prox = passoAula(t, data, 1);
+    const k = RASC_CH(tid, data), rasc = lerRasc(k), doc = D.doc || {};
+    const pres = { ...(rasc ? rasc.pres : doc.pres || {}) };
+    let semAula = rasc ? !!rasc.semAula : !!doc.semAula, sujo = !!rasc, saindo = null;
+    const ant = passoAula(t, data, -1), prox = passoAula(t, data, 1), extra = !ehAula(t, data);
     const seguidas = id => pres[id] === 'f' ? C.freqAluno([...D.recentes, { data, pres }], id).seguidas : 0;
+    const mexeu = () => { sujo = true; gravarRasc(k, { pres, semAula, obs: $('chobs') ? $('chobs').value : '' }); };
+    // sair com marcações sem salvar: pergunta antes (fechar, trocar de dia, voltar)
+    const sair = depois => { if (!sujo) return false; saindo = depois; $('chsair').hidden = false; $('chsair').scrollIntoView({ block: 'center', behavior: 'smooth' }); return true; };
+    const irPara = d => { if (!sair(() => sheetChamada(tid, d))) sheetChamada(tid, d); };
     const desenhar = () => {
+      $('chcorpo').hidden = semAula; $('chsem').setAttribute('aria-pressed', String(semAula)); $('chsemw').hidden = !semAula;
       const n = st => D.alunos.filter(a => pres[a.id] === st).length, sem = D.alunos.filter(a => !pres[a.id]).length;
       $('chres').innerHTML = `<div>Presentes<b class="num">${n('p')}</b></div><div>Faltas<b class="num">${n('f') + n('j')}</b></div><div>Sem marcar<b class="num">${sem}</b></div>`;
       $('chl').innerHTML = D.alunos.map(a => { const st = pres[a.id], sg = seguidas(a.id);
         return `<li class="ch-lin"><div class="grow"><div class="t">${esc(a.nome)}</div>${st === 'j' ? '<span class="s">Falta justificada</span>' : sg >= 2 ? `<span class="s" style="color:var(--out)">${sg}ª falta seguida</span>` : ''}</div>
           <div class="ch-bt"><button type="button" data-chp="${esc(a.id)}" class="${st === 'p' ? 'p' : ''}" aria-pressed="${st === 'p'}" aria-label="Presente">P</button><button type="button" data-chf="${esc(a.id)}" class="${st === 'f' ? 'f' : st === 'j' ? 'j' : ''}" aria-pressed="${st === 'f' || st === 'j'}" aria-label="${st === 'j' ? 'Falta justificada' : 'Falta'}">${st === 'j' ? 'J' : 'F'}</button></div></li>`; }).join('') || '<li class="empty">Nenhum aluno ativo nesta turma.</li>';
-      $('chl').querySelectorAll('[data-chp]').forEach(b => b.onclick = () => { pres[b.dataset.chp] = 'p'; desenhar(); });
-      $('chl').querySelectorAll('[data-chf]').forEach(b => b.onclick = () => { const id = b.dataset.chf; pres[id] = pres[id] === 'f' ? 'j' : 'f'; desenhar(); });
+      $('chl').querySelectorAll('[data-chp]').forEach(b => b.onclick = () => { pres[b.dataset.chp] = 'p'; mexeu(); desenhar(); });
+      $('chl').querySelectorAll('[data-chf]').forEach(b => b.onclick = () => { const id = b.dataset.chf; pres[id] = pres[id] === 'f' ? 'j' : 'f'; mexeu(); desenhar(); });
     };
-    sheet(casca(`<div class="ch-dia"><button type="button" class="icon-btn" id="chant" aria-label="Aula anterior">‹</button><span style="text-align:center"><b>${esc(diaLongo(data))}</b><span class="s" style="display:block">${esc([t.horario, localDe(t)].filter(Boolean).join(' · ') || (ehAula(t, data) ? '' : 'Fora dos dias de aula'))}</span></span><button type="button" class="icon-btn" id="chprox" aria-label="Próxima aula" ${prox > hoje() ? 'disabled' : ''}>›</button></div>
-      ${D.doc && D.doc.por ? `<div class="note">Feita por ${quemTxt(D.doc.por)}.${D.doc.editado ? ` Mudada por ${quemTxt(D.doc.editado)}.` : ''}</div>` : ''}
-      <div class="ch-res" id="chres"></div>
-      <button type="button" class="btn ghost" id="chtodos">Marcar todos presentes</button>
-      <span class="s" style="margin-top:-6px">Toque em F de novo para virar J (falta justificada).</span>
-      <ul class="list" id="chl"></ul>
-      <div class="field"><label for="chobs">Observação da aula (opcional)</label><input id="chobs" maxlength="300" value="${esc((D.doc || {}).obs || '')}" placeholder="Ex.: treino de saltos; aula na quadra 2"></div>
+    sheet(casca(`<div class="ch-dia"><button type="button" class="icon-btn" id="chant" aria-label="Aula anterior">‹</button><span style="text-align:center"><b>${esc(diaLongo(data))}</b><span class="s" style="display:block">${extra ? '<b style="color:var(--accent)">Aula extra</b> · fora dos dias de aula' : esc([t.horario, localDe(t)].filter(Boolean).join(' · '))}</span></span><button type="button" class="icon-btn" id="chprox" aria-label="Próxima aula" ${prox > hoje() ? 'disabled' : ''}>›</button></div>
+      <div class="ch-outros"><label class="link" for="chdia">Outro dia (aula extra)</label><input type="date" id="chdia" max="${hoje()}" value="${esc(data)}" aria-label="Escolher o dia da aula"><button type="button" class="ch-sem" id="chsem" aria-pressed="false">Não teve aula</button></div>
+      ${rasc ? '<div class="banner"><span>Estas marcações ainda <b>não foram salvas</b>. Confira e toque em Salvar.</span></div>' : ''}
+      ${doc.por ? `<div class="note">${doc.semAula ? 'Marcado sem aula' : 'Feita'} por ${quemTxt(doc.por)}.${doc.editado ? ` Mudada por ${quemTxt(doc.editado)}.` : ''}</div>` : ''}
+      <div id="chsemw" hidden><div class="field"><label for="chmot">Por que não teve aula? (opcional)</label><input id="chmot" maxlength="120" value="${esc((rasc ? rasc.motivo : doc.motivo) || '')}" placeholder="Ex.: feriado, chuva, professor doente"></div>
+        <span class="s">Esse dia não conta na frequência de ninguém.</span></div>
+      <div id="chcorpo">
+        <div class="ch-res" id="chres"></div>
+        <button type="button" class="btn ghost" id="chtodos" style="width:100%;margin-top:12px">Marcar todos presentes</button>
+        <span class="s" style="display:block;margin:8px 0">Toque em F de novo para virar J (falta justificada).</span>
+        <ul class="list" id="chl"></ul>
+        <div class="field" style="margin-top:12px"><label for="chobs">Observação da aula (opcional)</label><input id="chobs" maxlength="300" value="${esc((rasc ? rasc.obs : doc.obs) || '')}" placeholder="Ex.: treino de saltos; aula na quadra 2"></div>
+      </div>
       <div class="err" id="cherr" role="alert"></div>
-      <div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="chok">Salvar chamada</button></div>`), () => {
+      <div class="ch-sair" id="chsair" hidden><b>Sair sem salvar?</b><span>As marcações desta chamada ficam guardadas só neste aparelho até você salvar.</span>
+        <div class="actions"><button type="button" class="btn ghost" id="chsfica">Continuar a chamada</button><button type="button" class="btn danger" id="chsvai">Sair sem salvar</button></div></div>
+      <div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="chok">Salvar</button></div>`), () => {
       desenhar();
-      $('chant').onclick = () => sheetChamada(tid, ant);
-      $('chprox').onclick = () => prox <= hoje() && sheetChamada(tid, prox);
-      $('chtodos').onclick = () => { D.alunos.forEach(a => { if (!pres[a.id]) pres[a.id] = 'p'; }); desenhar(); };
-      $('chok').onclick = async () => { const sem = D.alunos.filter(a => !pres[a.id]).length;
+      sair.sujo = () => sujo; SHEET_SAIR = sair;
+      $('chant').onclick = () => irPara(ant);
+      $('chprox').onclick = () => prox <= hoje() && irPara(prox);
+      $('chdia').onchange = e => { const d = e.target.value; if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d <= hoje() && d !== data) irPara(d); };
+      $('chsem').onclick = () => { semAula = !semAula; mexeu(); desenhar(); };
+      $('chobs').oninput = mexeu; $('chmot').oninput = () => { sujo = true; gravarRasc(k, { pres, semAula, obs: $('chobs').value, motivo: $('chmot').value }); };
+      $('chsfica').onclick = () => { saindo = null; $('chsair').hidden = true; };
+      $('chsvai').onclick = () => { sujo = false; const f = saindo; saindo = null; f && f(); };
+      $('chtodos').onclick = () => { D.alunos.forEach(a => { if (!pres[a.id]) pres[a.id] = 'p'; }); mexeu(); desenhar(); };
+      $('chok').onclick = async () => {
+        const sem = semAula ? 0 : D.alunos.filter(a => !pres[a.id]).length;
         if (sem) return $('cherr').textContent = `Falta marcar ${sem} aluno${sem === 1 ? '' : 's'}. Toque em P ou F, ou em "Marcar todos presentes".`;
         $('chok').disabled = true;
-        try { await chamadaSalvar(tid, data, Object.fromEntries(D.alunos.map(a => [a.id, pres[a.id]])), $('chobs').value, D.doc);
+        try { await chamadaSalvar(tid, data, semAula ? {} : Object.fromEntries(D.alunos.map(a => [a.id, pres[a.id]])), $('chobs').value, D.doc, semAula ? { semAula: true, motivo: $('chmot').value.trim().slice(0, 120) } : { semAula: false, motivo: '' });
+          sujo = false; gravarRasc(k, null);
           if (S.pp) { const c = S.pp.chamadas = S.pp.chamadas || {}; c[tid] = [...new Set([...(c[tid] || []), data])]; }
-          aviso('Chamada salva'); fecharSheet(); render(); }
+          aviso(semAula ? 'Registrado: não teve aula' : 'Chamada salva'); fecharSheet(true); render(); }
         catch (e) { $('cherr').textContent = msgErro(e); $('chok').disabled = false; } };
     });
   }).catch(e => sheet(casca(`<div class="empty"><b>Não deu para abrir a chamada.</b><span>${esc(msgErro(e))}</span></div><button class="btn ghost" data-fechar>Fechar</button>`)));
@@ -3010,7 +3041,7 @@ function sheetChamada(tid, data) {
 // professor: as chamadas dos últimos dias de aula que ainda não foram feitas (até 7 dias, sem contar hoje)
 function chamadasPendentes(tids) {
   const out = [], feitas = (S.pp && S.pp.chamadas) || {};
-  for (const tid of tids) { const t = S.turmas[tid]; if (!t || !(t.dias || []).length) continue;
+  for (const tid of tids) { const t = S.turmas[tid]; if (!t || !t.chamadaObrig || !(t.dias || []).length) continue;
     const desde = t.diasEm ? isoDe(new Date(t.diasEm)) : ''; // só lembra das aulas depois que a escola marcou os dias
     for (let i = 1; i <= 7; i++) { const d = somaDias(hoje(), -i); if (d < desde) break; if (ehAula(t, d) && !(feitas[tid] || []).includes(d)) { out.push({ tid, t, d }); break; } } }
   return out;
@@ -3023,12 +3054,12 @@ async function freqAlunoHTML(alid) {
   return tids.map(tid => { const nome = ((S.turmas[tid] || (r.turmas || {})[tid]) || {}).nome || 'Turma';
     const doT = c => c.tid === tid, fm = C.freqAluno(L, alid, c => doT(c) && c.data.slice(0, 7) === mes), fa = C.freqAluno(L, alid, c => doT(c) && c.data.slice(0, 4) === ano), tudo = C.freqAluno(L, alid, doT);
     const dias = (fm.dias.length ? fm.dias : tudo.dias.slice(-10));
-    const tel = S.admin ? respDe(alid).telefone : ((((S.pp || {}).alunos || []).find(a => a.id === alid) || {}).resp || {}).telefone, a = S.alunas[alid] || {};
-    const wa = tudo.seguidas >= 3 && tel ? waLink(tel, `Olá! Aqui é da ${S.escola.nome || 'escola'}. Sentimos falta de ${primeiro(a.nome)} nas últimas aulas de ${nome}. Está tudo bem? Se precisar de algo, é só falar com a gente.`) : '';
+    const rr = S.admin ? respDe(alid) : ((((S.pp || {}).alunos || []).find(a => a.id === alid) || {}).resp || {}), tel = rr.telefone, a = S.alunas[alid] || {};
+    const wa = tudo.seguidas >= 3 && tel ? waLink(tel, `Olá, ${primeiro(rr.nome) || 'tudo bem'}! Aqui é da ${S.escola.nome || 'escola'}. Sentimos falta de ${primeiro(a.nome)} nas últimas aulas de ${nome}. Está tudo bem? Se precisar de algo, é só falar com a gente.`) : '';
     return `<div class="field"><span class="lb">Frequência · ${esc(nome)}</span>
-      <div class="ch-res"><div>Este mês<b class="num">${fm.pct == null ? '—' : fm.pct + '%'}</b></div><div>Faltas no mês<b class="num">${fm.f}</b></div><div>No ano<b class="num">${fa.pct == null ? '—' : fa.pct + '%'}</b></div></div>
+      <div class="ch-res"><div>Este mês<b class="num">${fm.pct == null ? '—' : fm.pct + '%'}</b></div><div>Faltas no mês<b class="num">${fm.f + fm.j}</b></div><div>No ano<b class="num">${fa.pct == null ? '—' : fa.pct + '%'}</b></div></div>
       <div class="freq">${dias.map(d => `<i class="${d.st}" title="${esc(dataBR(d.data))}">${Number(d.data.slice(8))}</i>`).join('')}</div>
-      <span class="s">${fm.dias.length ? 'Este mês' : 'Últimas aulas'}: verde presente, vermelho falta, amarelo justificada.</span>
+      <span class="s">${fm.dias.length ? 'Este mês' : 'Últimas aulas'}: verde presente, vermelho falta, amarelo justificada. A justificada também conta como falta; se quiser, a escola ou o professor muda para presente na chamada.</span>
       ${tudo.seguidas >= 3 ? `<div class="banner alerta" style="margin-top:8px;flex-wrap:nowrap"><span><b>${tudo.seguidas} faltas seguidas.</b> Vale falar com a família.</span>${wa ? `<a class="wa wa-mini" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Falar pelo WhatsApp">${ICO_WA}</a>` : ''}</div>` : ''}</div>`; }).join('');
 }
 
@@ -3236,7 +3267,8 @@ function sheetTurma(tid, depois) {
       <div class="field"><label for="tpreco">Valor mensal (R$)</label><input id="tpreco" inputmode="decimal" value="${esc(fmtValor(t && t.preco))}" placeholder="0,00"></div></div>
       <div class="field"><label for="tvag">Limite de alunos (opcional)</label><input id="tvag" type="number" min="0" value="${esc(t && t.vagas ? t.vagas : '')}"></div>
       <div class="field"><span class="lb">Dias de aula</span><div class="seg dias-seg" id="tdias">${[1, 2, 3, 4, 5, 6, 0].map(i => `<button type="button" data-dia="${i}" aria-pressed="${!!(t && (t.dias || []).includes(i))}">${C.DIAS_SEM[i]}</button>`).join('')}</div>
-        <span class="s">A chamada abre no dia da aula, e o professor é lembrado da chamada que faltou.</span></div>
+        <span class="s">A chamada abre no dia da aula.</span></div>
+      <label class="liga"><span class="grow"><b>Chamada obrigatória</b><span class="s">O professor é lembrado no app quando faltar a chamada de uma aula. Desligada, a chamada fica disponível, mas é opcional.</span></span><input type="checkbox" role="switch" id="tcham" ${t && t.chamadaObrig ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
       <div class="field"><label for="thor">Dias e horário</label><input id="thor" maxlength="60" value="${esc(t ? t.horario || '' : '')}" placeholder="Ex.: Seg e Qua, 17h às 18h"></div>
       <div class="field"><label for="trec">A mensalidade vai para</label><select id="trec">${opcoesRec(t && t.recebedor)}</select>
         <div class="note">O Pix da mensalidade cai direto na conta do Mercado Pago de quem você escolher aqui.</div></div>
@@ -3250,7 +3282,7 @@ function sheetTurma(tid, depois) {
       if (!todasN && mn == null && mx == null) return 'Informe a faixa etária ou marque "Todas as faixas etárias".';
       if (!todasN && mn != null && mx != null && mn > mx) return 'A idade inicial não pode ser maior que a final.';
       if (!(preco >= 0)) return 'Informe o valor mensal da turma, como 150,00.';
-      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...(() => { const dias = [...document.querySelectorAll('#tdias [data-dia][aria-pressed="true"]')].map(b => Number(b.dataset.dia)).sort(); return { dias, diasEm: dias.join() === ((t && t.dias) || []).join() ? (t && t.diasEm) || null : Date.now() }; })(), recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
+      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...(() => { const dias = [...document.querySelectorAll('#tdias [data-dia][aria-pressed="true"]')].map(b => Number(b.dataset.dia)).sort(); const ob = $('tcham').checked, mudou = dias.join() !== ((t && t.dias) || []).join() || (ob && !(t && t.chamadaObrig)); return { dias, chamadaObrig: ob, diasEm: mudou ? Date.now() : (t && t.diasEm) || null }; })(), recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
     },
     depois: depois ? () => depois(novoTid) : null,
     excluir: tid && (() => B.del(`escolas/${S.eid}/turmas/${tid}`)), bloqueio: n ? 'Esta turma tem alunos. Tire os alunos da turma antes de excluir.' : null });
@@ -6123,7 +6155,7 @@ async function semearMock() {
   await set(`${p}/extras/x2`, { tipo: 'taxa', nome: 'Taxa da federação 2027', v: 40, venc: `${m}-12`, grupos: ['g2'], turmas: [], alunas: [], recebedor: 'escola' });
   // chamada: dias de aula, um 2º professor e as chamadas das últimas semanas da Iniciação (falta a mais recente)
   { const D = { t1: [1, 3], t2: [2, 4, 6], t3: [5], t4: [6], t5: [2, 4], t6: [1, 3], t7: [1, 3], t8: [2, 4], t9: [5] };
-    for (const [tid, d] of Object.entries(D)) if (await B.get(`${p}/turmas/${tid}`)) await B.set(`${p}/turmas/${tid}`, { dias: d, diasEm: Date.now() - 30 * 864e5 }, { merge: true });
+    for (const [tid, d] of Object.entries(D)) if (await B.get(`${p}/turmas/${tid}`)) await B.set(`${p}/turmas/${tid}`, { dias: d, diasEm: Date.now() - 30 * 864e5, chamadaObrig: ['t1', 't2'].includes(tid) }, { merge: true });
     await B.set(`${p}/turmas/t3`, { professoraIds: ['p1'] }, { merge: true });
     const t1 = Object.keys(alunas).filter(id => (alunas[id].turmas || []).includes('t1')), aulas = [];
     for (let i = 1; i <= 28; i++) { const d = somaDias(hoje(), -i); if ([1, 3].includes(diaSem(d))) aulas.push(d); }

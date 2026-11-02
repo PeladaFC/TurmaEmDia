@@ -415,10 +415,12 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     const ch = S.get(`escolas/e7/chamadas/t1_${H}`); assert.deepStrictEqual(ch.pres, { a1: 'f', a3: 'p' }); assert.deepStrictEqual([ch.por.nome, ch.por.papel, ch.editado], ['Camila', 'professor', null]);
     r = resp(); await PR.professor(req({ acao: 'salvarChamada', eid: 'e7', tid: 't1', data: H, pres: { a1: 'j', a3: 'p' } }, 'ok:cam:v'), r);
     assert.strictEqual(S.get(`escolas/e7/chamadas/t1_${H}`).por.nome, 'Camila'); assert.ok(S.get(`escolas/e7/chamadas/t1_${H}`).editado);
+    r = resp(); await PR.professor(req({ acao: 'salvarChamada', eid: 'e7', tid: 't2', data: H, semAula: true, motivo: 'Feriado', pres: { a2: 'p' } }, 'ok:cam:v'), r);
+    assert.deepStrictEqual([S.get(`escolas/e7/chamadas/t2_${H}`).semAula, S.get(`escolas/e7/chamadas/t2_${H}`).motivo, S.get(`escolas/e7/chamadas/t2_${H}`).pres], [true, 'Feriado', {}]);
     r = resp(); await PR.professor(req({ acao: 'freq', eid: 'e7', alid: 'a1' }, 'ok:cam:v'), r); assert.deepStrictEqual(r.body.chamadas.map(c => c.pres.a1), ['j']);
     r = resp(); await PR.professor(req({ acao: 'painel', eid: 'e7', mes }, 'ok:cam:v'), r); assert.deepStrictEqual(r.body.chamadas.t1, [H]); assert.ok(r.body.alunos.some(a => a.id === 'a2'));
     const fr = C.freqAluno([{ data: '2026-10-01', pres: { a: 'p' } }, { data: '2026-10-03', pres: { a: 'f' } }, { data: '2026-10-05', pres: { a: 'j' } }, { data: '2026-10-08', pres: { a: 'f' } }], 'a');
-    assert.deepStrictEqual([fr.p, fr.f, fr.j, fr.pct, fr.seguidas], [1, 2, 1, 33, 2]);
+    assert.deepStrictEqual([fr.p, fr.f, fr.j, fr.pct, fr.seguidas], [1, 2, 1, 25, 2]);
     // a escola troca o e-mail: o acesso antigo acaba
     const P1b = { nome: 'Camila', emailApp: 'novo@x.com' }; set7('professoras/p1', { ...P1b, appUid: 'cam' });
     await E.espelharProf({ params: { eid: 'e7', pid: 'p1' }, data: { before: { exists: true, data: () => P1 }, after: { exists: true, data: () => P1b } } });
