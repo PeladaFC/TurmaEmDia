@@ -3375,26 +3375,30 @@ function ligarRespostas(v) {
 // família: aba Eventos. Em cima, os eventos dos filhos (para responder); embaixo, o calendário da escola, só para ver.
 // Os eventos com os filhos ficam em destaque, com o nome de quem vai.
 function tFEventos(v) {
-  const ano = S.evAno || Number(hoje().slice(0, 4)), L = eventosDoAno(ano), h = hoje(), porMes = {};
+  const h = hoje(); if (!S.evMes) S.evMes = h.slice(0, 7);
+  const ano = Number(S.evMes.slice(0, 4)), mes = Number(S.evMes.slice(5, 7)), nomeM = C.MESES[mes - 1];
   // na aba da família, conta como "com seus filhos" todo evento em que eles foram chamados (menos quem já disse que não vai)
-  L.forEach(c => { c.meus = convidadosDe(c.x).filter(id => S.alunas[id]); c.meu = c.meus.some(id => partDe(c.x, id) !== 'nao'); });
-  L.forEach(c => { for (let m = 1; m <= 12; m++) { const pm = `${ano}-${String(m).padStart(2, '0')}`; if (c.x.data <= pm + '-31' && fimDe(c.x) >= pm + '-01') (porMes[m] = porMes[m] || []).push(c); } });
-  const nomeM = m => { const n = C.MESES[m - 1]; return n[0].toUpperCase() + n.slice(1); }, mesAtual = h.startsWith(String(ano)) ? Number(h.slice(5, 7)) : 0, nMeus = L.filter(c => c.meu).length;
-  const linha = c => { const d = new Date(c.x.data + 'T12:00'), passou = fimDe(c.x) < h;
+  const marca = c => { c.meus = convidadosDe(c.x).filter(id => S.alunas[id]); c.meu = c.meus.some(id => partDe(c.x, id) !== 'nao'); return c; };
+  const doMes = eventosDoMes(ano, mes).map(marca), prox = eventosDoAno().map(marca).filter(c => fimDe(c.x) >= h);
+  const linha = c => { const d = new Date(c.x.data + 'T12:00');
     const quem = c.meu ? c.meus.map(id => { const st = partDe(c.x, id), nm = esc(primeiro((S.alunas[id] || {}).nome)); return `<span class="chip ${st === 'inscrito' || st === 'interesse' || !eventoNovo(c.x) ? 'pago' : st === 'nao' ? '' : 'aberto'}">${nm}: ${st === 'inscrito' ? 'inscrito(a)' : st === 'nao' ? 'não vai' : st === 'interesse' || !eventoNovo(c.x) ? 'vai' : 'falta responder'}</span>`; }).join(' ') : '';
-    return `<li class="cal-ev tap ${c.meu ? 'meu' : 'outro'}" data-fev="${esc(c.xid)}" style="${passou ? 'opacity:.6' : ''}"><div class="cal-dia"><b class="num">${d.getDate()}</b><span>${DIAS_SEM[d.getDay()]}</span></div>
-      <div class="grow"><div class="t">${esc(c.x.nome)}</div>${linhas(fimDe(c.x) !== c.x.data ? `<span class="num">${esc(periodoTxt(c.x))}</span>` : '', c.x.local ? esc(c.x.local) : '')}${quem ? `<div class="ev-quem">${quem}</div>` : ''}</div><span class="seta" aria-hidden="true">›</span></li>`; };
-  v.innerHTML = `<h2>Eventos</h2>
-    ${blocoEventosFamilia().replace('<section><h2>Eventos</h2>', '<section><h2 class="sec-peq">Com seus filhos</h2>')}
-    <section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Ano anterior">‹</button><h2 style="margin:0">Calendário da escola · ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo ano">›</button></div>
-      <div class="sub">${!L.length ? 'Nenhum evento neste ano.' : `${L.length} evento${L.length === 1 ? '' : 's'} da escola${nMeus ? `. Em destaque, ${nMeus === 1 ? 'o que tem' : `os ${nMeus} que têm`} seus filhos` : ''}.`}</div>
-      ${L.length ? `<div class="cal-legenda"><span><i class="lg-meu"></i>Com seus filhos</span><span><i class="lg-outro"></i>Outros eventos da escola</span></div>` : ''}
-      <div class="cal-grade">${C.MESES.map((_, i) => { const m = i + 1, l = porMes[m] || [], meus = l.filter(c => c.meu).length; return `<button type="button" class="cal-mes ${meus ? 'tem' : l.length ? 'outros' : ''} ${m === mesAtual ? 'atual' : ''}" data-fcm="${m}"><span>${nomeM(m).slice(0, 3)}</span><b class="num">${l.length || '·'}</b></button>`; }).join('')}</div>
-      ${Object.keys(porMes).map(Number).sort((a, b) => a - b).map(m => `<section id="fem${m}"><h2 class="sec-peq">${nomeM(m)}</h2><ul class="list">${porMes[m].map(linha).join('')}</ul></section>`).join('')}</section>
+    return `<li class="cal-ev tap ${c.meu ? 'meu' : 'outro'}" data-fev="${esc(c.xid)}"><div class="cal-dia"><b class="num">${d.getDate()}</b><span>${C.MESES[d.getMonth()].slice(0, 3)}</span></div>
+      <div class="grow"><div class="t">${esc(c.x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(c.x))}</span>${c.x.local ? ' · ' + esc(c.x.local) : ''}`)}${quem ? `<div class="ev-quem">${quem}</div>` : ''}</div><span class="seta" aria-hidden="true">›</span></li>`; };
+  v.innerHTML = `${blocoEventosFamilia().replace('<section><h2>Eventos</h2>', '<section><h2>Com seus filhos</h2>')}
+    <section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo mês">›</button></div>
+      ${gradeMes(ano, mes, doMes)}
+      <div class="cal-legenda"><span><i class="lg-meu"></i>Com seus filhos</span><span><i class="lg-outro"></i>Outros eventos da escola</span></div>
+      <button type="button" class="btn ghost" id="feano">Ver o ano inteiro</button></section>
+    <section><h2>Próximos eventos <span class="sub num">${prox.length}</span></h2>
+      ${prox.length ? `<ul class="list">${prox.map(linha).join('')}</ul>` : '<div class="empty"><span>Nenhum evento marcado pela escola.</span></div>'}</section>
     <div class="note">O calendário é da escola: só ela muda os eventos. Dúvidas, fale com a escola.</div>`;
-  $('feant').onclick = () => { S.evAno = ano - 1; render(); }; $('feprox').onclick = () => { S.evAno = ano + 1; render(); };
-  v.querySelectorAll('[data-fcm]').forEach(b => b.onclick = () => { const el = $('fem' + b.dataset.fcm); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); else aviso('Nenhum evento neste mês.'); });
-  v.querySelectorAll('[data-fev]').forEach(li => li.onclick = () => sheetEventoFam(li.dataset.fev));
+  const vai = n => { let a = ano, m = mes + n; if (m < 1) { m = 12; a--; } if (m > 12) { m = 1; a++; } S.evMes = `${a}-${String(m).padStart(2, '0')}`; render(); };
+  $('feant').onclick = () => vai(-1); $('feprox').onclick = () => vai(1);
+  $('feano').onclick = () => sheetCalendario(ano);
+  v.querySelectorAll('[data-fev], .mg [data-ev]').forEach(li => li.onclick = () => sheetEventoFam(li.dataset.fev || li.dataset.ev));
+  let x0 = null; const g = v.querySelector('.mg');
+  g.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+  g.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 60) vai(dx < 0 ? 1 : -1); });
   ligarRespostas(v); ligarFotos(v);
 }
 // família: o evento, só para ver (e responder, se for com os filhos)
