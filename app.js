@@ -2980,6 +2980,7 @@ function sheetChamada(tid, data) {
   const casca = h => `<h3>Chamada · ${esc(t.nome)}</h3>${h}`;
   sheet(casca('<div class="empty">Carregando…</div>'));
   chamadaDados(tid, data).then(D => {
+    D.alunos.sort((x, y) => String(x.nome).localeCompare(String(y.nome), 'pt-BR', { sensitivity: 'base' })); // ordem alfabética
     const k = RASC_CH(tid, data), rasc = lerRasc(k), doc = D.doc || {};
     const pres = { ...(rasc ? rasc.pres : doc.pres || {}) };
     let semAula = rasc ? !!rasc.semAula : !!doc.semAula, sujo = !!rasc, saindo = null;
