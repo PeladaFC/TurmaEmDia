@@ -1008,7 +1008,7 @@ function render() {
   const adm = S.admin, abas = {
     a: [['cobr', 'Cobranças', 'cobr'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
     p: [['pturmas', 'Turmas', 'escola'], ['palunos', 'Alunos', 'alunas'], ['pfin', 'Financeiro', 'caixa']],
-    f: [['pagar', 'Pagar', 'cobr'], ['feventos', 'Eventos', 'evento'], ['filhas', 'Meus filhos', 'filhas']] }[S.papel];
+    f: [['filhas', 'Meus filhos', 'filhas'], ['feventos', 'Eventos', 'evento'], ['pagar', 'Pagar', 'cobr']] }[S.papel];
   const comMes = (adm && ['cobr', 'fin'].includes(S.tab)) || (S.papel === 'p' && S.tab === 'pfin');
   const titulo = adm ? 'Administração' : S.prof ? 'Professor(a) ' + ((S.profs[S.prof] || {}).nome || '') : (Object.values(S.resps)[0] || {}).nome || 'Responsável';
   const foco = document.activeElement && document.activeElement.id, selS = foco && document.activeElement.selectionStart;
