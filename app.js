@@ -1124,7 +1124,7 @@ function tCobrancas(v) {
   }
   const ext = Object.entries(S.extras).filter(([, x]) => !eventoNovo(x) || pelaEscola(x)).sort((a, b) => String(b[1].venc).localeCompare(String(a[1].venc)));
   const fil = (k, n) => `<button class="pick" data-fl="${k}" aria-pressed="${filtro === k}">${n} <span class="num">${cont[k]}</span></button>`;
-  v.innerHTML = `${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}
+  v.innerHTML = `${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}${avisoPendenciasAdm()}
     <div class="hero">
       <div><div class="label">Recebido em ${esc(C.nomeMes(mes))}</div><div class="big num">${cur(rec)}</div>
         <div class="sub num">de ${cur(tot.esp)} previstos${tot.esp ? ` · ${Math.round(pc(rec))}%` : ''}</div></div>
@@ -1151,6 +1151,7 @@ function tCobrancas(v) {
     </section>`;
   ligarFaixa(v);
   if ($('vatlist')) $('vatlist').onclick = () => sheetAtestadosEscola();
+  if ($('vpend')) $('vpend').onclick = () => sheetPendencias();
   v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => sheetVerTermo(b.dataset.vmud));
   v.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => { S.filtroCobr = b.dataset.fl; render(); });
   $('cbusca').oninput = e => { S.buscaC = e.target.value; render(); };
@@ -1196,14 +1197,55 @@ function faltaCadastro(alid) {
   if (ctPede() && !ctAssinado(alid)) out.push('assinar o contrato');
   return out;
 }
-// botão do WhatsApp (no cabeçalho do responsável) para cobrar o que falta no cadastro dos filhos; sem pendência, nada
-function waPendencias(alids) {
-  const com = alids.map(id => [id, faltaCadastro(id)]).filter(([, f]) => f.length); if (!com.length) return '<span class="wa wa-mini wa-vazio" aria-hidden="true"></span>';
+// mensagem pronta (WhatsApp) com o que falta no cadastro de um ou mais filhos do mesmo responsável
+function msgPendencias(alids) {
+  const com = alids.map(id => [id, faltaCadastro(id)]).filter(([, f]) => f.length); if (!com.length) return null;
   const r = respDe(com[0][0]), v = camposMsg('pendencias', com[0][0], []);
   v.aluno = com.map(([id]) => primeiro((S.alunas[id] || {}).nome)).join(' e ');
   v.pendencias = com.length === 1 ? com[0][1].map(x => '• ' + x).join('\n') : com.map(([id, f]) => `${primeiro((S.alunas[id] || {}).nome)}:\n${f.map(x => '• ' + x).join('\n')}`).join('\n\n');
-  const wa = waLink(r.telefone, preencherModelo(modeloDe('pendencias'), v));
-  return wa ? `<a class="wa wa-mini" href="${esc(wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Cobrar pelo WhatsApp o que falta no cadastro">${ICO_WA}</a>` : '<span class="wa wa-mini wa-vazio" aria-hidden="true"></span>';
+  const txt = preencherModelo(modeloDe('pendencias'), v);
+  return { txt, wa: waLink(r.telefone, txt), resp: r };
+}
+const WA_MINI_VAZIO = '<span class="wa wa-mini wa-vazio" aria-hidden="true"></span>';
+// botão do WhatsApp (no cabeçalho do responsável e na lista de pendências); sem pendência ou sem telefone, o espaço vazio
+function waPendencias(alids) {
+  const m = msgPendencias(alids);
+  return m && m.wa ? `<a class="wa wa-mini" href="${esc(m.wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Cobrar pelo WhatsApp o que falta no cadastro">${ICO_WA}</a>` : WA_MINI_VAZIO;
+}
+// família: documentos que a escola pede e ainda faltam (ou venceram), com o botão para enviar
+function avisoDocsFam() {
+  const out = [];
+  for (const [id, a] of porNome(S.alunas)) { if (a.anonimizadoEm || !C.ativaNoMes(a, mesHoje())) continue;
+    for (const T of tiposDoc()) { const st_ = situacaoDoc(docDe(id, T.id)).st; if (!['falta', 'vencido', 'vence'].includes(st_)) continue;
+      out.push(`<button class="faixa-resumo" data-pfdoc="${esc(id)}" data-pfdt="${esc(T.id)}"><span class="grow"><b>${st_ === 'falta' ? 'Enviar' : 'Enviar de novo'}: ${esc(T.nome)} de ${esc(primeiro(a.nome))}</b><span class="s">${st_ === 'falta' ? 'A escola pede este documento. Tire uma foto e envie por aqui.' : st_ === 'vencido' ? 'O documento venceu. Envie o novo.' : 'O documento vai vencer. Envie o novo.'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`); } }
+  return out.join('');
+}
+// faixa na tela de Cobranças: alunos com algo faltando no cadastro
+function avisoPendenciasAdm() {
+  const n = porNome(S.alunas).filter(([id]) => faltaCadastro(id).length).length; if (!n) return '';
+  return `<button class="faixa-resumo" id="vpend"><span class="grow"><b>Pendências dos alunos</b><span class="s"><b>${n}</b> aluno${n === 1 ? '' : 's'} com algo faltando no cadastro: termo, atestado, documentos ou contrato</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`;
+}
+const FILTROS_PEND = [['todos', 'Todos'], ['termo', 'Termo'], ['atestado', 'Atestado'], ['doc', 'Documentos'], ['contrato', 'Contrato']];
+function sheetPendencias(filtro = 'todos') {
+  const volta = () => sheetPendencias(filtro), casa = x => filtro === 'todos' || (filtro === 'termo' ? /termo/.test(x) : filtro === 'atestado' ? /atestado/.test(x) : filtro === 'contrato' ? /contrato/.test(x) : /^mandar( de novo)?:/.test(x));
+  const L = porNome(S.alunas).map(([id, a]) => [id, a, faltaCadastro(id)]).filter(([, , f]) => f.some(casa));
+  sheet(`<h3>Pendências dos alunos</h3><div class="sub">O que falta no cadastro de cada aluno. A família também vê esses avisos quando abre o app. Toque no WhatsApp para mandar a mensagem pronta com tudo o que falta.</div>
+    <div class="seg" style="margin:10px 0;flex-wrap:wrap">${FILTROS_PEND.map(([v, t]) => `<button type="button" data-pf="${v}" aria-pressed="${filtro === v}">${t}</button>`).join('')}</div>
+    ${L.length ? `<ul class="list">${L.map(([id, a, f]) => `<li class="tap pend-lin" data-pal="${esc(id)}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(respDe(id).nome || 'Sem responsável')}</span>
+      <ul class="pend-itens">${f.map(x => `<li>${esc(x.charAt(0).toUpperCase() + x.slice(1))}</li>`).join('')}</ul></div>${waPendencias([id])}</li>`).join('')}</ul>`
+      : '<div class="empty"><b>Nada pendente aqui.</b></div>'}
+    <button class="btn ghost" data-fechar>Fechar</button>`, sh => {
+    sh.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => sheetPendencias(b.dataset.pf));
+    sh.querySelectorAll('[data-pal]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; abrirDe(volta, () => sheetPerfilAluno(li.dataset.pal, volta)); });
+  });
+}
+// perfil do aluno: o que falta, com a mensagem pronta
+function blocoPendPerfil(alid) {
+  const f = faltaCadastro(alid); if (!f.length) return '';
+  const m = msgPendencias([alid]);
+  return `<section class="psec"><div class="psec-cab"><h2>Pendências</h2></div><div class="plista">${f.map(x => `<div class="plinha"><span class="grow">${esc(x.charAt(0).toUpperCase() + x.slice(1))}</span><span class="chip aberto">Falta</span></div>`).join('')}</div>
+    <div class="actions" style="margin-top:10px">${m && m.wa ? `<a class="btn wa-btn" href="${esc(m.wa)}" target="_blank" rel="noopener">${ICO_WA} Cobrar pelo WhatsApp</a>` : ''}<button type="button" class="btn ghost" id="ppcop">Copiar mensagem</button></div>
+    <span class="s" style="display:block;margin-top:6px">A família também vê esses avisos no app, na tela de pagar.</span></section>`;
 }
 function textoMsg(tipo, alid, itens) {
   if (tipo === 'acordo' && !Object.values(S.acordos).some(x => x.alid === alid && !x.cancelado && !x.perdao)) tipo = 'lembrete';
@@ -2473,7 +2515,7 @@ function sheetPerfilAluno(alid, volta) {
       </div>
     </div>
     ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
-    ${adm ? blocoCancelPerfil(alid) + saudePerfilHTML(alid) : ''}
+    ${adm ? blocoCancelPerfil(alid) + blocoPendPerfil(alid) + saudePerfilHTML(alid) : ''}
     ${adm ? `<section class="psec"><div class="psec-cab"><h2>Documentos</h2><button type="button" class="pacao pacao-forte" id="pnovodoc">+ Documento</button></div><div class="plista">${(() => { const ok = ctAssinado(alid), ult = ok || ctUltimo(alid); if (!ult && !ctPede()) return '';
       return `<button type="button" class="plinha" ${ult ? `data-pvct="${esc(alid)}"` : 'disabled'}><span class="grow">Contrato</span>${ok ? `<span class="chip pago">Assinado em ${dataBR(new Date(ok.em).toISOString().slice(0, 10))}</span>` : '<span class="chip vencido">Falta assinar</span>'}<span class="seta" aria-hidden="true">${ult ? '›' : ''}</span></button>`; })()}${docsDoAluno(alid).map(t => { const d = docDe(alid, t);
       return `<button type="button" class="plinha" data-adoc="${esc(t)}"><span class="grow">${esc(tipoDoc(t).nome)}</span>${chipDoc(d)}<span class="seta" aria-hidden="true">›</span></button>`; }).join('') || '<div class="plinha sub">Nenhum documento. Toque em "+ Documento".</div>'}</div></section>` : ''}
@@ -2498,6 +2540,7 @@ function sheetPerfilAluno(alid, volta) {
     if ($('pnovodoc')) $('pnovodoc').onclick = () => abrirDe(eu, () => sheetDocAluno(alid, null, eu));
     sh.querySelectorAll('[data-pvct]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetVerContrato(alid)));
     sh.querySelectorAll('[data-psaude]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetVerTermo(alid)));
+    if ($('ppcop')) $('ppcop').onclick = () => { const m = msgPendencias([alid]); if (m) copiar(m.txt, 'Mensagem copiada. Cole no WhatsApp ou onde quiser.'); };
   }, () => { if (parar) parar(); });
 }
 
@@ -3229,7 +3272,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoEventosFamilia()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}
+    ${avisoEventosFamilia()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
     ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
@@ -3259,6 +3302,7 @@ function tPagar(v) {
   if ($('ppagar')) $('ppagar').onclick = () => (outrasFormas() ? sheetFormas : sheetPix)(marcados.map(i => i.k));
   if ($('pvenc')) $('pvenc').onclick = () => { abertos.filter(i => i.venc < h).forEach(i => S.sel.add(i.k)); render(); };
   if ($('pnfam')) $('pnfam').onclick = () => sheetNotasFamilia();
+  v.querySelectorAll('[data-pfdoc]').forEach(b => b.onclick = () => sheetDocAluno(b.dataset.pfdoc, b.dataset.pfdt));
   if (formasCfg().cartao && !S.cartoesPedido) { S.cartoesPedido = true; meusCartoes(true).then(() => agendar()); }
   if ($('pfdesl')) $('pfdesl').onclick = () => { const recD = $('pfdesl').dataset.rec; confirmar('Desligar a cobrança automática?', 'As próximas cobranças voltam a ser pagas por você, pelo app. O cartão continua salvo.', 'Desligar', async () => {
     try { if (!MOCK) await servidor('pagar', { acao: 'automatico', eid: S.eid, rec: recD, ligar: false }); (S.cartoes || []).forEach(c => c.auto = false); aviso('Cobrança automática desligada'); render(); } catch (e) { aviso(msgErro(e)); } }); };
