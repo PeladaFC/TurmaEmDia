@@ -197,20 +197,22 @@ const MARCA_SVG = '<svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="9"
 const NOME_APP = () => CFG.nomeApp || 'Turma em Dia';
 // topo da página inicial: marca, nome, para que serve e as três vantagens
 function capaApp(compacta) {
-  const vant = [['cobr', 'Cobrança por aluno, Pix com baixa automática', 'Mensalidade, evento, competição e taxa, cada um com seu vencimento.'],
-    ['filhas', 'A família escolhe o que pagar', 'De um filho ou de todos, num Pix só, pelo celular.'],
-    ['caixa', 'Tudo organizado para a escola', 'Atrasados, acordos, relatório de cada professor(a) e o caixa do mês.']];
+  const vant = [['cobr', 'Cobranças em dia', 'Mensalidade, taxa e evento por Pix, cartão ou boleto. Baixa automática e lembrete pelo WhatsApp.'],
+    ['escola', 'Turmas e chamada', 'Chamada pelo celular, frequência de cada aluno e aviso na hora da aula.'],
+    ['filhas', 'A família no app', 'Paga de um filho ou de todos, responde aos eventos, assina o termo e envia documentos.'],
+    ['caixa', 'Tudo organizado', 'Professores, atrasados, acordos, nota fiscal e o caixa do mês.']];
   return `<div class="capa ${compacta ? 'compacta' : ''}">
       <div class="capa-marca">${MARCA_SVG}</div>
       <h1 class="capa-nome">${esc(NOME_APP())}</h1>
-      <p class="capa-frase">As mensalidades da sua escolinha em dia, por Pix.</p>
+      <p class="capa-frase">Cobranças, turmas, chamada e famílias, num só app.</p>
       ${compacta ? '' : '<p class="capa-sub">Para escolinhas de esporte, dança, luta, música e o que mais for.</p>'}
     </div>`;
 }
 function vantagensApp() {
-  const vant = [['cobr', 'Cobrança por aluno, Pix com baixa automática', 'Mensalidade, evento, competição e taxa, cada um com seu vencimento.'],
-    ['filhas', 'A família escolhe o que pagar', 'De um filho ou de todos, num Pix só, pelo celular.'],
-    ['caixa', 'Tudo organizado para a escola', 'Atrasados, acordos, relatório de cada professor(a) e o caixa do mês.']];
+  const vant = [['cobr', 'Cobranças em dia', 'Mensalidade, taxa e evento por Pix, cartão ou boleto. Baixa automática e lembrete pelo WhatsApp.'],
+    ['escola', 'Turmas e chamada', 'Chamada pelo celular, frequência de cada aluno e aviso na hora da aula.'],
+    ['filhas', 'A família no app', 'Paga de um filho ou de todos, responde aos eventos, assina o termo e envia documentos.'],
+    ['caixa', 'Tudo organizado', 'Professores, atrasados, acordos, nota fiscal e o caixa do mês.']];
   return `<section><h2>O que o app faz</h2><ul class="vantagens">${vant.map(([ic, t, d]) => `<li><span class="vant-ic">${ICO[ic] || ''}</span><span class="grow"><b>${esc(t)}</b><span class="s">${esc(d)}</span></span></li>`).join('')}</ul></section>`;
 }
 /* Abertura como app: 1) marca e nome aparecem e somem; 2) os tópicos do que o app faz sobem um a um; 3) entrada. */
@@ -391,9 +393,10 @@ document.addEventListener('visibilitychange', () => {
 });
 function telaIntro(depois) {
   INTRO_VISTA = true; ls.set('escolinha.introVista', '1');
-  const vant = [['cobr', 'Cobrança por aluno', 'Mensalidade, evento, competição e taxa, cada um com seu vencimento. Pix com baixa automática.'],
-    ['filhas', 'A família escolhe o que pagar', 'De um filho ou de todos, num Pix só, pelo celular.'],
-    ['caixa', 'Tudo organizado para a escola', 'Atrasados, acordos, relatório de cada professor(a) e o caixa do mês.']];
+  const vant = [['cobr', 'Cobranças em dia', 'Mensalidade, taxa e evento por Pix, cartão ou boleto. Baixa automática e lembrete pelo WhatsApp.'],
+    ['escola', 'Turmas e chamada', 'Chamada pelo celular, frequência de cada aluno e aviso na hora da aula.'],
+    ['filhas', 'A família no app', 'Paga de um filho ou de todos, responde aos eventos, assina o termo e envia documentos.'],
+    ['caixa', 'Tudo organizado', 'Professores, atrasados, acordos, nota fiscal e o caixa do mês.']];
   RAIZ().innerHTML = `<div class="intro">
     <div class="intro-topo"><span class="marca-mini">${MARCA_SVG}</span><b>${esc(NOME_APP())}</b><button class="intro-pular" id="ipular">Pular</button></div>
     <ul class="vantagens intro-lista">${vant.map(([ic, t, d], i) => `<li class="sobe" style="--d:${400 + i * 1100}ms"><span class="vant-ic">${ICO[ic] || ''}</span><span class="grow"><b>${esc(t)}</b><span class="s">${esc(d)}</span></span></li>`).join('')}</ul>

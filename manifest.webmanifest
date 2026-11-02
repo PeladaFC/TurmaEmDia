@@ -1,7 +1,7 @@
 {
   "name": "Turma em Dia",
   "short_name": "T.E.D.",
-  "description": "Mensalidades e cobranças da escolinha por Pix.",
+  "description": "Cobranças, turmas, chamada e famílias da sua escolinha, num só app.",
   "lang": "pt-BR",
   "start_url": "./",
   "scope": "./",
