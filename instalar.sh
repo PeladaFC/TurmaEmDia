@@ -24,6 +24,9 @@ else
   gcloud firestore fields ttls update expiraEm --collection-group=erros --enable-ttl --async --project "$PROJ" >/dev/null 2>&1 \
     && echo "    ligado" || echo "    ⚠️  não deu para ligar agora (o resto continua; a rotina diária do servidor também apaga)."
 fi
+echo "==> Avisos no celular (notificações push)"
+gcloud services enable fcm.googleapis.com fcmregistrations.googleapis.com cloudscheduler.googleapis.com --project "$PROJ" >/dev/null 2>&1 \
+  && echo "    ligado" || echo "    ⚠️  não deu para ligar agora (o resto continua)."
 FB="npx --yes firebase-tools@latest"
 publicar() { $FB deploy --only functions,firestore:rules --project "$PROJ" --force --non-interactive; }
 # Se o Google falhar em alguma função (acontece de vez em quando, principalmente na primeira vez), publica uma por uma.

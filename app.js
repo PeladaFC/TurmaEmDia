@@ -28,6 +28,8 @@ async function backendReal() {
     reset: e => A.sendPasswordResetEmail(auth, e).catch(erro),
     verificarEmail: () => auth.currentUser ? A.sendEmailVerification(auth.currentUser).catch(erro) : null,
     recarregar: async () => { if (auth.currentUser) { await auth.currentUser.reload(); await auth.currentUser.getIdToken(true); } },
+    // aparelho para os avisos (push) do Firebase Cloud Messaging
+    pushToken: async reg => { const M = await import(FB + 'firebase-messaging.js'); if (!(await M.isSupported())) return null; return M.getToken(M.getMessaging(app), { serviceWorkerRegistration: reg }); },
     sair: () => A.signOut(auth),
     token: async () => auth.currentUser ? auth.currentUser.getIdToken() : null,
     get: async p => { const s = await F.getDoc(ref(p)).catch(erro); return s.exists() ? s.data() : null; },
@@ -1027,6 +1029,7 @@ function bolhaAba(k) {
 function render() {
   aplicarMarca(S.cfg);
   if (!S) return;
+  setTimeout(abrirChamadaPendente, 0);
   const adm = S.admin, abas = {
     a: [['cobr', 'Cobranças', 'cobr'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
     p: [['pturmas', 'Turmas', 'escola'], ['palunos', 'Alunos', 'alunas'], ['pfin', 'Financeiro', 'caixa']],
@@ -2832,6 +2835,7 @@ async function carregarPainelProf() {
     if (!S || S.eid !== eid) return;
     S.pp = r; S.ppErro = null; S.alunas = Object.fromEntries(r.alunos.map(a => [a.id, { nome: a.nome, nascimento: a.nascimento, turmas: a.turmas, grupos: a.grupos }]));
     Object.assign(FOTOS, r.fotos || {});
+    ativarPush(true).catch(() => { });
   } catch (e) { if (!S || S.eid !== eid) return; S.ppErro = msgErroTexto(e); if (e.code === 'sem-acesso') delete MINHAS[eid]; }
   agendar();
 }
@@ -2858,13 +2862,14 @@ function tPTurmas(v) {
       <button class="mostrar" data-pabre="${esc(tid)}" aria-expanded="${aberta}">${aberta ? 'Esconder alunos' : `Mostrar alunos${n ? ` (${n})` : ''}`}<span aria-hidden="true">${aberta ? '▴' : '▾'}</span></button>
       ${aberta ? `<div class="ativ">${al.map(a => `<div class="turma" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome, 'dot-mini')}<div class="grow"><div class="t">${esc(a.nome)}${((pp.saude || {})[a.id] || {}).alerta ? ' <span class="saude-ic" title="Atenção à saúde" aria-label="Atenção à saúde">✚</span>' : ''}</div>${linhas(esc([idade(a.nascimento), categoriaTxt(a)].filter(Boolean).join(' · ')))}</div></div>`).join('') || '<div class="sub">Nenhum aluno nesta turma ainda.</div>'}</div>` : ''}</div>`;
   };
-  v.innerHTML = `<div class="headrow"><h2>Minhas turmas</h2></div>
+  v.innerHTML = `${avisosChamadaProf(ts.map(([tid]) => tid))}<div class="headrow"><h2>Minhas turmas</h2></div>
     <div class="sub num">${ts.length} turma${ts.length === 1 ? '' : 's'} · ${ativos.length} aluno${ativos.length === 1 ? '' : 's'}</div>
     <div class="field"><input id="ppbusca" type="search" placeholder="Buscar aluno" aria-label="Buscar aluno" value="${esc(S.busca || '')}"></div>
     <div class="tree">${ts.map(([tid, t]) => cartao(tid, t)).join('') || (q ? '<div class="empty"><b>Nenhum aluno com esse nome.</b></div>' : '<div class="empty"><b>Nenhuma turma ainda.</b><span>A escola coloca você como professor(a) das turmas.</span></div>')}</div>
     <div class="note">Aqui você consulta as suas turmas e os alunos. Para mudar uma turma, fale com a escola. Toque no aluno para ver a saúde e escrever notas.</div>`;
   $('ppbusca').oninput = e => { S.busca = e.target.value; render(); };
   v.querySelectorAll('[data-cham]').forEach(e => e.onclick = () => sheetChamada(e.dataset.cham, e.dataset.chd || null));
+  if ($('pushon')) $('pushon').onclick = async () => { $('pushon').disabled = true; try { await ativarPush(false); if (MOCK) { ls.set('escolinha.push.mock', '1'); render(); } } catch (e) { aviso(msgErro(e)); $('pushon').disabled = false; } };
   v.querySelectorAll('[data-pabre]').forEach(b => b.onclick = () => { const t = b.dataset.pabre; abertas.has(t) ? abertas.delete(t) : abertas.add(t); render(); });
   v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));
 }
@@ -2947,6 +2952,55 @@ function sheetBusca() {
     $('bturma').onchange = e => { BUSCA.turma = e.target.value; desenhar(); };
     desenhar(); if (!BUSCA.q) setTimeout(() => $('bq').focus(), 60);
   });
+}
+
+/* ================= Aviso da chamada no celular (push) =================
+   Turma com chamada obrigatória: na hora da aula, os professores da turma recebem o aviso (o servidor manda, avisos.js).
+   No iPhone só funciona com o app adicionado à Tela de Início (iOS 16.4 ou mais novo). */
+const PUSH_OK = () => !MOCK && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const ehIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const instalado = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+let SW_REG = null, PEND_CH = null;
+function registrarSW() {
+  if (MOCK || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('sw.js').then(r => { SW_REG = r; }).catch(() => { });
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.abrir) { lerLinkChamada(e.data.abrir); render(); } });
+}
+// ?chamada=eid.tid (vem do toque no aviso): abre a chamada de hoje dessa turma
+function lerLinkChamada(url) { try { const v = new URL(url, location.href).searchParams.get('chamada'); if (v && v.includes('.')) { const [eid, tid] = v.split('.'); PEND_CH = { eid, tid }; } } catch (e) { } }
+function abrirChamadaPendente() {
+  if (!PEND_CH || !S) return;
+  if (S.eid !== PEND_CH.eid) { if (MINHAS[PEND_CH.eid]) { const x = PEND_CH; PEND_CH = null; abrirEscola(x.eid).then(() => { PEND_CH = x; }); } return; }
+  if (!S.turmas[PEND_CH.tid] || $('overlay').innerHTML) return;
+  const tid = PEND_CH.tid; PEND_CH = null; setTimeout(() => sheetChamada(tid, hoje()), 50);
+}
+async function ativarPush(silencioso) {
+  if (MOCK) { if (!silencioso) aviso('No app publicado, este celular passa a receber o aviso na hora da aula.'); return; }
+  if (!PUSH_OK()) throw new Error('Este celular não recebe avisos do app.');
+  if (silencioso && Notification.permission !== 'granted') return;
+  if (!silencioso && (await Notification.requestPermission()) !== 'granted') throw new Error('Os avisos ficaram bloqueados. Libere as notificações do Turma em Dia nas configurações do celular.');
+  const reg = SW_REG || await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
+  const tk = await B.pushToken(reg); if (!tk) throw new Error('Este celular não recebe avisos do app.');
+  const k = `escolinha.push.${S.eid}`; if (silencioso && ls.get(k) === tk) return;
+  await profServidor('push', { token: tk }); ls.set(k, tk);
+  if (!silencioso) { aviso('Pronto! Você recebe o aviso na hora da aula.'); render(); }
+}
+const agoraHM = () => new Date(Date.now() - 3 * 36e5).toISOString().slice(11, 16);
+const horaTxt = h => h ? (h.endsWith(':00') ? String(Number(h.slice(0, 2))) + 'h' : h.replace(':', 'h')) : '';
+const chObrig = t => !!t && t.chamada !== false && !!t.chamadaObrig;
+// professor: a chamada obrigatória de hoje que ainda não foi feita (depois que a aula começa; some quando um dos dois faz)
+function avisosChamadaProf(tids) {
+  const h = hoje(), ag = agoraHM(), feitas = (S.pp && S.pp.chamadas) || {};
+  const pend = tids.map(tid => [tid, S.turmas[tid]]).filter(([tid, t]) => chObrig(t) && t.hora && ehAula(t, h) && ag >= t.hora && !(feitas[tid] || []).includes(h));
+  let out = pend.map(([tid, t]) => `<button class="faixa-resumo alerta" data-cham="${esc(tid)}"><span class="grow"><b>Fazer chamada: ${esc(t.nome)}</b><span class="s">Hoje · a aula começou às ${esc(horaTxt(t.hora))}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
+  // convite para receber o aviso no celular (só quem tem turma com chamada obrigatória)
+  if (tids.some(tid => chObrig(S.turmas[tid]))) {
+    const perm = 'Notification' in window ? Notification.permission : 'x';
+    if (!MOCK && ehIOS() && !instalado()) out += `<div class="banner"><span><b>Aviso da chamada no celular:</b> no iPhone, primeiro adicione o app à Tela de Início (botão Compartilhar → "Adicionar à Tela de Início"), abra por lá e ative.</span></div>`;
+    else if (!MOCK && perm === 'denied') out += `<div class="banner"><span><b>Os avisos estão bloqueados.</b> Para receber o aviso da chamada na hora da aula, libere as notificações do Turma em Dia nas configurações do celular.</span></div>`;
+    else if (MOCK ? !ls.get('escolinha.push.mock') : (PUSH_OK() && perm !== 'granted')) out += `<div class="banner"><span><b>Receba o aviso da chamada no celular</b>, na hora em que a aula começa.</span><button id="pushon">Ativar</button></div>`;
+  }
+  return out;
 }
 
 /* ================= Chamada (presença) =================
@@ -3260,13 +3314,16 @@ function sheetTurma(tid, depois) {
       <div class="field"><label for="tvag">Limite de alunos (opcional)</label><input id="tvag" type="number" min="0" value="${esc(t && t.vagas ? t.vagas : '')}"></div>
       <div class="field"><span class="lb">Dias de aula</span><div class="seg dias-seg" id="tdias">${[1, 2, 3, 4, 5, 6, 0].map(i => `<button type="button" data-dia="${i}" aria-pressed="${!!(t && (t.dias || []).includes(i))}">${C.DIAS_SEM[i]}</button>`).join('')}</div>
         <span class="s">A chamada abre no dia da aula mais recente.</span></div>
+      <div class="field"><label for="thora">Começa às</label><input id="thora" type="time" value="${esc((t && t.hora) || '')}" style="max-width:160px"></div>
       <label class="liga"><span class="grow"><b>Fazer chamada nesta turma</b><span class="s">Ligada, a turma tem o botão "Fazer chamada" para o professor e para a escola. Desligada, a turma fica sem chamada.</span></span><input type="checkbox" role="switch" id="tcham" ${!t || t.chamada !== false ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+      <label class="liga" id="tobw"><span class="grow"><b>Chamada obrigatória</b><span class="s">Na hora da aula, o professor (e o 2º professor) vê "Fazer chamada" no app e recebe o aviso no celular. Quando um dos dois faz a chamada, o aviso some para os dois.</span></span><input type="checkbox" role="switch" id="tobrig" ${t && t.chamadaObrig ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
       <div class="field"><label for="thor">Dias e horário</label><input id="thor" maxlength="60" value="${esc(t ? t.horario || '' : '')}" placeholder="Ex.: Seg e Qua, 17h às 18h"></div>
       <div class="field"><label for="trec">A mensalidade vai para</label><select id="trec">${opcoesRec(t && t.recebedor)}</select>
         <div class="note">O Pix da mensalidade cai direto na conta do Mercado Pago de quem você escolher aqui.</div></div>
       ${blocoNota('tnota', !!(t && t.nota === true), 'A nota sai no nome da escola, quando o pagamento entra.', t && t.recebedor)}
       ${n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'} nesta turma. Mudar o valor vale para os meses que ainda não foram pagos.</div>` : ''}`,
-    montar: () => { document.querySelectorAll('#tdias [data-dia]').forEach(b => b.onclick = () => b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'))); ligarBlocoNota('tnota', 'trec'); $('ttodas').onchange = e => { $('tmin').disabled = $('tmax').disabled = e.target.checked; }; if (!t) $('tprof').onchange = e => { if (e.target.value) $('trec').value = e.target.value; }; },
+    montar: () => { const vob = () => { $('tobw').hidden = !$('tcham').checked; }; $('tcham').addEventListener('change', vob); vob();
+      document.querySelectorAll('#tdias [data-dia]').forEach(b => b.onclick = () => b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'))); ligarBlocoNota('tnota', 'trec'); $('ttodas').onchange = e => { $('tmin').disabled = $('tmax').disabled = e.target.checked; }; if (!t) $('tprof').onchange = e => { if (e.target.value) $('trec').value = e.target.value; }; },
     salvar: async () => {
       const nome = $('tnome').value.trim(), preco = parseValor($('tpreco').value), todasN = $('ttodas').checked;
       const mn = $('tmin').value === '' ? null : Number($('tmin').value), mx = $('tmax').value === '' ? null : Number($('tmax').value);
@@ -3274,7 +3331,8 @@ function sheetTurma(tid, depois) {
       if (!todasN && mn == null && mx == null) return 'Informe a faixa etária ou marque "Todas as faixas etárias".';
       if (!todasN && mn != null && mx != null && mn > mx) return 'A idade inicial não pode ser maior que a final.';
       if (!(preco >= 0)) return 'Informe o valor mensal da turma, como 150,00.';
-      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...(() => { const dias = [...document.querySelectorAll('#tdias [data-dia][aria-pressed="true"]')].map(b => Number(b.dataset.dia)).sort(); return { dias, chamada: $('tcham').checked }; })(), recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
+      if ($('tcham').checked && $('tobrig').checked && (!document.querySelector('#tdias [data-dia][aria-pressed="true"]') || !$('thora').value)) return 'Para a chamada obrigatória, marque os dias de aula e o horário em que a aula começa.';
+      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...(() => { const dias = [...document.querySelectorAll('#tdias [data-dia][aria-pressed="true"]')].map(b => Number(b.dataset.dia)).sort(); return { dias, chamada: $('tcham').checked, chamadaObrig: $('tcham').checked && $('tobrig').checked, hora: $('thora').value || null }; })(), recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
     },
     depois: depois ? () => depois(novoTid) : null,
     excluir: tid && (() => B.del(`escolas/${S.eid}/turmas/${tid}`)), bloqueio: n ? 'Esta turma tem alunos. Tire os alunos da turma antes de excluir.' : null });
@@ -6147,7 +6205,7 @@ async function semearMock() {
   await set(`${p}/extras/x2`, { tipo: 'taxa', nome: 'Taxa da federação 2027', v: 40, venc: `${m}-12`, grupos: ['g2'], turmas: [], alunas: [], recebedor: 'escola' });
   // chamada: dias de aula, um 2º professor e as chamadas das últimas semanas da Iniciação (falta a mais recente)
   { const D = { t1: [1, 3], t2: [2, 4, 6], t3: [5], t4: [6], t5: [2, 4], t6: [1, 3], t7: [1, 3], t8: [2, 4], t9: [5] };
-    for (const [tid, d] of Object.entries(D)) if (await B.get(`${p}/turmas/${tid}`)) await B.set(`${p}/turmas/${tid}`, { dias: d, chamada: tid !== 't9' }, { merge: true });
+    for (const [tid, d] of Object.entries(D)) if (await B.get(`${p}/turmas/${tid}`)) await B.set(`${p}/turmas/${tid}`, { dias: d, chamada: tid !== 't9', ...(tid === 't1' ? { chamadaObrig: true, hora: '08:00' } : {}) }, { merge: true });
     await B.set(`${p}/turmas/t3`, { professoraIds: ['p1'] }, { merge: true });
     const t1 = Object.keys(alunas).filter(id => (alunas[id].turmas || []).includes('t1')), aulas = [];
     for (let i = 1; i <= 28; i++) { const d = somaDias(hoje(), -i); if ([1, 3].includes(diaSem(d))) aulas.push(d); }
@@ -6248,6 +6306,10 @@ async function semearMock() {
   catch (e) { RAIZ().innerHTML = `<div class="login"><div class="logo">Ops<span>.</span></div><p>Não deu para carregar o app. Verifique a internet e tente de novo.</p></div>`; return; }
   if (!MOCK && (!CFG.firebase || /COLE-AQUI|SEU-PROJETO/.test(JSON.stringify(CFG.firebase)))) { RAIZ().innerHTML = `<div class="login"><div class="logo">Quase lá<span>.</span></div><p>Falta colocar os dados do projeto Firebase no arquivo <b>config.js</b>. Para ver o app funcionando com dados de exemplo, abra com <b>?mock=1</b> no fim do endereço.</p></div>`; return; }
   if (MOCK) await semearMock();
+  registrarSW(); lerLinkChamada(location.href);
+  // professor: atualiza a tela de turmas a cada minuto e ao voltar ao app (a chamada feita pelo outro professor some)
+  const atualizarProf = () => { if (S && S.papel === 'p' && S.tab === 'pturmas' && !$('overlay').innerHTML && document.visibilityState === 'visible') carregarPainelProf(); };
+  setInterval(atualizarProf, 60000); document.addEventListener('visibilitychange', atualizarProf);
   // quem já entrou continua entrando direto (no app de verdade o Firebase guarda o login; no teste, guardamos aqui)
   if (MOCK && ls.get('escolinha.mockLogin')) { try { await B.login(ls.get('escolinha.mockLogin'), '123456'); } catch (e) { } }
   let vez = 0;

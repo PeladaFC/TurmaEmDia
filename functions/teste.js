@@ -23,7 +23,7 @@ function bancoFalso() {
     where: (f, op, v) => col(c, [...filtros, [f, v, op]]),
     doc: id => doc(c + '/' + id),
     add: async d => { const id = 'n' + Math.random().toString(36).slice(2, 10); store.set(c + '/' + id, JSON.parse(JSON.stringify(d))); return { id }; },
-    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : op === 'array-contains' ? ((store.get(k) || {})[f] || []).includes(v) : op === '>=' ? (store.get(k) || {})[f] >= v : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
+    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : op === 'array-contains' ? ((store.get(k) || {})[f] || []).includes(v) : op === '>=' ? (store.get(k) || {})[f] >= v : op === 'in' ? v.includes((store.get(k) || {})[f]) : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
   const runTransaction = async fn => fn({ get: r => r.get(), set: (r, d, o) => r.set(d, o), update: (r, d) => r.update(d) });
   return { store, doc, collection: col, runTransaction, getAll: async (...refs) => Promise.all(refs.map(r => r.get())) };
 }
@@ -33,6 +33,7 @@ Module._load = function (req, ...r) {
   if (req === 'firebase-functions/v2/https') return { onRequest: (o, h) => typeof o === 'function' ? o : h };
   if (req === 'firebase-functions/logger') return { info() { }, warn() { }, error() { } };
   if (req === 'firebase-functions/v2/firestore') return { onDocumentWritten: (p, h) => h };
+  if (req === 'firebase-functions/v2/scheduler') return { onSchedule: (o, h) => h };
   if (req === 'firebase-admin/firestore') return { FieldValue: { delete: () => ({ __fv: 'del' }), arrayUnion: (...x) => ({ __fv: 'union', x }), arrayRemove: (...x) => ({ __fv: 'remove', x }) } };
   // token "ok:uid" ou "ok:uid:v" (e-mail confirmado)
   if (req === 'firebase-admin') return { auth: () => ({ listUsers: async () => ({ users: [{ metadata: { creationTime: new Date(Date.now() - 5 * 864e5).toUTCString(), lastSignInTime: new Date(Date.now() - 864e5).toUTCString() } }, { metadata: { creationTime: new Date(Date.now() - 90 * 864e5).toUTCString() } }] }), verifyIdToken: async t => { if (!t.startsWith('ok:')) throw new Error('x'); const [, uid, v] = t.split(':'); return { uid, email: uid + '@x.com', email_verified: v === 'v', name: uid }; } }) };
@@ -426,6 +427,23 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     await E.espelharProf({ params: { eid: 'e7', pid: 'p1' }, data: { before: { exists: true, data: () => P1 }, after: { exists: true, data: () => P1b } } });
     assert.ok(!S.has('escolas/e7/equipe/cam')); assert.ok(!(S.get('users/cam').escolas || {}).e7); assert.ok(!(S.get('convitesProf/cam_at_x_com') || {})['e7_p1']);
     r = resp(); await PR.professor(req({ acao: 'painel', eid: 'e7' }, 'ok:cam:v'), r); assert.strictEqual(r.code, 403);
+  });
+  await t('aviso da chamada: só turma com chamada obrigatória, na hora da aula, para os dois professores, uma vez; some se a chamada já foi feita', async () => {
+    const ENV = [], AV = require('./avisos')(db, async (tokens, msg) => { ENV.push({ tokens, msg }); return tokens.map(tk => ({ ok: tk !== 'velho', codigo: tk === 'velho' ? 'messaging/registration-token-not-registered' : null })); });
+    const ms = Date.parse('2026-11-02T20:00:30Z'), a = AV.interno.agoraRecife(ms); // segunda, 17:00 em Recife
+    assert.deepStrictEqual([a.data, a.dia, a.hora], ['2026-11-02', 1, '17:00']);
+    S.set('escolas/e9/equipe/u1', { pid: 'p1', push: ['tk1', 'velho'] }); S.set('escolas/e9/equipe/u2', { pid: 'p2', push: ['tk2'] }); S.set('escolas/e9/equipe/u3', { pid: 'p3', push: ['tk3'] });
+    await AV.interno.espelhar('e9', 't1', { nome: 'Iniciação', chamadaObrig: true, hora: '17:00', dias: [1, 3], professoraId: 'p1', professoraIds: ['p2'] });
+    await AV.interno.espelhar('e9', 't2', { nome: 'Livre', chamadaObrig: false, hora: '17:00', dias: [1], professoraId: 'p3' });
+    assert.ok(S.has('agendaChamada/e9_t1')); assert.ok(!S.has('agendaChamada/e9_t2'));
+    await AV.interno.avisar(ms);
+    assert.strictEqual(ENV.length, 1); assert.deepStrictEqual(ENV[0].tokens.sort(), ['tk1', 'tk2', 'velho']); assert.match(ENV[0].msg.data.titulo, /Iniciação/);
+    assert.deepStrictEqual(S.get('escolas/e9/equipe/u1').push, ['tk1']); // o aparelho que não recebe mais sai
+    await AV.interno.avisar(ms + 20000); assert.strictEqual(ENV.length, 1); // uma vez só
+    S.delete('escolas/e9/avisosChamada/t1_2026-11-02'); S.set('escolas/e9/chamadas/t1_2026-11-02', { tid: 't1' });
+    await AV.interno.avisar(ms); assert.strictEqual(ENV.length, 1); // chamada já feita: não avisa
+    await AV.interno.avisar(Date.parse('2026-11-03T20:00:00Z')); assert.strictEqual(ENV.length, 1); // terça não tem aula
+    await AV.interno.espelhar('e9', 't1', { nome: 'Iniciação', chamadaObrig: true, hora: '17:00', dias: [1], chamada: false }); assert.ok(!S.has('agendaChamada/e9_t1'));
   });
   /* ---------- nota fiscal da escola e dos professores para as famílias ---------- */
   const EMITIDAS = [];

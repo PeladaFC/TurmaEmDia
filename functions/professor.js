@@ -129,6 +129,15 @@ module.exports = db => {
         return res.json({ ok: true });
       }
 
+      // aviso da chamada no celular: guarda (ou tira) o aparelho deste professor
+      if (acao === 'push') {
+        const tk = String(b.token || ''); if (!tk || tk.length > 400) throw erro('Pedido inválido.', 400);
+        const ref = db.doc(`escolas/${eid}/equipe/${u.uid}`), atual = ((await ref.get()).data() || {}).push || [];
+        const nova = b.ligar === false ? atual.filter(x => x !== tk) : [...atual.filter(x => x !== tk), tk].slice(-5);
+        await ref.set({ push: nova }, { merge: true });
+        return res.json({ ok: true, aparelhos: nova.length });
+      }
+
       // frequência de um aluno das turmas dele
       if (acao === 'freq') {
         if (!idOk(b.alid)) throw erro('Pedido inválido.', 400);

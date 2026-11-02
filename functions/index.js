@@ -38,6 +38,10 @@ exports.espelharProf = E.espelharProf;
 // área do professor: alunos das turmas dele, a parte dele nos pagamentos e as notas dele
 const PR = require('./professor')(db);
 exports.professor = PR.professor;
+// aviso da chamada no celular do professor, na hora da aula
+const AV = require('./avisos')(db);
+exports.espelharTurma = AV.espelharTurma;
+exports.avisoChamada = AV.avisoChamada;
 
 /* Nota fiscal da escola e dos professores para as famílias (cada um com o próprio CNPJ e certificado) */
 const NF = require('./notaFamilia')(db, P.interno);
