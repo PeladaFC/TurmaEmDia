@@ -220,6 +220,14 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     r = resp(); await P.criarPix(req({ eid: 'e1', itens: ['m:2026-10:a8'] }, 'ok:mae'), r); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.lotes[0].base, 100);
     r = resp(); await P.vinculos(req({ eid: 'e1', acao: 'sugestoes' }, 'ok:mae'), r); assert.deepStrictEqual(r.body.sugestoes, []);
   });
+  await t('agrupar responsáveis: a família continua entrando, sem código novo', async () => {
+    S.set('escolas/e1/responsaveis/r9', { nome: 'Tia' }); S.set('escolas/e1/membros/tia', {}); S.set('escolas/e1/membros/tia/vinculos/r9', { codigo: 'X' });
+    let r = resp(); await P.vinculos(req({ eid: 'e1', acao: 'agrupar', rid: 'r9', fica: 'r2' }, 'ok:mae'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await P.vinculos(req({ eid: 'e1', acao: 'agrupar', rid: 'r9', fica: 'r2' }, 'ok:adm'), r); assert.strictEqual(r.code, 200); assert.strictEqual(r.body.familias, 1);
+    assert.ok(S.get('escolas/e1/membros/tia/vinculos/r2')); assert.ok(!S.get('escolas/e1/membros/tia/vinculos/r9'));
+    assert.ok(S.get('escolas/e1/membros/mae/vinculos/r1'));
+    S.delete('escolas/e1/membros/tia/vinculos/r2'); S.delete('escolas/e1/membros/tia'); S.delete('escolas/e1/responsaveis/r9');
+  });
   await t('turma de professor(a): um Pix para cada recebedor; mensalidade dividida só fica paga quando os dois recebem', async () => {
     S.set('escolas/e1/turmas/t2', { ...turmas.t2, recebedor: 'p1' }); S.set('escolas/e1/professoras/p1', { nome: 'Juliana' });
     S.set('escolas/e1/alunas/a9', { nome: 'Lia', responsavelId: 'r1', turmas: ['t1', 't2'], inicio: '2026-10' }); // 200 escola + 100 Juliana

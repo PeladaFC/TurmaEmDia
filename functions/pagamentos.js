@@ -274,8 +274,23 @@ module.exports = db => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST.' });
       const u = await usuario(req);
-      const { eid, acao, rid } = req.body || {};
+      const { eid, acao, rid, fica } = req.body || {};
       if (!idOk(eid)) return res.status(400).json({ erro: 'Pedido inválido.' });
+      // a escola agrupou dois cadastros de responsável: quem entrava pelo que sai passa a ver o que fica (sem digitar código de novo)
+      if (acao === 'agrupar') {
+        if (!idOk(rid) || !idOk(fica) || rid === fica) return res.status(400).json({ erro: 'Pedido inválido.' });
+        const escola = await ler(`escolas/${eid}`);
+        if (!escola || !(escola.admins || []).includes(u.uid)) return res.status(403).json({ erro: 'Só a administração da escola pode fazer isso.' });
+        if (!(await ler(`escolas/${eid}/responsaveis/${fica}`))) return res.status(404).json({ erro: 'Responsável não encontrado.' });
+        let n = 0;
+        for (const m of (await db.collection(`escolas/${eid}/membros`).get()).docs) {
+          const v = db.doc(`escolas/${eid}/membros/${m.id}/vinculos/${rid}`);
+          if (!(await v.get()).exists) continue;
+          await db.doc(`escolas/${eid}/membros/${m.id}/vinculos/${fica}`).set({ em: Date.now(), via: 'agrupado' }, { merge: true });
+          await v.delete(); n++;
+        }
+        return res.json({ ok: true, familias: n });
+      }
       const meus = await meusVinculos(eid, u.uid);
       if (!meus.size) return res.status(403).json({ erro: 'Entre com o código da família primeiro.' });
       const mr = await Promise.all([...meus].map(r => ler(`escolas/${eid}/responsaveis/${r}`)));

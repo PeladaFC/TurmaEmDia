@@ -2356,16 +2356,24 @@ function tAlunas(v) {
   v.querySelectorAll('[data-junta]').forEach(b => b.onclick = () => juntarResps(...b.dataset.junta.split('+')));
 }
 function juntarResps(a, b) {
-  // fica o cadastro com mais alunos (ou o mais antigo); o outro é apagado
+  // fica o cadastro com mais alunos (ou o mais antigo); o outro é apagado. Quem já usa o app continua entrando normalmente:
+  // o servidor passa o acesso dessas famílias para o cadastro que fica, e o código antigo continua valendo (aponta para ele)
   const [fica, sai] = alunasDoResp(b).length > alunasDoResp(a).length ? [b, a] : [a, b], F = S.resps[fica], X = S.resps[sai];
-  confirmar('Agrupar responsáveis?', `${esc(alunasDoResp(sai).map(([, x]) => x.nome).join(', ') || 'Os alunos')} passa${alunasDoResp(sai).length > 1 ? 'm' : ''} para ${esc(F.nome)}. Quem entrou no app pelo código ${esc(X.codigo || '')} precisa entrar de novo com o código ${esc(F.codigo || '')}. Os irmãos ficam juntos no mesmo responsável.`, 'Agrupar', async () => {
+  const nomes = alunasDoResp(sai).map(([, x]) => x.nome);
+  confirmar('Agrupar responsáveis?', `${esc(nomes.join(', ') || 'Os alunos')} passa${nomes.length > 1 ? 'm' : ''} para ${esc(F.nome)}. Os irmãos ficam juntos no mesmo responsável. Quem já usa o app continua entrando normalmente.`, 'Agrupar', async () => {
+    await vinculosServidor('agrupar', sai, fica);
     const ops = alunasDoResp(sai).map(([id]) => ({ op: 'merge', p: `escolas/${S.eid}/alunas/${id}`, d: { responsavelId: fica } }));
     const comp = {}; ['telefone', 'cpf', 'email'].forEach(k => { if (!F[k] && X[k]) comp[k] = X[k]; });
+    const antigos = [...(F.codigosAntigos || []), ...(X.codigo ? [X.codigo] : []), ...(X.codigosAntigos || [])];
+    if (antigos.length) comp.codigosAntigos = [...new Set(antigos)];
     if (Object.keys(comp).length) ops.push({ op: 'merge', p: `escolas/${S.eid}/responsaveis/${fica}`, d: comp });
-    ops.push({ op: 'del', p: `escolas/${S.eid}/responsaveis/${sai}` }); if (X.codigo) ops.push({ op: 'del', p: 'codigos/' + X.codigo });
+    ops.push({ op: 'del', p: `escolas/${S.eid}/responsaveis/${sai}` });
+    antigos.forEach(c => ops.push({ op: 'set', p: 'codigos/' + c, d: { eid: S.eid, rid: fica } }));
     await B.lote(ops); aviso('Responsáveis agrupados');
   });
 }
+// códigos do responsável: o dele e os que vieram de cadastros agrupados
+const codigosDoResp = r => [...new Set([r.codigo, ...(r.codigosAntigos || [])].filter(Boolean))];
 function convite(r) { return `Olá${r.nome ? ', ' + primeiro(r.nome) : ''}! A ${S.escola.nome || 'escola'} agora recebe as mensalidades e as taxas pelo app. Você vê cada cobrança e escolhe o que pagar, por Pix.\n1. Abra ${LINK_APP}\n2. Crie sua conta (ou entre com Google)\n3. Digite o código: ${r.codigo}`; }
 // nota fiscal para as famílias: ligada pela escola ou por algum professor?
 const nfFamLigada = () => !!((S.cfg.nfFam || {}).ligado || Object.values((S.admin ? S.profsPub : S.profs) || {}).some(p => p && p.nf && p.nf.ligado));
@@ -2399,7 +2407,7 @@ function sheetResp(rid) {
       try { await B.set(`escolas/${S.eid}/responsaveis/${rid}`, { nome, telefone: $('rtel').value.trim(), cpf: $('rcpf').value.trim(), email: $('rmail').value.trim(), endereco: $('rend').value.trim(), ...($('rnf') && $('rnf').checked !== notaDaFamilia(r) ? { nota: $('rnf').checked ? 'sim' : 'nao' } : {}) }, { merge: true }); fecharSheet(); aviso('Responsável atualizado'); }
       catch (e) { $('rerr').textContent = msgErro(e); }
     };
-    $('rdel').onclick = () => al.length ? ($('rerr').textContent = 'Este responsável tem alunos. Troque o responsável deles antes.') : confirmar('Excluir responsável?', `${esc(r.nome)} e o código ${esc(r.codigo || '')} deixam de existir.`, 'Excluir', () => B.lote([{ op: 'del', p: `escolas/${S.eid}/responsaveis/${rid}` }, ...(r.codigo ? [{ op: 'del', p: 'codigos/' + r.codigo }] : [])]));
+    $('rdel').onclick = () => al.length ? ($('rerr').textContent = 'Este responsável tem alunos. Troque o responsável deles antes.') : confirmar('Excluir responsável?', `${esc(r.nome)} e o código ${esc(r.codigo || '')} deixam de existir.`, 'Excluir', () => B.lote([{ op: 'del', p: `escolas/${S.eid}/responsaveis/${rid}` }, ...codigosDoResp(r).map(c => ({ op: 'del', p: 'codigos/' + c }))]));
   });
 }
 // mês no formato mês/ano (11/2026), de 3 anos atrás a 1 ano à frente
@@ -3794,8 +3802,11 @@ function sheetLanc(id) {
 }
 
 /* ================= Área do responsável ================= */
-async function vinculosServidor(acao, rid) {
+async function vinculosServidor(acao, rid, fica) {
   if (MOCK) {
+    if (acao === 'agrupar') { const st_ = window.__mock.store, p = `escolas/${S.eid}/membros/`;
+      for (const k of [...st_.keys()].filter(k => k.startsWith(p) && k.endsWith('/vinculos/' + rid))) { await B.lote([{ op: 'set', p: k.slice(0, -rid.length) + fica, d: { em: Date.now(), via: 'agrupado' } }, { op: 'del', p: k }]); }
+      return {}; }
     const st_ = window.__mock.store, p = `escolas/${S.eid}`, meus = Object.keys(S.resps);
     const minhasR = meus.map(r => st_.get(`${p}/responsaveis/${r}`)).filter(Boolean);
     const mem = st_.get(`${p}/membros/${EU.uid}`) || {}, recus = new Set(mem.recusados || []);
@@ -3805,7 +3816,7 @@ async function vinculosServidor(acao, rid) {
     return { sugestoes: todos.filter(([id, r]) => !meus.includes(id) && !recus.has(id) && minhasR.some(m => mesmoContato(m, r))).map(([id, r]) => ({ rid: id, responsavel: r.nome, alunas: [...st_.keys()].filter(k => k.startsWith(`${p}/alunas/`) && st_.get(k).responsavelId === id).map(k => primeiro(st_.get(k).nome)), por: C.telNorm(r.telefone) && minhasR.some(m => C.telNorm(m.telefone) === C.telNorm(r.telefone)) ? 'telefone' : 'CPF' })).filter(x => x.alunas.length) };
   }
   const t = await B.token().catch(() => null); if (!t) throw new Error('Entre na sua conta de novo.');
-  const r = await fetch(URLF('vinculos'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ eid: S.eid, acao, rid }) });
+  const r = await fetch(URLF('vinculos'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ eid: S.eid, acao, rid, fica }) });
   const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.erro || 'Não deu certo agora.'); return j;
 }
 let sugT = null;
@@ -5850,8 +5861,8 @@ async function apagarDadosPessoais(alids, pedidoId) {
   }
   // responsável só é apagado se não tiver outro aluno ativo
   for (const rid of rids) { const outros = Object.entries(S.alunas).filter(([id, a]) => a.responsavelId === rid && !alids.includes(id) && !a.anonimizadoEm); const r = S.resps[rid]; if (!r || outros.length) continue;
-    ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${rid}`, d: { nome: 'Responsável removido', telefone: '', cpf: '', codigo: null, anonimizadoEm: Date.now() } });
-    if (r.codigo) ops.push({ op: 'del', p: 'codigos/' + r.codigo }); }
+    ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${rid}`, d: { nome: 'Responsável removido', telefone: '', cpf: '', codigo: null, codigosAntigos: null, anonimizadoEm: Date.now() } });
+    codigosDoResp(r).forEach(c => ops.push({ op: 'del', p: 'codigos/' + c })); }
   if (pedidoId) ops.push({ op: 'merge', p: `escolas/${S.eid}/pedidos/${pedidoId}`, d: { status: 'feito', feitoEm: Date.now(), por: EU.uid } });
   await B.lote(ops);
 }
