@@ -3542,7 +3542,7 @@ function finEscola(v) {
   const ls_ = Object.entries(S.lanc).filter(([, l]) => String(l.data).slice(0, 7) === mes).sort((a, b) => String(b[1].data).localeCompare(String(a[1].data)));
   const outras = C.r2(ls_.filter(([, l]) => l.tipo === 'entrada').reduce((s, [, l]) => s + l.v, 0)), sai = C.r2(ls_.filter(([, l]) => l.tipo === 'saida').reduce((s, [, l]) => s + l.v, 0));
   const ent = C.r2(pix + din + outras), saldo = C.r2(ent - sai), conta = (S.mpc || {}).conta;
-  const fx = fixasDoMes(mes), fxFalta = C.r2(fx.filter(f => !f.pago).reduce((s, f) => s + f.v, 0));
+  const fx = fixasDoMes(mes), fxFalta = C.r2(fx.filter(f => !f.pago && f.f.tipo !== 'entrada').reduce((s, f) => s + f.v, 0)), fxRec = C.r2(fx.filter(f => !f.pago && f.f.tipo === 'entrada').reduce((s, f) => s + f.v, 0));
   const porCat = {}; ls_.filter(([, l]) => l.tipo === 'saida').forEach(([, l]) => porCat[l.cat] = (porCat[l.cat] || 0) + l.v);
   const cats = Object.entries(porCat).sort((a, b) => b[1] - a[1]), maxC = cats.length ? cats[0][1] : 1;
   v.innerHTML = `<div class="hero">
@@ -3553,7 +3553,7 @@ function finEscola(v) {
         ${contaL('Outras entradas', brl(outras))}
         ${contaL(`Saídas (${ls_.filter(([, l]) => l.tipo === 'saida').length} lançamento${ls_.filter(([, l]) => l.tipo === 'saida').length === 1 ? '' : 's'})`, '− ' + brl(sai), 'saida')}
         ${contaL('<b>Saldo do mês</b>', `<b>${brl(saldo)}</b>`, 'total')}
-        ${fxFalta ? contaL('Despesas fixas ainda a pagar', '− ' + brl(fxFalta), 'saida') + contaL('<b>Saldo previsto</b>', `<b>${brl(C.r2(saldo - fxFalta))}</b>`, 'total') : ''}
+        ${fxFalta || fxRec ? (fxRec ? contaL('Entradas fixas a receber', '+ ' + brl(fxRec)) : '') + (fxFalta ? contaL('Despesas fixas a pagar', '− ' + brl(fxFalta), 'saida') : '') + contaL('<b>Saldo previsto</b>', `<b>${brl(C.r2(saldo - fxFalta + fxRec))}</b>`, 'total') : ''}
       </div>
       <div class="note">Só o que é da escola: o que os professores recebem direto fica na aba Professores.</div>
     </div>
@@ -3678,33 +3678,33 @@ function fixasDoMes(mes) {
     .sort((a, b) => a.venc.localeCompare(b.venc) || String(a.f.desc).localeCompare(b.f.desc));
 }
 function blocoFixas(fx, mes) {
-  const tot = C.r2(fx.reduce((s, x) => s + x.v, 0)), pg = C.r2(fx.filter(x => x.pago).reduce((s, x) => s + x.v, 0)), h = hoje();
-  return `<section><div class="headrow"><h2>Despesas fixas</h2></div>
-    ${fx.length ? `<div class="sub num" style="margin-bottom:8px">${brl(tot)} no mês · ${brl(pg)} pagos · <b>${brl(C.r2(tot - pg))} a pagar</b></div>
-      <ul class="list">${fx.map(x => `<li class="tap" data-fx="${esc(x.fid)}"><div class="grow"><div class="t">${esc(x.f.desc || x.f.cat)}</div>${linhas(esc(x.f.cat), `<span class="num">${x.pago ? 'Pago em ' + dataBR(x.l.pagoEm || x.l.data) : (x.venc < h ? 'Venceu ' : 'Vence ') + dataBR(x.venc)}</span>`)}</div>
-        ${valorCol(brl(x.v), x.pago ? '<span class="chip pago">Pago</span>' : `<button class="chip ${x.venc < h ? 'vencido' : 'aberto'}" data-fxpg="${esc(x.fid)}">Pagar</button>`, x.pago ? 'saida' : '')}</li>`).join('')}</ul>`
-      : `<div class="empty"><span>Aluguel, salários, internet… Ao lançar uma saída, ligue <b>"Despesa fixa"</b> e ela aparece aqui todo mês para você marcar como paga.</span></div>`}</section>`;
+  const h = hoje(), ent = x => x.f.tipo === 'entrada', soma = L => C.r2(L.reduce((s, x) => s + x.v, 0));
+  const aPagar = soma(fx.filter(x => !ent(x) && !x.pago)), aReceber = soma(fx.filter(x => ent(x) && !x.pago));
+  return `<section><div class="headrow"><h2>Lançamentos fixos</h2></div>
+    ${fx.length ? `<div class="sub num" style="margin-bottom:8px">${[aPagar ? `<b>${brl(aPagar)} a pagar</b>` : '', aReceber ? `<b>${brl(aReceber)} a receber</b>` : '', !aPagar && !aReceber ? 'Tudo em dia neste mês' : ''].filter(Boolean).join(' · ')}</div>
+      <ul class="list">${fx.map(x => `<li class="tap" data-fx="${esc(x.fid)}"><div class="grow"><div class="t">${esc(x.f.desc || x.f.cat)}</div>${linhas(esc(x.f.cat), `<span class="num">${x.pago ? (ent(x) ? 'Recebido em ' : 'Pago em ') + dataBR(x.l.pagoEm || x.l.data) : ent(x) ? 'Previsto para ' + dataBR(x.venc) : (x.venc < h ? 'Venceu ' : 'Vence ') + dataBR(x.venc)}${x.f.fim ? ` · até ${esc(C.nomeMes(x.f.fim))}${x.f.fim.slice(0, 4) !== mes.slice(0, 4) ? ' de ' + x.f.fim.slice(0, 4) : ''}` : ''}</span>`)}</div>
+        ${valorCol((ent(x) ? '+ ' : '') + brl(x.v), x.pago ? `<span class="chip pago">${ent(x) ? 'Recebido' : 'Pago'}</span>` : `<button class="chip ${!ent(x) && x.venc < h ? 'vencido' : 'aberto'}" data-fxpg="${esc(x.fid)}">${ent(x) ? 'Receber' : 'Pagar'}</button>`, x.pago ? (ent(x) ? 'in' : 'saida') : '')}</li>`).join('')}</ul>`
+      : `<div class="empty"><span>Aluguel, salários, internet, patrocínio mensal… Ao fazer um lançamento, ligue <b>"Despesa fixa"</b> (ou "Entrada fixa") e ele aparece aqui todo mês.</span></div>`}</section>`;
 }
 function sheetFixa(fid) {
-  const f = fid ? S.fixas[fid] : null, mes = S.mes;
-  sheet(`<h3>${f ? 'Despesa fixa' : 'Nova despesa fixa'}</h3>
-    <div class="sub">Se repete todo mês. Aparece em Despesas fixas para você marcar como paga.</div>
+  const f = fid ? S.fixas[fid] : null, mes = S.mes, rec = !!f && f.tipo === 'entrada', CATS = rec ? CAT_ENT : CAT_SAI;
+  sheet(`<h3>${rec ? 'Entrada fixa' : 'Despesa fixa'}</h3>
+    <div class="sub">Repete todo mês, no mesmo dia${f && f.fim ? `, até ${esc(nomeMesAno(f.fim))}` : ', até cancelar'}.</div>
     <div class="field"><label for="fxdesc">Descrição</label><input id="fxdesc" maxlength="100" value="${esc(f ? f.desc || '' : '')}" placeholder="Ex.: Aluguel da quadra"></div>
-    <div class="field"><label for="fxcat">Categoria</label><select id="fxcat">${CAT_SAI.map(c => `<option ${f && c === f.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="field"><label for="fxcat">Categoria</label><select id="fxcat">${CATS.map(c => `<option ${f && c === f.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
     <div class="two"><div class="field"><label for="fxval">Valor por mês (R$)</label><input id="fxval" inputmode="decimal" value="${esc(fmtValor(f && f.v))}" placeholder="0,00"></div>
     <div class="field"><label for="fxdia">Vence todo dia</label><select id="fxdia">${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${(f ? Number(f.dia) : 5) === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div></div>
-    <div class="two"><div class="field"><label for="fxini">Começa em</label><select id="fxini">${Array.from({ length: 15 }, (_, i) => mesMais(mesHoje(), i - 12)).map(m => `<option value="${m}" ${(f ? f.inicio : mes) === m ? 'selected' : ''}>${esc(nomeMesAno(m))}</option>`).join('')}</select></div>
-    <div class="field"><label for="fxloc">Local (opcional)</label><select id="fxloc"><option value="">Escola toda</option>${ordenar(S.locais).map(([lid, x]) => `<option value="${esc(lid)}" ${f && f.localId === lid ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></div></div>
+    <div class="field"><label for="fxini">Começa em</label><select id="fxini">${[...new Set([...(f && f.inicio ? [f.inicio] : []), ...Array.from({ length: 15 }, (_, i) => mesMais(mesHoje(), i - 12))])].sort().map(m => `<option value="${m}" ${(f ? f.inicio : mes) === m ? 'selected' : ''}>${esc(nomeMesAno(m))}</option>`).join('')}</select></div>
     ${f ? `<div class="note">Mudar o valor vale para os meses ainda não pagos. Para mudar só um mês, toque em Pagar e ajuste o valor daquele mês.${f.fim ? ` <b>Encerrada: a última foi ${esc(nomeMesAno(f.fim))}.</b>` : ''}</div>` : ''}
     <div class="err" id="fxerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="fxok">Salvar</button></div>
-    ${f && !f.fim ? `<button class="btn ghost" id="fxfim" style="color:var(--out)">Encerrar esta despesa fixa</button>` : f ? `<button class="btn ghost" id="fxvolta">Voltar a valer todo mês</button>` : ''}`, () => {
+    ${f && !f.fim ? `<button class="btn ghost" id="fxfim" style="color:var(--out)">Encerrar (não repetir mais)</button>` : f ? `<button class="btn ghost" id="fxvolta">Voltar a valer todo mês</button>` : ''}`, () => {
     $('fxok').onclick = async () => {
       const v = parseValor($('fxval').value), desc = $('fxdesc').value.trim();
       if (!desc) return $('fxerr').textContent = 'Escreva a descrição, como "Aluguel da quadra".';
       if (!(v > 0)) return $('fxerr').textContent = 'Informe o valor por mês, como 1.500,00.';
       $('fxok').disabled = true;
-      try { await B.set(`escolas/${S.eid}/fixas/${fid || novoId()}`, { ...(f || {}), desc, cat: $('fxcat').value, v, dia: Number($('fxdia').value), inicio: $('fxini').value, localId: $('fxloc').value || null, fim: f ? f.fim || null : null, criadoEm: f ? f.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso('Despesa fixa salva'); }
+      try { await B.set(`escolas/${S.eid}/fixas/${fid || novoId()}`, { ...(f || {}), desc, cat: $('fxcat').value, v, dia: Number($('fxdia').value), inicio: $('fxini').value, fim: f ? f.fim || null : null, criadoEm: f ? f.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso('Salvo'); }
       catch (e) { $('fxerr').textContent = msgErro(e); $('fxok').disabled = false; } };
     // encerrar: o mês atual continua se já foi pago; senão, a última é a do mês anterior
     if ($('fxfim')) $('fxfim').onclick = () => duploToque($('fxfim'), async () => { const fim = S.lanc[idPagFixa(fid, mes)] ? mes : mesMais(mes, -1);
@@ -3715,54 +3715,60 @@ function sheetFixa(fid) {
 // pagar a despesa fixa de um mês: vira um lançamento de saída (dá para ajustar o valor e a data só deste mês)
 function sheetPagarFixa(fid, mes) {
   const f = S.fixas[fid]; if (!f) return;
-  sheet(`<h3>Pagar · ${esc(f.desc || f.cat)}</h3><div class="sub">${esc(nomeMesAno(mes))} · vence ${dataBR(diaFixa(f, mes))}</div>
+  const rec = f.tipo === 'entrada';
+  sheet(`<h3>${rec ? 'Receber' : 'Pagar'} · ${esc(f.desc || f.cat)}</h3><div class="sub">${esc(nomeMesAno(mes))} · ${rec ? 'previsto para' : 'vence'} ${dataBR(diaFixa(f, mes))}</div>
     <div class="two"><div class="field"><label for="pfval">Valor deste mês (R$)</label><input id="pfval" inputmode="decimal" value="${esc(fmtValor(f.v))}"></div>
-    <div class="field"><label for="pfdata">Pago em</label><input id="pfdata" type="date" value="${esc(mes === mesHoje() ? hoje() : diaFixa(f, mes))}"></div></div>
-    <div class="note">Entra nas saídas do caixa de ${esc(C.nomeMes(mes))}. Mudar o valor aqui vale só para este mês.</div>
+    <div class="field"><label for="pfdata">${rec ? 'Recebido em' : 'Pago em'}</label><input id="pfdata" type="date" value="${esc(mes === mesHoje() ? hoje() : diaFixa(f, mes))}"></div></div>
+    <div class="note">Entra nas ${rec ? 'entradas' : 'saídas'} do caixa de ${esc(C.nomeMes(mes))}. Mudar o valor aqui vale só para este mês.</div>
     <div class="err" id="pferr" role="alert"></div>
-    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="pfok">Marcar como pago</button></div>`, () => {
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="pfok">${rec ? 'Marcar como recebido' : 'Marcar como pago'}</button></div>`, () => {
     $('pfok').onclick = async () => { const v = parseValor($('pfval').value), data = $('pfdata').value;
-      if (!(v > 0)) return $('pferr').textContent = 'Informe o valor pago.';
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return $('pferr').textContent = 'Escolha a data do pagamento.';
+      if (!(v > 0)) return $('pferr').textContent = rec ? 'Informe o valor recebido.' : 'Informe o valor pago.';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return $('pferr').textContent = 'Escolha a data.';
       $('pfok').disabled = true;
       // o lançamento fica no mês da despesa (para o caixa daquele mês), com a data em que foi pago
-      try { await B.set(`escolas/${S.eid}/lancamentos/${idPagFixa(fid, mes)}`, { tipo: 'saida', cat: f.cat, desc: f.desc, v, data: data.slice(0, 7) === mes ? data : diaFixa(f, mes), pagoEm: data, localId: f.localId || null, fixa: fid, mes }); fecharSheet(); aviso('Pago'); }
+      try { await B.set(`escolas/${S.eid}/lancamentos/${idPagFixa(fid, mes)}`, { tipo: rec ? 'entrada' : 'saida', cat: f.cat, desc: f.desc, v, data: data.slice(0, 7) === mes ? data : diaFixa(f, mes), pagoEm: data, fixa: fid, mes }); fecharSheet(); aviso(rec ? 'Recebido' : 'Pago'); }
       catch (e) { $('pferr').textContent = msgErro(e); $('pfok').disabled = false; } };
   });
 }
 function sheetLanc(id) {
   const l = id ? S.lanc[id] : null; let tipo = l ? l.tipo : 'saida';
   const opts = (tp, sel) => (tp === 'entrada' ? CAT_ENT : CAT_SAI).map(c => `<option ${c === sel ? 'selected' : ''}>${esc(c)}</option>`).join('');
-  sheet(`<h3>${l ? 'Editar lançamento' : 'Novo lançamento'}</h3>${l && l.fixa ? '<div class="note">Pagamento de uma despesa fixa. Excluir este lançamento volta a despesa para "a pagar".</div>' : ''}
+  const dataPad = l ? l.data : (S.mes === mesHoje() ? hoje() : S.mes + '-01');
+  sheet(`<h3>${l ? 'Editar lançamento' : 'Novo lançamento'}</h3>${l && l.fixa ? `<div class="note">Lançamento ${l.tipo === 'entrada' ? 'de uma entrada fixa. Excluir volta para "a receber"' : 'de uma despesa fixa. Excluir volta para "a pagar"'}.</div>` : ''}
     <div class="seg"><button type="button" data-t="saida" aria-pressed="${tipo === 'saida'}">Saída</button><button type="button" data-t="entrada" aria-pressed="${tipo === 'entrada'}">Entrada</button></div>
     <div class="field"><label for="lcat">Categoria</label><select id="lcat">${opts(tipo, l && l.cat)}</select></div>
     <div class="field"><label for="ldesc">Descrição</label><input id="ldesc" maxlength="100" value="${esc(l ? l.desc || '' : '')}" placeholder="Ex.: Salário do professor"></div>
     <div class="two"><div class="field"><label for="lval">Valor (R$)</label><input id="lval" inputmode="decimal" value="${esc(fmtValor(l && l.v))}" placeholder="0,00"></div>
-    <div class="field"><label for="ldata">Data</label><input id="ldata" type="date" value="${esc(l ? l.data : (S.mes === mesHoje() ? hoje() : S.mes + '-01'))}"></div></div>
-    <div class="field"><label for="lloc">Local (opcional)</label><select id="lloc"><option value="">Escola toda</option>${ordenar(S.locais).map(([lid, x]) => `<option value="${esc(lid)}" ${l && l.localId === lid ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</select></div>
-    ${l ? '' : `<label class="liga" id="lfixw"><span class="grow"><b>Despesa fixa</b><span class="s" id="lfixs">Se repete todo mês, como aluguel ou salário. Ligue para ela aparecer nos próximos meses para você marcar como paga.</span></span><input type="checkbox" role="switch" id="lfix"><span class="trilho" aria-hidden="true"></span></label>`}
+    <div class="field" id="ldataw"><label for="ldata">Data</label><input id="ldata" type="date" value="${esc(dataPad)}"></div></div>
+    ${l ? '' : `<label class="liga"><span class="grow"><b id="lfixt">Despesa fixa</b><span class="s" id="lfixs">Repete todo mês, como aluguel ou salário.</span></span><input type="checkbox" role="switch" id="lfix"><span class="trilho" aria-hidden="true"></span></label>
+    <div class="two" id="lfixc" hidden><div class="field"><label for="lini">1º lançamento</label><input id="lini" type="date" value="${esc(dataPad)}"></div>
+      <div class="field"><label for="lqtd">Quantos lançamentos</label><select id="lqtd"><option value="0">Até cancelar</option>${Array.from({ length: 35 }, (_, k) => `<option value="${k + 2}">${k + 2} meses</option>`).join('')}</select></div></div>
+    <span class="s" id="lfixd" hidden style="margin-top:-6px">Depois do 1º, repete todo mês no mesmo dia.</span>`}
     <div class="err" id="lerr2" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="lok2">Salvar</button></div>
     ${l ? `<button class="btn ghost" id="ldel" style="color:var(--out)">Excluir lançamento</button>` : ''}`, s => {
-    const vfix = () => { if (!$('lfix')) return; $('lfixw').hidden = tipo !== 'saida'; const d = $('ldata').value;
-      $('lfixs').textContent = $('lfix').checked && /^\d{4}-\d{2}-\d{2}$/.test(d) ? `Este lançamento fica como pago e, a partir de ${C.nomeMes(mesMais(d.slice(0, 7), 1))}, ela aparece em Despesas fixas todo dia ${Number(d.slice(8))} para você marcar como paga.` : 'Se repete todo mês, como aluguel ou salário. Ligue para ela aparecer nos próximos meses para você marcar como paga.'; };
-    if ($('lfix')) { $('lfix').onchange = vfix; $('ldata').addEventListener('change', vfix); vfix(); }
+    const fixa = () => !!($('lfix') && $('lfix').checked);
+    const vfix = () => { if (!$('lfix')) return; $('lfixt').textContent = tipo === 'entrada' ? 'Entrada fixa' : 'Despesa fixa';
+      $('lfixs').textContent = tipo === 'entrada' ? 'Repete todo mês, como um patrocínio mensal.' : 'Repete todo mês, como aluguel ou salário.';
+      $('lfixc').hidden = $('lfixd').hidden = !fixa(); $('ldataw').hidden = fixa(); };
+    if ($('lfix')) { $('lfix').onchange = vfix; vfix(); }
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { tipo = b.dataset.t; s.querySelectorAll('[data-t]').forEach(y => y.setAttribute('aria-pressed', y === b)); $('lcat').innerHTML = opts(tipo); vfix(); });
     $('lok2').onclick = async () => {
-      const v = parseValor($('lval').value), data = $('ldata').value;
+      const v = parseValor($('lval').value), data = fixa() ? $('lini').value : $('ldata').value;
       if (!(v > 0)) return $('lerr2').textContent = 'Informe um valor maior que zero, como 150,00.';
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return $('lerr2').textContent = 'Escolha a data.';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return $('lerr2').textContent = fixa() ? 'Escolha o dia do 1º lançamento.' : 'Escolha a data.';
       $('lok2').disabled = true;
-      // despesa fixa: cria a fixa (todo mês, no mesmo dia) e este lançamento vira o pagamento do primeiro mês
-      if (!l && tipo === 'saida' && $('lfix') && $('lfix').checked) {
-        const fid = novoId(), mes = data.slice(0, 7), desc = $('ldesc').value.trim() || $('lcat').value, localId = $('lloc').value || null;
-        try { await B.lote([{ op: 'set', p: `escolas/${S.eid}/fixas/${fid}`, d: { desc, cat: $('lcat').value, v, dia: Number(data.slice(8)), inicio: mes, fim: null, localId, criadoEm: Date.now() } },
-          { op: 'set', p: `escolas/${S.eid}/lancamentos/${idPagFixa(fid, mes)}`, d: { tipo, cat: $('lcat').value, desc, v, data, pagoEm: data, localId, fixa: fid, mes } }]);
-          fecharSheet(); aviso('Despesa fixa salva. Ela aparece todo mês.'); if (mes !== S.mes) { S.mes = mes; render(); } }
+      // fixa: todo mês no mesmo dia, até cancelar ou por N meses; se o 1º já chegou, ele entra no caixa como feito
+      if (fixa()) {
+        const fid = novoId(), mes = data.slice(0, 7), n = Number($('lqtd').value) || 0, desc = $('ldesc').value.trim() || $('lcat').value;
+        const ops = [{ op: 'set', p: `escolas/${S.eid}/fixas/${fid}`, d: { tipo, desc, cat: $('lcat').value, v, dia: Number(data.slice(8)), inicio: mes, fim: n ? mesMais(mes, n - 1) : null, criadoEm: Date.now() } }];
+        if (data <= hoje()) ops.push({ op: 'set', p: `escolas/${S.eid}/lancamentos/${idPagFixa(fid, mes)}`, d: { tipo, cat: $('lcat').value, desc, v, data, pagoEm: data, fixa: fid, mes } });
+        try { await B.lote(ops); fecharSheet(); aviso(`${tipo === 'entrada' ? 'Entrada' : 'Despesa'} fixa salva: ${n ? n + ' meses' : 'todo mês, até cancelar'}.`); if (mes !== S.mes) { S.mes = mes; render(); } }
         catch (e) { $('lerr2').textContent = msgErro(e); $('lok2').disabled = false; }
         return;
       }
-      try { await B.set(`escolas/${S.eid}/lancamentos/${id || novoId()}`, { tipo, cat: $('lcat').value, desc: $('ldesc').value.trim(), v, data, localId: $('lloc').value || null }); fecharSheet(); aviso('Lançamento salvo'); if (data.slice(0, 7) !== S.mes) { S.mes = data.slice(0, 7); render(); } }
+      try { await B.set(`escolas/${S.eid}/lancamentos/${id || novoId()}`, { ...(l || {}), tipo, cat: $('lcat').value, desc: $('ldesc').value.trim(), v, data }); fecharSheet(); aviso('Lançamento salvo'); if (data.slice(0, 7) !== S.mes) { S.mes = data.slice(0, 7); render(); } }
       catch (e) { $('lerr2').textContent = msgErro(e); $('lok2').disabled = false; }
     };
     if ($('ldel')) $('ldel').onclick = () => confirmar('Excluir lançamento?', esc(l.desc || l.cat), 'Excluir', () => B.del(`escolas/${S.eid}/lancamentos/${id}`));
