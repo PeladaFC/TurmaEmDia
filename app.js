@@ -3580,8 +3580,8 @@ function finEscola(v) {
         : `<div class="empty"><span>Registre aqui aluguel, salários, compra de aparelhos, inscrições, patrocínios. O que é pago pelo app entra sozinho.</span></div>`}
     </section>`;
   $('fcfg').onclick = () => sheetAjustes(); $('cnl').onclick = () => sheetLanc();
-  v.querySelectorAll('[data-fx]').forEach(li => li.onclick = () => sheetFixa(li.dataset.fx));
-  v.querySelectorAll('[data-fxpg]').forEach(b => b.onclick = e => { e.stopPropagation(); sheetPagarFixa(b.dataset.fxpg, mes); });
+  // pendente: tocar abre o pagamento (de lá dá para editar a fixa); pago: abre a fixa
+  v.querySelectorAll('[data-fx]').forEach(li => li.onclick = () => li.dataset.fxp ? sheetPagarFixa(li.dataset.fx, mes) : sheetFixa(li.dataset.fx));
   v.querySelectorAll('[data-l]').forEach(li => li.onclick = () => sheetLanc(li.dataset.l));
 }
 // a conta que recebe o Pix do(a) professor(a), em destaque: dá para adicionar, trocar ou tirar
@@ -3693,8 +3693,8 @@ function blocoFixas(fx, mes) {
   const aPagar = soma(fx.filter(x => !ent(x) && !x.pago)), aReceber = soma(fx.filter(x => ent(x) && !x.pago));
   return `<section><div class="headrow"><h2>Lançamentos fixos</h2></div>
     ${fx.length ? `<div class="sub num" style="margin-bottom:8px">${[aPagar ? `<b>${brl(aPagar)} a pagar</b>` : '', aReceber ? `<b>${brl(aReceber)} a receber</b>` : '', !aPagar && !aReceber ? 'Tudo em dia neste mês' : ''].filter(Boolean).join(' · ')}</div>
-      <ul class="list">${fx.map(x => `<li class="tap" data-fx="${esc(x.fid)}"><div class="grow"><div class="t">${esc(x.f.desc || x.f.cat)}</div>${linhas(esc(x.f.cat), `<span class="num">${x.pago ? (ent(x) ? 'Recebido em ' : 'Pago em ') + dataBR(x.l.pagoEm || x.l.data) : ent(x) ? 'Previsto para ' + dataBR(x.venc) : (x.venc < h ? 'Venceu ' : 'Vence ') + dataBR(x.venc)}${x.f.fim ? ` · até ${esc(C.nomeMes(x.f.fim))}${x.f.fim.slice(0, 4) !== mes.slice(0, 4) ? ' de ' + x.f.fim.slice(0, 4) : ''}` : ''}</span>`)}</div>
-        ${valorCol((ent(x) ? '+ ' : '') + brl(x.v), x.pago ? `<span class="chip pago">${ent(x) ? 'Recebido' : 'Pago'}</span>` : `<button class="chip ${!ent(x) && x.venc < h ? 'vencido' : 'aberto'}" data-fxpg="${esc(x.fid)}">${ent(x) ? 'Receber' : 'Pagar'}</button>`, x.pago ? (ent(x) ? 'in' : 'saida') : '')}</li>`).join('')}</ul>`
+      <ul class="list">${fx.map(x => `<li class="tap" data-fx="${esc(x.fid)}" data-fxp="${x.pago ? '' : '1'}"><div class="grow"><div class="t">${esc(x.f.desc || x.f.cat)}</div>${linhas(esc(x.f.cat), `<span class="num">${x.pago ? (ent(x) ? 'Recebido em ' : 'Pago em ') + dataBR(x.l.pagoEm || x.l.data) : ent(x) ? 'Previsto para ' + dataBR(x.venc) : (x.venc < h ? 'Venceu ' : 'Vence ') + dataBR(x.venc)}${x.f.fim ? ` · até ${esc(C.nomeMes(x.f.fim))}${x.f.fim.slice(0, 4) !== mes.slice(0, 4) ? ' de ' + x.f.fim.slice(0, 4) : ''}` : ''}</span>`)}</div>
+        ${valorCol((ent(x) ? '+ ' : '') + brl(x.v), x.pago ? `<span class="chip pago">${ent(x) ? 'Recebido' : 'Pago'}</span>` : `<span class="fx-pend ${!ent(x) && x.venc < h ? 'atraso' : ''}">Pendente</span>`, x.pago ? (ent(x) ? 'in' : 'saida') : '')}</li>`).join('')}</ul>`
       : `<div class="empty"><span>Aluguel, salários, internet, patrocínio mensal… Ao fazer um lançamento, ligue <b>"Despesa fixa"</b> (ou "Entrada fixa") e ele aparece aqui todo mês.</span></div>`}</section>`;
 }
 function sheetFixa(fid) {
@@ -3732,7 +3732,9 @@ function sheetPagarFixa(fid, mes) {
     <div class="field"><label for="pfdata">${rec ? 'Recebido em' : 'Pago em'}</label><input id="pfdata" type="date" value="${esc(mes === mesHoje() ? hoje() : diaFixa(f, mes))}"></div></div>
     <div class="note">Entra nas ${rec ? 'entradas' : 'saídas'} do caixa de ${esc(C.nomeMes(mes))}. Mudar o valor aqui vale só para este mês.</div>
     <div class="err" id="pferr" role="alert"></div>
-    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="pfok">${rec ? 'Marcar como recebido' : 'Marcar como pago'}</button></div>`, () => {
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="pfok">${rec ? 'Marcar como recebido' : 'Marcar como pago'}</button></div>
+    <button class="btn ghost" id="pfedit">Editar ou encerrar ${rec ? 'esta entrada fixa' : 'esta despesa fixa'}</button>`, () => {
+    $('pfedit').onclick = () => abrirDe(() => sheetPagarFixa(fid, mes), () => sheetFixa(fid));
     $('pfok').onclick = async () => { const v = parseValor($('pfval').value), data = $('pfdata').value;
       if (!(v > 0)) return $('pferr').textContent = rec ? 'Informe o valor recebido.' : 'Informe o valor pago.';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return $('pferr').textContent = 'Escolha a data.';
