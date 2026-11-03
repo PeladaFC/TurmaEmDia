@@ -220,7 +220,7 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:end}
 .two[hidden]{display:none}
 .two>.field{min-width:0}
-.field input[type="date"],.field input[type="month"]{-webkit-appearance:none;appearance:none;min-height:46px;text-align:left;display:block}
+.field input[type="date"],.field input[type="month"],.field input[type="time"]{-webkit-appearance:none;appearance:none;min-height:46px;height:46px;text-align:left;display:block;width:100%;min-width:0;margin:0;line-height:normal}
 .field input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=color]),.field select{height:48px;box-sizing:border-box;line-height:1.2}
 .field input::-webkit-date-and-time-value{text-align:left;margin:0}
 .campo-fixo{min-height:46px;display:flex;align-items:center;padding:0 12px;border-radius:5px;border:1px solid var(--line);background:var(--surface2);font-weight:700}

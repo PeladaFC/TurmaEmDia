@@ -232,6 +232,9 @@
      conta como falta; se quiser, a escola ou o professor muda para presente). Dia marcado "sem aula" não entra. */
   const DIAS_SEM = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   const chaveChamada = (tid, data) => `${tid}_${data}`;
+  // prazo de resposta de um evento: dia (prazo) e horário (prazoHora, 'HH:MM'), no horário de Recife. Sem horário (eventos antigos): até o fim do dia.
+  const prazoEmMs = x => x && x.prazo ? Date.parse(`${x.prazo}T${/^([01]\d|2[0-3]):[0-5]\d$/.test(x.prazoHora || '') ? x.prazoHora + ':00' : '23:59:59'}-03:00`) : null;
+  const prazoPassou = (x, ms = Date.now()) => { const p = prazoEmMs(x); return p != null && ms > p; };
   function freqAluno(chamadas, alid, filtro) {
     const L = (chamadas || []).filter(c => c && c.pres && ['p', 'f', 'j'].includes(c.pres[alid]) && (!filtro || filtro(c))).sort((a, b) => String(a.data).localeCompare(String(b.data)));
     let p = 0, f = 0, j = 0, seguidas = 0;
@@ -344,5 +347,5 @@
     r.alerta = !!(itens.length || r.detalhes || r.alergias || r.remedios || r.semPrimeiros);
     return r;
   }
-  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, freqAluno };
+  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, prazoEmMs, prazoPassou, freqAluno };
 });

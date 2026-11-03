@@ -86,7 +86,7 @@ module.exports = db => {
       if (!(x.convidados || []).includes(alid)) throw erro('Este evento não é para este aluno.', 403);
       // evento encerrado ou prazo de resposta passado: a família não muda mais nada (só a escola)
       const hojeR = new Date(Date.now() - 3 * 36e5).toISOString().slice(0, 10), fim = x.dataFim && x.dataFim >= x.data ? x.dataFim : x.data;
-      if ((fim && fim < hojeR) || (x.prazo && x.prazo < hojeR)) throw erro(fim && fim < hojeR ? 'Este evento já foi encerrado.' : 'O prazo para responder já passou. Fale com a escola.', 409);
+      if ((fim && fim < hojeR) || C.prazoPassou(x)) throw erro(fim && fim < hojeR ? 'Este evento já foi encerrado.' : 'O prazo para responder já passou. Fale com a escola.', 409);
       const pag = (await t.get(db.doc(`escolas/${eid}/pagamentos/${alid}`))).data() || {}, pago = (((pag.extras || {})[xid]) || {}).s === 'pago';
       const atual = (x.part || {})[alid] || {}, fam = x.cobranca !== 'app'; // fora do Pix no app, a família se inscreve com a organização e confirma aqui
       if (st === 'inscrito' && !fam) throw erro('Pedido inválido.', 400);
