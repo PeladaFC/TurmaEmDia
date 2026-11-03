@@ -2072,13 +2072,13 @@ function sheetEvento(xid) {
       <span class="sub">As famílias tocam em "Como chegar" e o mapa abre no celular.</span></div>
     <div class="field"><span class="lb">Links e contatos</span><span class="sub">Regulamento, site da inscrição, telefone de quem organiza… Cada um com uma descrição curta.</span>
       <div class="ev-links" id="elinks"></div><button type="button" class="add-disc add-largo" id="elinkadd">+ Link ou contato</button></div>
-    <div class="field"><span class="lb">Onde é a inscrição?</span><div class="insc-ops" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" class="insc-op" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${k === 'app' ? 'A família paga a inscrição por Pix no app. Pagou, fica inscrita sozinha.' : 'A família se inscreve e paga direto com quem organiza. Depois confirma no app.'}</span></span></button>`).join('')}</div>
+    <div class="field"><span class="lb">Onde a família paga?</span><div class="insc-ops" id="ecob">${MODOS_INSC.map(([k, n]) => `<button type="button" class="insc-op" data-cob="${k}" aria-pressed="${cob === k}" ${temPagEv && k !== 'app' ? 'disabled' : ''}><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${k === 'app' ? 'A família paga por Pix no app. Pagou, a baixa é automática.' : 'A família paga direto com quem organiza. Depois confirma no app.'}</span></span></button>`).join('')}</div>
       ${temPagEv ? '<div class="note">Já há inscrições pagas pelo app, então o valor e a forma de pagar não mudam mais.</div>' : ''}</div>
     <div class="field"><span class="lb">Responder até</span><div class="two"><input id="eprazo" type="date" aria-label="Dia" value="${esc((x && x.prazo) || '')}"><input id="ephora" type="time" aria-label="Horário" value="${esc((x && x.prazoHora) || '18:00')}"></div>
       <span class="s">Depois desse dia e horário, as famílias não respondem mais. Deixe o dia em branco para não ter prazo.</span></div>
     <div class="grade2">
       <div class="field so-app"><label for="even">Vencimento</label><input id="even" type="date" value="${esc((x && x.venc) || '')}" ${temPagEv ? 'disabled' : ''}></div>
-      <div class="field"><label for="einsc">Inscrição (R$)</label><input id="einsc" inputmode="decimal" value="${esc(x && (x.cobranca === 'app' ? x.v : x.valorInscricao) ? fmtValor(x.cobranca === 'app' ? x.v : x.valorInscricao) : '')}" placeholder="0,00" ${temPagEv ? 'disabled' : ''}></div>
+      <div class="field"><label for="einsc">Valor (R$)</label><input id="einsc" inputmode="decimal" value="${esc(x && (x.cobranca === 'app' ? x.v : x.valorInscricao) ? fmtValor(x.cobranca === 'app' ? x.v : x.valorInscricao) : '')}" placeholder="0,00" ${temPagEv ? 'disabled' : ''}></div>
       ${S.admin ? `<div class="field so-app"><label for="erec">Recebe</label><select id="erec" ${temPagEv ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : ''}
     </div>
     <div id="eappw">
