@@ -593,8 +593,9 @@ let TRAVA_Y = 0;
 // Escondemos a barra enquanto se digita e, quando o teclado fecha, recolocamos tudo no lugar.
 (function teclado() {
   const campo = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]),textarea,select,[contenteditable="true"]');
-  // com uma janela aberta, o fundo está travado: o "translateZ" no body faria a janela pular de lugar, então só recolocamos a tela no topo
-  const ajustar = () => { const b = document.body; if (b.classList.contains('travado')) { if (window.scrollY) window.scrollTo(0, 0); return; } b.style.transform = 'translateZ(0)'; requestAnimationFrame(() => { b.style.transform = ''; window.scrollTo(window.scrollX, window.scrollY); }); };
+  // com uma janela aberta, o fundo está travado e o iPhone cuida da rolagem sozinho: mexer aqui faz a janela pular
+  // (e, com um campo ainda aberto, briga com o iPhone e o teclado fica subindo e descendo). Também não mexe se ainda há um campo aberto.
+  const ajustar = () => { const b = document.body; if (b.classList.contains('travado') || campo(document.activeElement)) return; b.style.transform = 'translateZ(0)'; requestAnimationFrame(() => { b.style.transform = ''; window.scrollTo(window.scrollX, window.scrollY); }); };
   let t = null;
   document.addEventListener('focusin', e => { if (campo(e.target)) { clearTimeout(t); document.body.classList.add('digitando'); } });
   document.addEventListener('focusout', e => { if (!campo(e.target)) return; clearTimeout(t); t = setTimeout(() => { if (!campo(document.activeElement)) { document.body.classList.remove('digitando'); ajustar(); } }, 120); });
