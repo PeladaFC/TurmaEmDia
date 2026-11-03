@@ -281,6 +281,12 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.deepStrictEqual([it('a1').v, it('a3')], [500, undefined]); // a escola fechou: vale o que ficou gravado
     S.delete('escolas/e1/extras/rt1');
   });
+  await t('taxa por aluno com convite: só paga quem aceitou, o valor por aluno', async () => {
+    S.set('escolas/e1/extras/rt3', { tipo: 'taxa', nome: 'Camisa', v: 0, venc: '2026-11-15', convidados: ['a1', 'a2'], alunas: [], grupos: [], turmas: [], part: { a1: { st: 'interesse' }, a2: { st: 'nao' } }, rateio: { porAluno: 85, total: null, prazoEm: Date.now() - 1000 } });
+    const it = id => C.itensAluna({ ...d(), extras: { rt3: S.get('escolas/e1/extras/rt3') } }, id, H).find(i => i.xid === 'rt3');
+    assert.deepStrictEqual([it('a1').v, it('a2')], [85, undefined]);
+    S.delete('escolas/e1/extras/rt3');
+  });
   await t('evento em que a família se inscreve: ela confirma "Já fiz a inscrição" e pode desfazer só o que ela confirmou', async () => {
     S.set('escolas/e1/extras/ev2', { tipo: 'evento', cobranca: 'familia', semCobranca: true, nome: 'Festival', data: '2026-11-20', convidados: ['a1'], alunas: [], part: {} });
     const A = require('./acoes')(db);
