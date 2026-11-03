@@ -602,6 +602,25 @@ let TRAVA_Y = 0;
   const vv = window.visualViewport;
   if (vv) { let alto = vv.height; vv.addEventListener('resize', () => { if (vv.height > alto + 80) ajustar(); alto = vv.height; }); }
 })();
+let JANELA_TECLADO = () => { };
+// iPhone: com o teclado aberto, a área visível encolhe e o Safari "empurra" a página para cima (a janela dava uma pancada).
+// A janela aberta acompanha só a parte visível da tela: fica parada, logo acima do teclado, e só o teclado sobe.
+(function janelaAcimaDoTeclado() {
+  const vv = window.visualViewport; if (!vv) return;
+  let raf = 0;
+  const pos = () => { raf = 0;
+    const bg = document.getElementById('sbg'); if (!bg) return;
+    const teclado = window.innerHeight - vv.height > 120;
+    if (!teclado) { bg.style.top = bg.style.height = bg.style.bottom = ''; return; }
+    bg.style.top = vv.offsetTop + 'px'; bg.style.height = vv.height + 'px'; bg.style.bottom = 'auto';
+    // o campo tocado fica visível dentro da janela (rola só a janela, nunca a página)
+    const el = document.activeElement, sh = bg.querySelector('.sheet');
+    if (sh && el && sh.contains(el) && el !== sh) { const r = el.getBoundingClientRect(), rs = sh.getBoundingClientRect();
+      if (r.bottom > rs.bottom - 12) sh.scrollTop += r.bottom - rs.bottom + 24; else if (r.top < rs.top + 12) sh.scrollTop -= rs.top - r.top + 24; }
+  };
+  const agendar = () => { if (!raf) raf = requestAnimationFrame(pos); };
+  vv.addEventListener('resize', agendar); vv.addEventListener('scroll', agendar); JANELA_TECLADO = agendar;
+})();
 function travarFundo(on) {
   const b = document.body;
   if (on && !b.classList.contains('travado')) { TRAVA_Y = window.scrollY; b.style.top = -TRAVA_Y + 'px'; b.classList.add('travado'); }
@@ -682,6 +701,7 @@ function sheet(html, montar, aoFechar) {
   $('sbg').onclick = e => { if (e.target.id === 'sbg') fecharSheet(); };
   $('overlay').querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => fecharSheet());
   SHEET_FECHA = aoFechar || null;
+  JANELA_TECLADO(); // janela nova aberta com o teclado ainda na tela
   if (rolagem) $('overlay').querySelector('.sheet').scrollTop = rolagem;
   montar && montar($('overlay').querySelector('.sheet'));
   if (rolagem) { const sh = $('overlay').querySelector('.sheet'); if (sh && !sh.scrollTop) sh.scrollTop = rolagem; }
