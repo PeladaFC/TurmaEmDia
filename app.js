@@ -3759,11 +3759,10 @@ function sheetLanc(id) {
       if (!(v > 0)) return $('lerr2').textContent = 'Informe um valor maior que zero, como 150,00.';
       if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return $('lerr2').textContent = fixa() ? 'Escolha o dia do 1º lançamento.' : 'Escolha a data.';
       $('lok2').disabled = true;
-      // fixa: todo mês no mesmo dia, até cancelar ou por N meses; se o 1º já chegou, ele entra no caixa como feito
+      // fixa: todo mês no mesmo dia, até cancelar ou por N meses; nenhum entra no caixa sozinho: cada mês é marcado como pago/recebido
       if (fixa()) {
         const fid = novoId(), mes = data.slice(0, 7), n = Number($('lqtd').value) || 0, desc = $('ldesc').value.trim() || $('lcat').value;
         const ops = [{ op: 'set', p: `escolas/${S.eid}/fixas/${fid}`, d: { tipo, desc, cat: $('lcat').value, v, dia: Number(data.slice(8)), inicio: mes, fim: n ? mesMais(mes, n - 1) : null, criadoEm: Date.now() } }];
-        if (data <= hoje()) ops.push({ op: 'set', p: `escolas/${S.eid}/lancamentos/${idPagFixa(fid, mes)}`, d: { tipo, cat: $('lcat').value, desc, v, data, pagoEm: data, fixa: fid, mes } });
         try { await B.lote(ops); fecharSheet(); aviso(`${tipo === 'entrada' ? 'Entrada' : 'Despesa'} fixa salva: ${n ? n + ' meses' : 'todo mês, até cancelar'}.`); if (mes !== S.mes) { S.mes = mes; render(); } }
         catch (e) { $('lerr2').textContent = msgErro(e); $('lok2').disabled = false; }
         return;
