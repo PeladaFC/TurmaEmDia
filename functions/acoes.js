@@ -72,11 +72,11 @@ module.exports = db => {
     const a = await ler(`escolas/${eid}/alunas/${alid}`);
     if (!a || !a.responsavelId || !(await db.doc(`escolas/${eid}/membros/${u.uid}/vinculos/${a.responsavelId}`).get()).exists) throw erro('Você só pode responder pelos seus filhos.', 403);
     const ref = db.doc(`escolas/${eid}/extras/${xid}`);
-    // taxa de uniforme: a família escolhe o tamanho de cada filho, entre os da tabela que a escola montou
+    // taxa ou evento com uniforme: a família escolhe o tamanho de cada filho, entre os da tabela que a escola montou
     if (tam != null) {
       await db.runTransaction(async t => {
         const x = (await t.get(ref)).data();
-        if (!x || x.tipo !== 'taxa' || !x.tamanhos) throw erro('Esta taxa não pede tamanho.', 404);
+        if (!x || !['taxa', 'evento', 'competicao'].includes(x.tipo) || !x.tamanhos) throw erro('Aqui não se escolhe tamanho.', 404);
         if (!(x.alunas || []).includes(alid) && !(x.convidados || []).includes(alid)) throw erro('Esta taxa não é para este aluno.', 403);
         if (!(x.tamanhos.opcoes || []).includes(tam)) throw erro('Escolha um dos tamanhos da lista.', 400);
         t.update(ref, { [`tamEsc.${alid}`]: { t: tam, em: Date.now(), por: u.uid, quem: 'familia' } });

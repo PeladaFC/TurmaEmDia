@@ -1982,7 +1982,17 @@ function seletorAtletas(raiz, o) {
 const TAM_PADRAO = { letras: ['PP', 'P', 'M', 'G', 'GG'], numeros: ['2', '4', '6', '8', '10', '12', '14', '16'] };
 const tamRot = (x, t) => t;
 const tamEsc = (x, id) => ((((x || {}).tamEsc || {})[id]) || {}).t || '';
-const alvoTam = x => [...new Set([...(x.alunas || []), ...(x.convidados || [])])].filter(id => S.alunas[id]);
+// bloco "Pedir tamanho do uniforme" dos formulários de taxa e de evento (p = prefixo dos ids)
+const formTamHTML = (x, p, txt) => `<label class="liga"><span class="grow"><b>Pedir tamanho do uniforme</b><span class="s">${txt}</span></span><input type="checkbox" role="switch" id="${p}tam" ${x && x.tamanhos ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+    <div id="${p}tamw" ${x && x.tamanhos ? '' : 'hidden'}><div class="field"><span class="lb">Tamanhos por</span><div class="seg"><button type="button" data-${p}tt="letras" aria-pressed="${!(x && x.tamanhos && x.tamanhos.tipo === 'numeros')}">Letras</button><button type="button" data-${p}tt="numeros" aria-pressed="${!!(x && x.tamanhos && x.tamanhos.tipo === 'numeros')}">Numeração</button></div></div>
+      <div class="field"><label for="${p}tamop">Tamanhos · lista editável</label><input id="${p}tamop" maxlength="120" value="${esc(((x && x.tamanhos && x.tamanhos.opcoes) || TAM_PADRAO.letras).join(', '))}"><span class="sub">Você pode mudar esta lista: escreva os tamanhos que o fornecedor usa, separados por vírgula.</span></div></div>`;
+function ligarFormTam(sh, x, p) {
+  let tipo = x && x.tamanhos && x.tamanhos.tipo === 'numeros' ? 'numeros' : 'letras';
+  $(p + 'tam').onchange = () => { $(p + 'tamw').hidden = !$(p + 'tam').checked; };
+  sh.querySelectorAll(`[data-${p}tt]`).forEach(b => b.onclick = () => { tipo = b.getAttribute(`data-${p}tt`); sh.querySelectorAll(`[data-${p}tt]`).forEach(c => c.setAttribute('aria-pressed', String(c === b))); $(p + 'tamop').value = TAM_PADRAO[tipo].join(', '); });
+  return () => { if (!$(p + 'tam').checked) return null; const op = [...new Set($(p + 'tamop').value.split(',').map(t => t.trim().toUpperCase()).filter(Boolean))].slice(0, 20); return op.length ? { tipo, opcoes: op } : null; };
+}
+const alvoTam = x => ehEvento(x) ? convidadosDe(x).filter(id => S.alunas[id] && ['interesse', 'inscrito'].includes(partDe(x, id))) : [...new Set([...(x.alunas || []), ...(x.convidados || [])])].filter(id => S.alunas[id]);
 // a escola: resumo para o fornecedor e o tamanho de cada aluno
 function sheetTamanhos(xid) {
   const x = S.extras[xid]; if (!x || !x.tamanhos) return fecharSheet();
@@ -2006,11 +2016,11 @@ function avisoTamanhoFam() {
         return `<label class="tam-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span><span class="grow">${t ? '' : '<span class="ev-pend">Falta escolher</span>'}</span>
           <select data-tmx="${esc(xid)}" data-tmi="${esc(id)}" aria-label="Tamanho de ${esc(primeiro(S.alunas[id].nome))}"><option value="">Tamanho</option>${x.tamanhos.opcoes.map(o => `<option ${t === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`; }).join('')}</div>`; }).join('');
 }
-function ligarTamanhoFam(v) {
+function ligarTamanhoFam(v, depois) {
   v.querySelectorAll('[data-tmx]').forEach(b => b.onchange = async () => { if (!b.value) return; b.disabled = true;
     try { if (!MOCK && S.papel === 'f') await servidor('eventoResposta', { eid: S.eid, xid: b.dataset.tmx, alid: b.dataset.tmi, tam: b.value });
       else await B.set(`escolas/${S.eid}/extras/${b.dataset.tmx}`, { tamEsc: { [b.dataset.tmi]: { t: b.value, em: Date.now(), quem: 'familia' } } }, { merge: true });
-      aviso('✓ Tamanho escolhido'); setTimeout(render, 60); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
+      aviso('✓ Tamanho escolhido'); setTimeout(depois || render, 60); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
 }
 // ---- Taxas (e cobranças antigas de eventos) ----
 function sheetExtra(xid, op = {}) {
@@ -2045,10 +2055,8 @@ function sheetExtra(xid, op = {}) {
     <div class="field"><label for="xven">Vencimento</label><input id="xven" type="date" value="${esc(x ? x.venc : hoje())}" ${temPag ? 'disabled' : ''}></div></div>
     ${temPag ? '<div class="note">Já há pagamentos desta cobrança: o valor padrão e o vencimento não mudam mais. Quem já pagou fica como está; dá para incluir alunos e mudar o valor de quem ainda não pagou.</div>' : ''}
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
-    <label class="liga"><span class="grow"><b>Pedir tamanho do uniforme</b><span class="s">A família escolhe o tamanho no app, e você vê o resumo para o fornecedor.</span></span><input type="checkbox" role="switch" id="xtam" ${x && x.tamanhos ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
-    <div id="xtamw" ${x && x.tamanhos ? '' : 'hidden'}><div class="field"><span class="lb">Tamanhos por</span><div class="seg"><button type="button" data-tt="letras" aria-pressed="${!(x && x.tamanhos && x.tamanhos.tipo === 'numeros')}">Letras</button><button type="button" data-tt="numeros" aria-pressed="${!!(x && x.tamanhos && x.tamanhos.tipo === 'numeros')}">Numeração</button></div></div>
-      <div class="field"><label for="xtamop">Tamanhos · lista editável</label><input id="xtamop" maxlength="120" value="${esc(((x && x.tamanhos && x.tamanhos.opcoes) || TAM_PADRAO.letras).join(', '))}"><span class="sub" id="xtamdica"></span></div>
-      ${x && x.tamanhos ? `<button type="button" class="btn ghost" id="xtamver">Ver os tamanhos escolhidos</button>` : ''}</div>
+    ${formTamHTML(x, 'x', 'A família escolhe o tamanho no app, e você vê o resumo para o fornecedor.')}
+    ${x && x.tamanhos ? `<button type="button" class="btn ghost" id="xtamver">Ver os tamanhos escolhidos</button>` : ''}
     ${blocoNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.', x && x.recebedor)}
     <div class="field"><span class="lb" id="xparalb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
     <div class="xresumo" id="xcont"></div>
@@ -2078,12 +2086,8 @@ function sheetExtra(xid, op = {}) {
       else if ($('xevnota')) $('xevnota').textContent = '';
       sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
     ligarBlocoNota('xnota', 'xrec');
-    let tamTipo = x && x.tamanhos && x.tamanhos.tipo === 'numeros' ? 'numeros' : 'letras';
-    const dicaTam = () => { $('xtamdica').textContent = 'Você pode mudar esta lista: escreva os tamanhos que o fornecedor usa, separados por vírgula.'; };
-    $('xtam').onchange = () => { $('xtamw').hidden = !$('xtam').checked; dicaTam(); }; dicaTam();
-    s.querySelectorAll('[data-tt]').forEach(b => b.onclick = () => { tamTipo = b.dataset.tt; s.querySelectorAll('[data-tt]').forEach(c => c.setAttribute('aria-pressed', String(c === b))); $('xtamop').value = TAM_PADRAO[tamTipo].join(', '); dicaTam(); });
+    const tamSalvar = ligarFormTam(s, x, 'x');
     if ($('xtamver')) $('xtamver').onclick = () => abrirDe(() => sheetExtra(xid), () => sheetTamanhos(xid));
-    const tamSalvar = () => { if (!$('xtam').checked) return null; const op = [...new Set($('xtamop').value.split(',').map(t => t.trim().toUpperCase()).filter(Boolean))].slice(0, 20); return op.length ? { tipo: tamTipo, opcoes: op } : null; };
     s.querySelectorAll('[data-xm]').forEach(b => b.onclick = () => { dividir = b.dataset.xm === 'dividir';
       s.querySelectorAll('[data-xm]').forEach(c => c.setAttribute('aria-pressed', String(c === b)));
       $('xdivw').hidden = !dividir; $('xvalw').hidden = dividir; verTodos();
@@ -2179,6 +2183,7 @@ function sheetEvento(xid) {
     <label class="check"><input type="checkbox" id="erep" ${x && x.pixRepassa === true ? 'checked' : ''}> <span class="grow">Quem paga cobre a taxa do Pix (${TAXA_TRANSACAO()}%)<span class="s" style="display:block;color:var(--muted);font-size:.82rem">Vale para a inscrição e para as taxas deste evento.</span></span></label>
     ${simTaxaHTML('esim', 0, true)}
     ${blocoNota('enota', !!(x && x.nota === true), 'Vale para a inscrição paga pelo app. Se for só repasse ao organizador, deixe desligado.', x && x.recebedor)}</div>
+    ${formTamHTML(x, 'e', 'O evento dá camisa ou uniforme? Quem vai escolhe o tamanho no app.')}
     <div class="field"><span class="lb">Fotos do evento</span><span class="sub">Cartaz, regulamento, horários. Os responsáveis veem junto com o evento. Até ${FOTOS_EV_MAX} fotos.</span>
       <div class="ev-fotos" id="efotos"></div><input type="file" id="efoto" accept="image/*" hidden><div class="err" id="eferr" role="alert"></div></div>
     <div class="field"><span class="lb">Quem pode ir? Os responsáveis recebem o convite no app</span><div id="equadros"></div></div>
@@ -2188,6 +2193,7 @@ function sheetEvento(xid) {
     const sel = seletorAtletas($('equadros'), { quadros, selA, usados, subDe: id => ST_PART[partDe(x, id)] || turmasTxt(S.alunas[id]) || 'Sem turma' });
     sel.desenhar();
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'taxa') sheetExtra(null, { tipo: 'taxa' }); });
+    const tamSalvarE = ligarFormTam(s, x, 'e');
     $('edata').addEventListener('change', () => { const a = $('edata').value, b = $('edfim').value; if (a && (!b || b < a)) $('edfim').value = a; $('edfim').min = a; });
     const verCob = () => { s.querySelectorAll('[data-cob]').forEach(b => b.setAttribute('aria-pressed', b.dataset.cob === cob)); $('eappw').hidden = cob !== 'app'; s.querySelectorAll('.so-app').forEach(e => e.hidden = cob !== 'app'); };
     s.querySelectorAll('[data-cob]').forEach(b => b.onclick = () => { if (b.disabled) return; cob = b.dataset.cob; verCob(); }); verCob();
@@ -2234,7 +2240,7 @@ function sheetEvento(xid) {
       if (linksOk.some(l => !l.d)) { $('eok').disabled = false; return err('Dê uma descrição curta para cada item em "Links e contatos".'); }
       const id = xid || novoId();
       try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', nota: S.admin ? notaSalvar('enota', 'erec', x && x.nota === true) : !!(x && x.nota === true), fotos: fotos.length, endereco: $('eend').value.trim() || null, links: linksOk, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
-          valorInscricao: !app && insc > 0 ? C.r2(insc) : null, prazo: $('eprazo').value || null, prazoHora: $('eprazo').value ? ($('ephora').value || '18:00') : null, convidados: ids, origem: sel.origem(), part,
+          valorInscricao: !app && insc > 0 ? C.r2(insc) : null, tamanhos: tamSalvarE(), prazo: $('eprazo').value || null, prazoHora: $('eprazo').value ? ($('ephora').value || '18:00') : null, convidados: ids, origem: sel.origem(), part,
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         if (fotosMudou && (fotos.length || (x && x.fotos))) { // sem foto nenhuma, antes e agora: nada a guardar
           try { await B.set(`escolas/${S.eid}/midiaEventos/${id}`, { fotos }); delete MIDIA_EV[id]; }
@@ -2346,6 +2352,7 @@ function sheetVerEvento(xid) {
     ${fotosHTML(xid, fotosDoEvento(xid, x, () => { if ($('evmsg')) sheetVerEvento(xid); }))}
     <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : fam ? 'Falta confirmar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
     <button type="button" class="btn ghost btn-ico" id="evmsg">${ICO_WA}<span>Mensagem para o grupo</span></button>
+    ${x.tamanhos ? '<button type="button" class="btn ghost" id="evtam">Tamanhos do uniforme</button>' : ''}
     <button type="button" class="btn ghost" id="evdocs">Lista dos atletas (PDF)</button>
     ${app ? sec('Vão · aguardando pagamento', g.interesse, id => ({ valor: valorCol(brl(C.valorExtra(x, id)), '<span class="chip aberto">A pagar</span>'), acoes: vaiNao(id) }), 'Ninguém com inscrição a pagar.')
       : fam ? sec('Vão · falta confirmar a inscrição', g.interesse, id => ({ valor: x.valorInscricao > 0 ? valorCol(brl(x.valorInscricao)) : '', acoes: `${vaiNao(id)}${bt(id, 'inscrito', 'Já inscrito', 'ghost ev-insc')}` }), 'Todos que vão já confirmaram a inscrição.')
@@ -2359,6 +2366,7 @@ function sheetVerEvento(xid) {
     <div class="note">${g.inscrito.length + g.interesse.length ? `Já vem marcado quem ${g.inscrito.length ? 'confirmou a inscrição' : 'disse que vai'}; dá para ajustar. Serve para ajuda de custo, uniforme, transporte.` : 'Disponível quando alguém disser que vai.'}</div>
     <div class="actions"><button type="button" class="btn ghost" id="evedit">Editar evento</button><button type="button" class="btn ghost" data-fechar>Fechar</button></div>`, sh => {
     $('evmsg').onclick = () => abrirDe(volta, () => sheetMsgEvento(xid));
+    if ($('evtam')) $('evtam').onclick = () => abrirDe(volta, () => sheetTamanhos(xid));
     $('evdocs').onclick = () => { const cv = convidadosDe(x), vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)));
       abrirDe(volta, () => sheetJuntarDocs({ titulo: x.nome, evento: xid, pre: vao, volta })); };
     ligarFotos(sh);
@@ -2469,7 +2477,8 @@ function respFamilia(xid, x, id) {
     sub = modo === 'app' ? 'A inscrição está na tela Pagar' : modo === 'familia' ? `Faça a inscrição com ${esc(x.organizador || 'quem organiza')} e depois confirme aqui` : 'A escola vai cuidar da inscrição';
     if (modo === 'familia') extra = `<span class="ev-ja-lin"><button type="button" class="btn btn-mini ev-ja" data-fx="${esc(xid)}" data-fid="${esc(id)}" data-fst="inscrito">Já fiz a inscrição</button><span class="ev-pend">Inscrição pendente</span></span>`;
   }
-  return `<div class="ev-resp"><span class="grow"><b>${nm}</b><span class="s">${sub}</span>${extra}</span>${direita}</div>`;
+  const tam = x.tamanhos && (st === 'interesse' || st === 'inscrito') ? `<label class="tam-lin"><span class="grow"><b style="font-size:.92rem">Tamanho do uniforme</b>${tamEsc(x, id) ? '' : ' <span class="ev-pend">falta escolher</span>'}</span><select data-tmx="${esc(xid)}" data-tmi="${esc(id)}" aria-label="Tamanho de ${nm}"><option value="">Tamanho</option>${x.tamanhos.opcoes.map(o => `<option ${tamEsc(x, id) === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>` : '';
+  return `<div class="ev-resp"><span class="grow"><b>${nm}</b><span class="s">${sub}</span>${extra}</span>${direita}</div>${tam}`;
 }
 // família: disse que vai, mas a inscrição é com quem organiza e ainda não confirmou que fez
 function avisoInscricaoPendente() {
@@ -4115,6 +4124,7 @@ function docsFilhaHTML(id) {
 }
 // respostas "vai / não vai / já fiz a inscrição" da família
 function ligarRespostas(v, depois) {
+  ligarTamanhoFam(v, depois);
   v.querySelectorAll('[data-fx]').forEach(b => b.onclick = async () => { b.disabled = true; try { await marcarPart(b.dataset.fx, b.dataset.fid, b.dataset.fst); if (depois) setTimeout(depois, 60); const m = modoInsc(S.extras[b.dataset.fx]), f = b.dataset.fst;
     aviso(f === 'inscrito' ? 'Inscrição confirmada. A escola já está sabendo.' : f === 'nao' ? 'Resposta enviada' : m === 'app' ? 'Combinado! A inscrição já está na tela Pagar.' : m === 'familia' ? 'Combinado! Faça a inscrição com quem organiza e depois toque em "Já fiz a inscrição".' : 'Combinado! A escola vai cuidar da inscrição.'); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
 }
@@ -5629,7 +5639,7 @@ function sheetDocsEscola() {
 // informações do aluno para a lista (PDF e WhatsApp), na ordem em que aparecem
 const CAMPOS_LISTA = [['idade', 'Idade'], ['nasc', 'Data de nascimento'], ['cat', 'Categoria'], ['turma', 'Turma'], ['tam', 'Tamanho do uniforme'], ['resp', 'Responsável'], ['tel', 'Telefone']];
 // tamanho do uniforme do aluno: o da taxa de uniforme mais recente em que foi escolhido (de preferência a do evento da lista)
-const tamDoAluno = (id, evento) => { const ts = Object.values(S.extras || {}).filter(x => x && x.tamanhos && tamEsc(x, id)).sort((a, b) => (b.evento === evento) - (a.evento === evento) || (b.criadoEm || 0) - (a.criadoEm || 0)); return ts.length ? 'Tam. ' + tamEsc(ts[0], id) : ''; };
+const tamDoAluno = (id, evento) => { const ok = ([k, x]) => k === evento || x.evento === evento, ts = Object.entries(S.extras || {}).filter(([, x]) => x && x.tamanhos && tamEsc(x, id)).sort((a, b) => ok(b) - ok(a) || (b[1].criadoEm || 0) - (a[1].criadoEm || 0)); return ts.length ? 'Tam. ' + tamEsc(ts[0][1], id) : ''; };
 function infoAluno(id, campos, evento) {
   const a = S.alunas[id] || {}, r = respDe(id) || {}, f = {
     idade: () => idade(a.nascimento), nasc: () => a.nascimento ? dataBRA(a.nascimento) : '', cat: () => catNome(id), turma: () => turmasTxt(a),
@@ -6682,7 +6692,7 @@ async function semearMock() {
   for (const [k, v] of Object.entries(alunas)) { v.inicio = m2; v.ativa = true; v.desc = v.desc || null; await set(`${p}/alunas/${k}`, v); }
   await set(`${p}/grupos/g1`, { nome: 'Equipe competitiva', alunas: ['al1', 'al3', 'al4'] });
   await set(`${p}/grupos/g2`, { nome: 'Vai ao Estadual', alunas: ['al1', 'al4'] });
-  await set(`${p}/extras/x1`, { tipo: 'evento', semCobranca: true, nome: 'Torneio Regional', data: `${mesMais(m, 1)}-06`, dataFim: `${mesMais(m, 1)}-09`, local: 'Caruaru', organizador: 'Federação Pernambucana', valorInscricao: 85, prazo: `${m}-28`, convidados: ['al1', 'al3', 'al4'], origem: { grupos: ['g1'] }, part: { al3: { st: 'inscrito', em: Date.now() - 3 * 864e5, quem: 'escola' }, al4: { st: 'interesse', em: Date.now() - 864e5, quem: 'familia' } }, v: 0, alunas: [], grupos: [], turmas: [] });
+  await set(`${p}/extras/x1`, { tipo: 'evento', semCobranca: true, tamanhos: { tipo: 'letras', opcoes: ['PP', 'P', 'M', 'G', 'GG'] }, nome: 'Torneio Regional', data: `${mesMais(m, 1)}-06`, dataFim: `${mesMais(m, 1)}-09`, local: 'Caruaru', organizador: 'Federação Pernambucana', valorInscricao: 85, prazo: `${m}-28`, convidados: ['al1', 'al3', 'al4'], origem: { grupos: ['g1'] }, part: { al3: { st: 'inscrito', em: Date.now() - 3 * 864e5, quem: 'escola' }, al4: { st: 'interesse', em: Date.now() - 864e5, quem: 'familia' } }, v: 0, alunas: [], grupos: [], turmas: [] });
   await set(`${p}/extras/x2`, { tipo: 'taxa', nome: 'Taxa da federação 2027', v: 40, venc: `${m}-12`, grupos: ['g2'], turmas: [], alunas: [], recebedor: 'escola' });
   // chamada: dias de aula, um 2º professor e as chamadas das últimas semanas da Iniciação (falta a mais recente)
   { const D = { t1: [1, 3], t2: [2, 4, 6], t3: [5], t4: [6], t5: [2, 4], t6: [1, 3], t7: [1, 3], t8: [2, 4], t9: [5] };
