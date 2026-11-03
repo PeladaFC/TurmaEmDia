@@ -3536,6 +3536,17 @@ function tFinanceiro(v) {
   (aba === 'prof' ? finProfessoras : finEscola)($('fcorpo'));
 }
 // contabilidade rápida da escola: o que caiu na conta da escola, saídas e saldo
+// gráfico de pizza das saídas por categoria, com a legenda (valor e %)
+const CORES_PIZZA = ['#8a6a48', '#c0533a', '#2f7d6d', '#d2a03c', '#5b6f9a', '#9c5d8a', '#6f8f3a', '#b9825a', '#4f9bb0', '#7a7266'];
+function pizzaHTML(cats) {
+  const tot = cats.reduce((s, [, x]) => s + x, 0) || 1, R = 46, C0 = 50;
+  let a0 = -Math.PI / 2;
+  const fatias = cats.map(([c, x], i) => { const ang = x / tot * Math.PI * 2, a1 = a0 + ang, cor = CORES_PIZZA[i % CORES_PIZZA.length];
+    const d = cats.length === 1 ? '' : `M${C0},${C0} L${(C0 + R * Math.cos(a0)).toFixed(2)},${(C0 + R * Math.sin(a0)).toFixed(2)} A${R},${R} 0 ${ang > Math.PI ? 1 : 0} 1 ${(C0 + R * Math.cos(a1)).toFixed(2)},${(C0 + R * Math.sin(a1)).toFixed(2)} Z`;
+    a0 = a1; return cats.length === 1 ? `<circle cx="${C0}" cy="${C0}" r="${R}" fill="${cor}"/>` : `<path d="${d}" fill="${cor}" stroke="var(--surface)" stroke-width="1"/>`; }).join('');
+  return `<div class="pizza"><svg viewBox="0 0 100 100" role="img" aria-label="Saídas por categoria">${fatias}</svg>
+    <ul class="pizza-leg">${cats.map(([c, x], i) => `<li><i style="background:${CORES_PIZZA[i % CORES_PIZZA.length]}"></i><span class="grow pz-nome">${esc(c)}</span><span class="pz-val"><b class="num">${brl(x)}</b><span class="s num">${Math.round(x / tot * 100)}%</span></span></li>`).join('')}</ul></div>`;
+}
 function finEscola(v) {
   const mes = S.mes, rs = recebidosNoMes(mes).filter(r => r.rec === 'escola');
   const pix = C.r2(rs.filter(r => ONLINE(r.via)).reduce((s, r) => s + r.v, 0)), din = C.r2(rs.filter(r => !ONLINE(r.via)).reduce((s, r) => s + r.v, 0));
@@ -3562,7 +3573,7 @@ function finEscola(v) {
     </section>
     ${rs.length ? `<details class="dica"><summary class="headrow" style="cursor:pointer"><h2>Entradas da escola</h2><span class="sub">${rs.length} pagamento${rs.length === 1 ? '' : 's'} · ver ›</span></summary>
       <ul class="list" style="margin-top:10px">${rs.map(r => `<li><div class="grow"><div class="t">${esc(r.aluna)}</div>${linhas(esc(r.cobranca), `<span class="num">${esc(r.forma)} em ${esc(r.data)}</span>`)}</div>${valorCol(brl(r.v), '', 'in')}</li>`).join('')}</ul></details>` : ''}
-    <section><h2>Para onde foi o dinheiro</h2>${cats.length ? `<div class="bars">${cats.map(([c, x]) => `<div class="bar"><div class="row1"><span>${esc(c)}</span><b class="num">${brl(x)}</b></div><div class="track"><i class="late" style="width:${Math.max(3, x / maxC * 100)}%"></i></div></div>`).join('')}</div>` : '<div class="sub">Nenhuma saída registrada neste mês.</div>'}</section>
+    <section><h2>Para onde foi o dinheiro</h2>${cats.length ? pizzaHTML(cats) : '<div class="sub">Nenhuma saída registrada neste mês.</div>'}</section>
     ${blocoFixas(fx, mes)}
     <section><div class="headrow"><h2>Lançamentos</h2><button class="add" id="cnl">+ Lançamento</button></div>
       ${ls_.length ? `<ul class="list">${ls_.map(([id, l]) => `<li class="tap" data-l="${esc(id)}"><div class="grow"><div class="t">${esc(l.desc || l.cat)}</div>${linhas(esc(l.cat), `<span class="num">${dataBR(l.data)}${l.localId && S.locais[l.localId] ? ' · ' + esc(S.locais[l.localId].nome) : ''}</span>`)}</div>${valorCol(`${l.tipo === 'entrada' ? '+' : '−'} ${brl(l.v)}`, '', l.tipo === 'entrada' ? 'in' : 'out')}</li>`).join('')}</ul>`
@@ -3659,7 +3670,7 @@ function tCaixa(v) {
       </div>
       <div class="sub num">${brl(pix)} entraram por Pix. Conta pelo dia em que o dinheiro entrou.</div>
     </div>
-    <section><h2>Para onde foi o dinheiro</h2>${cats.length ? `<div class="bars">${cats.map(([c, x]) => `<div class="bar"><div class="row1"><span>${esc(c)}</span><b class="num">${brl(x)}</b></div><div class="track"><i class="late" style="width:${Math.max(3, x / maxC * 100)}%"></i></div></div>`).join('')}</div>` : '<div class="sub">Nenhuma saída registrada neste mês.</div>'}</section>
+    <section><h2>Para onde foi o dinheiro</h2>${cats.length ? pizzaHTML(cats) : '<div class="sub">Nenhuma saída registrada neste mês.</div>'}</section>
     <section><div class="headrow"><h2>Lançamentos</h2><button class="add" id="cnl">+ Lançamento</button></div>
       ${ls_.length ? `<ul class="list">${ls_.map(([id, l]) => `<li class="tap" data-l="${esc(id)}"><div class="grow"><div class="t">${esc(l.desc || l.cat)}</div><div class="s num">${dataBR(l.data)} · ${esc(l.cat)}${l.localId && S.locais[l.localId] ? ' · ' + esc(S.locais[l.localId].nome) : ''}</div></div><span class="amt num ${l.tipo === 'entrada' ? 'in' : 'out'}">${l.tipo === 'entrada' ? '+' : '−'} ${brl(l.v)}</span></li>`).join('')}</ul>`
         : `<div class="empty"><span>Registre aqui salários, aluguel, compra de aparelhos, inscrições em competições, patrocínios. Mensalidades e cobranças pagas entram sozinhas.</span></div>`}
