@@ -709,6 +709,33 @@ function sheet(html, montar, aoFechar) {
   if (rolagem) { const sh = $('overlay').querySelector('.sheet'); if (sh && !sh.scrollTop) sh.scrollTop = rolagem; }
 }
 let SHEET_CHAVE = '';
+// arrastar a janela para baixo pela alça (ou pelo topo, com a janela no início) fecha, como nos apps do celular
+(function arrastarParaFechar() {
+  let sh = null, y0 = 0, t0 = 0, dy = 0, ativo = false;
+  document.addEventListener('touchstart', e => {
+    const s = e.target.closest && e.target.closest('#overlay .sheet'); if (!s || e.touches.length !== 1) return;
+    const topo = e.touches[0].clientY - s.getBoundingClientRect().top;
+    // só pela faixa de cima (alça e título), e com a janela rolada até o início; nunca começando num campo
+    if (topo > 64 || s.scrollTop > 2 || e.target.closest('input,textarea,select,button,a,label')) return;
+    sh = s; y0 = e.touches[0].clientY; t0 = Date.now(); dy = 0; ativo = false;
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!sh) return; dy = e.touches[0].clientY - y0;
+    if (!ativo && dy > 6) { ativo = true; sh.style.transition = 'none'; }
+    if (!ativo) return;
+    e.preventDefault(); sh.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  }, { passive: false });
+  const soltar = () => {
+    if (!sh) return; const s = sh; sh = null; if (!ativo) return;
+    const rapido = dy > 40 && dy / Math.max(1, Date.now() - t0) > 0.6;
+    s.style.transition = 'transform .2s ease';
+    if (dy > Math.min(140, s.offsetHeight * 0.25) || rapido) {
+      s.style.transform = 'translateY(100%)';
+      setTimeout(() => { fecharSheet(); if (document.body.contains(s)) { s.style.transition = 'transform .2s ease'; s.style.transform = ''; } }, 180);
+    } else s.style.transform = '';
+  };
+  document.addEventListener('touchend', soltar); document.addEventListener('touchcancel', soltar);
+})();
 // aviso de erro numa janela: se ficou fora da vista (ex.: lá embaixo, perto do botão), a janela rola até ele.
 // Antes, com o teclado aberto, a pessoa tocava em Salvar, o aviso aparecia escondido e parecia que nada tinha acontecido.
 new MutationObserver(ms => {
