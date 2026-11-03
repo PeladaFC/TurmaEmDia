@@ -1980,15 +1980,8 @@ function seletorAtletas(raiz, o) {
 
 /* ---- Tamanho do uniforme numa taxa: a escola escolhe letras ou numeração; a família (ou a escola) escolhe o de cada aluno ---- */
 const TAM_PADRAO = { letras: ['PP', 'P', 'M', 'G', 'GG'], numeros: ['2', '4', '6', '8', '10', '12', '14', '16'] };
-const IDADE_LETRA = { PP: '2 a 5 anos', P: '6 a 9 anos', M: '10 a 12 anos', G: '13 a 14 anos', GG: '15 anos ou mais' };
-const tamRot = (x, t) => x && x.tamanhos && x.tamanhos.tipo === 'letras' && IDADE_LETRA[t] ? `${t} (${IDADE_LETRA[t]})` : t;
+const tamRot = (x, t) => t;
 const tamEsc = (x, id) => ((((x || {}).tamEsc || {})[id]) || {}).t || '';
-// sugestão pela idade: nas letras, pela faixa; na numeração, o primeiro número igual ou acima da idade
-function tamSugerido(x, id) {
-  const op = ((x || {}).tamanhos || {}).opcoes || [], n = C.idadeNoAno((S.alunas[id] || {}).nascimento, new Date().getFullYear()); if (!op.length || n == null) return '';
-  if (x.tamanhos.tipo === 'letras') { const l = n <= 5 ? 'PP' : n <= 9 ? 'P' : n <= 12 ? 'M' : n <= 14 ? 'G' : 'GG'; return op.includes(l) ? l : ''; }
-  const nums = op.map(Number).filter(v => !isNaN(v)).sort((a, b) => a - b); const v = nums.find(v => v >= n) ?? nums[nums.length - 1]; return v != null ? String(v) : '';
-}
 const alvoTam = x => [...new Set([...(x.alunas || []), ...(x.convidados || [])])].filter(id => S.alunas[id]);
 // a escola: resumo para o fornecedor e o tamanho de cada aluno
 function sheetTamanhos(xid) {
@@ -1998,7 +1991,7 @@ function sheetTamanhos(xid) {
   sheet(`<h3>Tamanhos · ${esc(x.nome)}</h3>
     <div class="faixa-card" style="background:var(--bg)"><b class="num">${cont.length ? esc(cont.map(([t, n]) => `${n} ${t}`).join(' · ')) : 'Ninguém escolheu ainda'}</b>
       <span class="s">${faltam.length ? `Faltam ${faltam.length} escolher${faltam.length <= 5 ? ': ' + esc(faltam.map(id => primeiro(S.alunas[id].nome)).join(', ')) : ''}.` : 'Todos já escolheram.'} A família escolhe no app. A escola também pode escolher aqui.</span></div>
-    <ul class="list">${ids.map(id => `<li><div class="grow"><div class="t">${esc(S.alunas[id].nome)}</div>${linhas(esc([idade(S.alunas[id].nascimento), tamSugerido(x, id) && !tamEsc(x, id) ? 'sugerido: ' + tamSugerido(x, id) : ''].filter(Boolean).join(' · ')))}</div>
+    <ul class="list">${ids.map(id => `<li><div class="grow"><div class="t">${esc(S.alunas[id].nome)}</div>${linhas(esc(idade(S.alunas[id].nascimento) || ''))}</div>
       <select data-tm="${esc(id)}" aria-label="Tamanho de ${esc(S.alunas[id].nome)}" style="width:auto;min-width:92px"><option value="">—</option>${op.map(t => `<option ${tamEsc(x, id) === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></li>`).join('')}</ul>
     <div class="err" id="tmerr" role="alert"></div><button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
     sh.querySelectorAll('[data-tm]').forEach(sl => sl.onchange = async () => { try { await B.set(`escolas/${S.eid}/extras/${xid}`, { tamEsc: { [sl.dataset.tm]: sl.value ? { t: sl.value, em: Date.now(), quem: 'escola' } : null } }, { merge: true }); setTimeout(() => sheetTamanhos(xid), 60); } catch (e) { $('tmerr').textContent = msgErro(e); } });
@@ -2009,9 +2002,9 @@ function avisoTamanhoFam() {
   return Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.tamanhos && !(x.rateio && !x.rateio.fechadoEm && C.rateioFechado(x))).map(([xid, x]) => {
     const meus = alvoTam(x).filter(id => !x.rateio || x.rateio.fechadoEm ? (x.alunas || []).includes(id) : rtSt(x, id) !== 'nao'); if (!meus.length) return '';
     return `<div class="rt-card"><b class="rt-tit">${esc(x.nome)}: tamanho do uniforme</b><span class="s">Escolha o tamanho${meus.length > 1 ? ' de cada um' : ''}. Dá para mudar até a escola fechar o pedido.</span>
-      ${meus.map(id => { const t = tamEsc(x, id), sg = tamSugerido(x, id);
+      ${meus.map(id => { const t = tamEsc(x, id);
         return `<div class="rt-fil"><div class="ev-ja-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span>${t ? `<span class="s">Tamanho ${esc(t)}</span>` : '<span class="ev-pend">Falta escolher</span>'}</div>
-          <div class="opcoes">${x.tamanhos.opcoes.map(o => `<button type="button" class="pick" data-tmx="${esc(xid)}" data-tmi="${esc(id)}" data-tmv="${esc(o)}" aria-pressed="${t === o}">${esc(tamRot(x, o))}${!t && o === sg ? ' · sugerido' : ''}</button>`).join('')}</div></div>`; }).join('')}</div>`; }).join('');
+          <div class="opcoes">${x.tamanhos.opcoes.map(o => `<button type="button" class="pick" data-tmx="${esc(xid)}" data-tmi="${esc(id)}" data-tmv="${esc(o)}" aria-pressed="${t === o}">${esc(tamRot(x, o))}</button>`).join('')}</div></div>`; }).join('')}</div>`; }).join('');
 }
 function ligarTamanhoFam(v) {
   v.querySelectorAll('[data-tmx]').forEach(b => b.onclick = async () => { b.disabled = true;
@@ -2054,7 +2047,7 @@ function sheetExtra(xid, op = {}) {
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
     <label class="liga"><span class="grow"><b>Pedir tamanho do uniforme</b><span class="s">A família escolhe o tamanho no app, e você vê o resumo para o fornecedor.</span></span><input type="checkbox" role="switch" id="xtam" ${x && x.tamanhos ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
     <div id="xtamw" ${x && x.tamanhos ? '' : 'hidden'}><div class="field"><span class="lb">Tamanhos por</span><div class="seg"><button type="button" data-tt="letras" aria-pressed="${!(x && x.tamanhos && x.tamanhos.tipo === 'numeros')}">Letras</button><button type="button" data-tt="numeros" aria-pressed="${!!(x && x.tamanhos && x.tamanhos.tipo === 'numeros')}">Numeração</button></div></div>
-      <div class="field"><label for="xtamop">Tamanhos (separados por vírgula)</label><input id="xtamop" maxlength="120" value="${esc(((x && x.tamanhos && x.tamanhos.opcoes) || TAM_PADRAO.letras).join(', '))}"><span class="sub" id="xtamdica"></span></div>
+      <div class="field"><label for="xtamop">Tamanhos · lista editável</label><input id="xtamop" maxlength="120" value="${esc(((x && x.tamanhos && x.tamanhos.opcoes) || TAM_PADRAO.letras).join(', '))}"><span class="sub" id="xtamdica"></span></div>
       ${x && x.tamanhos ? `<button type="button" class="btn ghost" id="xtamver">Ver os tamanhos escolhidos</button>` : ''}</div>
     ${blocoNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.', x && x.recebedor)}
     <div class="field"><span class="lb" id="xparalb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
@@ -2086,7 +2079,7 @@ function sheetExtra(xid, op = {}) {
       sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
     ligarBlocoNota('xnota', 'xrec');
     let tamTipo = x && x.tamanhos && x.tamanhos.tipo === 'numeros' ? 'numeros' : 'letras';
-    const dicaTam = () => { $('xtamdica').textContent = tamTipo === 'letras' ? 'A família vê a idade de cada letra: PP (2 a 5 anos), P (6 a 9), M (10 a 12), G (13 a 14), GG (15 ou mais).' : 'Na numeração, o app sugere o número mais perto da idade da criança.'; };
+    const dicaTam = () => { $('xtamdica').textContent = 'Você pode mudar esta lista: escreva os tamanhos que o fornecedor usa, separados por vírgula.'; };
     $('xtam').onchange = () => { $('xtamw').hidden = !$('xtam').checked; dicaTam(); }; dicaTam();
     s.querySelectorAll('[data-tt]').forEach(b => b.onclick = () => { tamTipo = b.dataset.tt; s.querySelectorAll('[data-tt]').forEach(c => c.setAttribute('aria-pressed', String(c === b))); $('xtamop').value = TAM_PADRAO[tamTipo].join(', '); dicaTam(); });
     if ($('xtamver')) $('xtamver').onclick = () => abrirDe(() => sheetExtra(xid), () => sheetTamanhos(xid));
