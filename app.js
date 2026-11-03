@@ -593,7 +593,8 @@ let TRAVA_Y = 0;
 // Escondemos a barra enquanto se digita e, quando o teclado fecha, recolocamos tudo no lugar.
 (function teclado() {
   const campo = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]),textarea,select,[contenteditable="true"]');
-  const ajustar = () => { const b = document.body; b.style.transform = 'translateZ(0)'; requestAnimationFrame(() => { b.style.transform = ''; window.scrollTo(window.scrollX, window.scrollY); }); };
+  // com uma janela aberta, o fundo está travado: o "translateZ" no body faria a janela pular de lugar, então só recolocamos a tela no topo
+  const ajustar = () => { const b = document.body; if (b.classList.contains('travado')) { if (window.scrollY) window.scrollTo(0, 0); return; } b.style.transform = 'translateZ(0)'; requestAnimationFrame(() => { b.style.transform = ''; window.scrollTo(window.scrollX, window.scrollY); }); };
   let t = null;
   document.addEventListener('focusin', e => { if (campo(e.target)) { clearTimeout(t); document.body.classList.add('digitando'); } });
   document.addEventListener('focusout', e => { if (!campo(e.target)) return; clearTimeout(t); t = setTimeout(() => { if (!campo(document.activeElement)) { document.body.classList.remove('digitando'); ajustar(); } }, 120); });
@@ -669,7 +670,10 @@ let ABAS_ATUAIS = [];
   document.addEventListener('touchend', fim); document.addEventListener('touchcancel', fim);
 })();
 function sheet(html, montar, aoFechar) {
-  try { const l = (new Error().stack || '').split('\n').map(x => (x.match(/(?:at\s+)?([A-Za-z_$][\w$]*)/) || [])[1]).filter(x => x && !['Error', 'sheet', 'at', 'async'].includes(x)); TELA_SHEET = l[0] || 'janela'; } catch (x) { TELA_SHEET = 'janela'; }
+  // a mesma janela desenhada de novo (ex.: tocou numa opção) continua no mesmo ponto da rolagem, sem pular para o topo
+  let chave = '';
+  try { const l = (new Error().stack || '').split('\n').map(x => (x.match(/(?:at\s+)?([A-Za-z_$][\w$]*)/) || [])[1]).filter(x => x && !['Error', 'sheet', 'at', 'async'].includes(x)); TELA_SHEET = l[0] || 'janela'; chave = l.slice(0, 3).join('>'); } catch (x) { TELA_SHEET = 'janela'; }
+  const antes = $('overlay').querySelector('.sheet'), rolagem = antes && chave && chave === SHEET_CHAVE ? antes.scrollTop : 0; SHEET_CHAVE = chave;
   SHEET_SAIR = null;
   if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); }
   SHEET_VOLTAR = PROX_VOLTAR; PROX_VOLTAR = null; travarFundo(true);
@@ -677,8 +681,11 @@ function sheet(html, montar, aoFechar) {
   $('sbg').onclick = e => { if (e.target.id === 'sbg') fecharSheet(); };
   $('overlay').querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => fecharSheet());
   SHEET_FECHA = aoFechar || null;
+  if (rolagem) $('overlay').querySelector('.sheet').scrollTop = rolagem;
   montar && montar($('overlay').querySelector('.sheet'));
+  if (rolagem) { const sh = $('overlay').querySelector('.sheet'); if (sh && !sh.scrollTop) sh.scrollTop = rolagem; }
 }
+let SHEET_CHAVE = '';
 // uma tela pode pedir para confirmar antes de fechar (ex.: chamada com marcações sem salvar). Devolve true para segurar.
 let SHEET_SAIR = null;
 window.addEventListener('beforeunload', e => { if (SHEET_SAIR && SHEET_SAIR.sujo && SHEET_SAIR.sujo()) { e.preventDefault(); e.returnValue = ''; } });
@@ -691,6 +698,16 @@ function confirmar(titulo, texto, botao, acao) {
   });
 }
 
+// aviso de erro logo abaixo do campo que falta (dentro da janela aberta), rolando só até ele. erroPerto(null) apaga.
+function erroPerto(alvo, msg) {
+  const ant = document.getElementById('errperto'); if (ant) ant.remove();
+  if (!alvo) return;
+  const d = document.createElement('div'); d.id = 'errperto'; d.className = 'err'; d.setAttribute('role', 'alert'); d.textContent = msg;
+  alvo.insertAdjacentElement('afterend', d);
+  const sh = alvo.closest('.sheet');
+  if (sh) { const r = alvo.getBoundingClientRect(), rs = sh.getBoundingClientRect(); sh.scrollTo({ top: sh.scrollTop + r.top - rs.top - rs.height / 3, behavior: 'smooth' }); }
+  else alvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
 /* ================= Abrir uma escola ================= */
 async function abrirEscola(eid, tab) {
   pararOuvintes(); fecharSheet();
@@ -4653,15 +4670,20 @@ function sheetTermo(alid) {
       sh.querySelectorAll('[data-img]').forEach(b => b.setAttribute('aria-pressed', img === (b.dataset.img === '1'))); };
     sh.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { resp_[b.dataset.q] = b.dataset.v === '1'; ver(); });
     sh.querySelectorAll('[data-img]').forEach(b => b.onclick = () => { img = b.dataset.img === '1'; ver(); }); ver();
+    sh.addEventListener('change', () => erroPerto(null)); sh.addEventListener('click', e => { if (e.target.closest('[data-q],[data-img]')) erroPerto(null); });
     $('tok').onclick = async () => {
-      const err = m => { $('terr').textContent = m; $('terr').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
-      const falta = PERGUNTAS_SAUDE.filter(([k]) => typeof resp_[k] !== 'boolean'); if (falta.length) return err(`Responda todas as perguntas de saúde (falta${falta.length > 1 ? 'm' : ''} ${falta.length}).`);
-      const sim = PERGUNTAS_SAUDE.some(([k]) => resp_[k]); if (sim && !$('tsim').value.trim()) return err('Conte um pouco sobre o que marcou "sim".');
-      if (!$('tenome').value.trim() || C.soDigitos($('tetel').value).length < 10) return err('Informe o nome e o telefone (com DDD) do contato de emergência.');
-      if (!$('tsocorro').checked) return err('Para a criança participar das aulas, é preciso autorizar os primeiros socorros.');
-      if (img === null) return err('Escolha se autoriza ou não o uso de imagem.');
-      if (!$('tsens').checked || !$('tverd').checked) return err('Marque as duas declarações do item 5.');
-      if ($('tassin').value.trim().split(/\s+/).length < 2) return err('Digite seu nome completo para assinar.');
+      // o aviso aparece logo abaixo do que falta, e a janela rola só até ali
+      const err = (m, alvo) => { if (alvo) return erroPerto(alvo, m); erroPerto(null); $('terr').textContent = m; };
+      $('terr').textContent = ''; erroPerto(null);
+      const falta = PERGUNTAS_SAUDE.filter(([k]) => typeof resp_[k] !== 'boolean'); if (falta.length) return err(`Responda todas as perguntas de saúde (falta${falta.length > 1 ? 'm' : ''} ${falta.length}).`, sh.querySelector(`[data-q="${falta[0][0]}"]`).closest('.pq'));
+      const sim = PERGUNTAS_SAUDE.some(([k]) => resp_[k]); if (sim && !$('tsim').value.trim()) return err('Conte um pouco sobre o que marcou "sim".', $('tsim'));
+      if (!$('tenome').value.trim()) return err('Informe o nome do contato de emergência.', $('tenome').closest('.field'));
+      if (C.soDigitos($('tetel').value).length < 10) return err('Informe o telefone do contato de emergência, com DDD.', $('tetel').closest('.two'));
+      if (!$('tsocorro').checked) return err('Para a criança participar das aulas, é preciso autorizar os primeiros socorros.', $('tsocorro').closest('label'));
+      if (img === null) return err('Escolha se autoriza ou não o uso de imagem.', sh.querySelector('[data-img]').closest('.seg'));
+      if (!$('tsens').checked) return err('Marque esta declaração.', $('tsens').closest('label'));
+      if (!$('tverd').checked) return err('Marque esta declaração.', $('tverd').closest('label'));
+      if ($('tassin').value.trim().split(/\s+/).length < 2) return err('Digite seu nome completo para assinar.', $('tassin').closest('.field'));
       $('tok').disabled = true;
       const d = { responsavelId: a.responsavelId || null, respostas: resp_, detalhes: sim ? $('tsim').value.trim() : '', alergias: $('talerg').value.trim(), remedios: $('tremed').value.trim(), plano: $('tplano').value.trim(),
         emergencia: { nome: $('tenome').value.trim(), telefone: $('tetel').value.trim(), parentesco: $('teparen').value.trim() }, primeirosSocorros: true, imagem: img,
