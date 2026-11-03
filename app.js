@@ -1340,8 +1340,10 @@ function sheetCobrancaAluna(alid) {
           <div class="seg"><button data-mt="lembrete">Lembrete</button><button data-mt="atraso">Atraso</button>${temAcordo ? '<button data-mt="acordo">Acordo</button>' : ''}</div>
           <textarea id="fmtxt" class="msg-edit" rows="8" aria-label="Mensagem"></textarea>
           <div class="note">Pode mexer no texto antes de enviar. Para mudar o texto de todas as próximas vezes, <button type="button" class="link" id="fmod">edite o modelo</button>.</div>
+          ${S.cfg.mpConectadoEm ? `<label class="liga"><span class="grow"><b>Incluir código Pix</b><span class="s" id="fpixs">Coloca o Pix copia e cola no fim da mensagem. Vale por 24 horas e a baixa é automática.</span></span><input type="checkbox" role="switch" id="fpix"><span class="trilho" aria-hidden="true"></span></label>` : ''}
           <div class="actions">${numeroWa(r.telefone) ? `<a class="btn wa-btn" id="fwa" target="_blank" rel="noopener">${ICO_WA} Abrir no WhatsApp</span></a>` : ''}<button class="btn ghost" id="fmsg">Copiar</button></div>
-          ${numeroWa(r.telefone) ? `<div class="note">Abre a conversa com ${esc(r.telefone)} e a mensagem já escrita. Você confere e toca em enviar.</div>` : '<div class="note">Cadastre o WhatsApp do responsável para enviar direto.</div>'}</div>`
+          ${numeroWa(r.telefone) ? `<div class="note">Abre a conversa com ${esc(r.telefone)} e a mensagem já escrita. Você confere e toca em enviar.</div>` : '<div class="note">Cadastre o WhatsApp do responsável para enviar direto.</div>'}
+          <div id="fpixc" class="actions" style="flex-direction:column"></div></div>`
         : `<div class="empty"><b>${it.length ? 'Nada em aberto. Tudo pago!' : 'Nenhuma cobrança.'}</b></div>`}
       ${acordosAl.map(([aid, A]) => { const pg = A.parcelas.filter(q => C.stPag((((S.pags[alid] || {}).acordos || {})[aid] || {})[q.n])).length; const quem = `${A.porNome ? ` por ${esc(A.porNome)}` : ''} em ${dataBR(A.criadoEm)}`, por = A.obs ? `<span class="s" style="display:block;margin-top:4px">“${esc(A.obs)}”</span>` : '';
         return A.perdao ? `<div class="banner ok"><span><b>Dívida perdoada</b>${quem}: ${brl(A.original)} (${esc(A.resumo || '')}).${por}</span><button data-cancac="${esc(aid)}">Desfazer perdão</button></div>`
@@ -1355,11 +1357,34 @@ function sheetCobrancaAluna(alid) {
       s.querySelectorAll('[data-i]').forEach(c => c.onchange = () => { c.checked ? sel.add(c.dataset.i) : sel.delete(c.dataset.i); upd(); }); upd();
       const marcados = () => abertos.filter(i => sel.has(i.k));
       const atualizaWa = () => { if ($('fwa')) $('fwa').href = waLink(r.telefone, $('fmtxt').value); };
-      const msg = () => { if (!$('fmtxt')) return; $('fmtxt').value = textoMsg(tipoMsg, alid, marcados().length ? marcados() : abertos); atualizaWa(); s.querySelectorAll('[data-mt]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mt === tipoMsg)); };
+      // código Pix no fim da mensagem: gerado na hora, para o que está marcado; muda a marcação, gera de novo
+      let pixTxt = '', pixVez = 0;
+      const msg = () => { if (!$('fmtxt')) return; $('fmtxt').value = textoMsg(tipoMsg, alid, marcados().length ? marcados() : abertos) + pixTxt; atualizaWa(); s.querySelectorAll('[data-mt]').forEach(b => b.setAttribute('aria-pressed', b.dataset.mt === tipoMsg)); };
+      const gerarPix = async () => {
+        const vez = ++pixVez; pixTxt = ''; if ($('fpixc')) $('fpixc').innerHTML = ''; msg();
+        if (!$('fpix') || !$('fpix').checked) { $('fpixs').textContent = 'Coloca o Pix copia e cola no fim da mensagem. Vale por 24 horas e a baixa é automática.'; return; }
+        const ks = (marcados().length ? marcados() : abertos).map(i => i.k);
+        $('fpixs').textContent = 'Gerando o código Pix…'; $('fpix').disabled = true;
+        try {
+          const lotes = await pixCriar(ks); if (vez !== pixVez) return;
+          const ate = quandoRT(Math.min(...lotes.map(l => l.expira)));
+          // o código vai numa mensagem separada: no WhatsApp a família copia a mensagem inteira, e o banco só aceita o código sozinho
+          const N = lotes.length;
+          pixTxt = `\n\nSe preferir, pague agora pelo Pix copia e cola. ${N > 1 ? `Vou mandar ${N} códigos nas próximas mensagens (são ${N} Pix porque vão para contas diferentes)` : 'Vou mandar o código na próxima mensagem'}. É só copiar e colar no app do seu banco.`
+            + lotes.map(l => `\n${N > 1 ? `Pix para ${nomeRec(l.rec)}: ` : 'Valor: '}${brl(l.valor)}${C.r2(l.valor - l.base) > 0 ? ' (com a taxa de transação)' : ''}`).join('')
+            + `\n${N > 1 ? 'Os códigos valem' : 'O código vale'} até ${ate}.`;
+          $('fpixs').textContent = `Pronto. Vale até ${ate}. Envie a mensagem e depois ${N > 1 ? 'cada código' : 'o código'}, em mensagem separada, para a família copiar fácil.`;
+          $('fpixc').innerHTML = lotes.map((l, i) => `<button type="button" class="btn ghost" data-pixc="${i}">Copiar código Pix${N > 1 ? ' · ' + esc(primeiro(nomeRec(l.rec))) : ''}</button>`).join('');
+          $('fpixc').querySelectorAll('[data-pixc]').forEach(b => b.onclick = () => copiar(lotes[b.dataset.pixc].qr, 'Código copiado. Cole no WhatsApp, numa mensagem separada.'));
+        } catch (e) { if (vez !== pixVez) return; $('fpix').checked = false; $('fpixs').textContent = msgErro(e); }
+        finally { if ($('fpix')) $('fpix').disabled = false; }
+        msg();
+      };
+      if ($('fpix')) $('fpix').onchange = gerarPix;
       if ($('fmtxt')) $('fmtxt').addEventListener('input', atualizaWa);
       if ($('fmod')) $('fmod').onclick = () => abrirDe(() => sheetCobrancaAluna(alid), () => sheetModelos(tipoMsg));
       s.querySelectorAll('[data-mt]').forEach(b => b.onclick = () => { tipoMsg = b.dataset.mt; msg(); });
-      s.querySelectorAll('[data-i]').forEach(c => c.addEventListener('change', msg)); msg();
+      s.querySelectorAll('[data-i]').forEach(c => c.addEventListener('change', () => $('fpix') && $('fpix').checked ? gerarPix() : msg())); msg();
       if ($('fmsg')) $('fmsg').onclick = () => copiar($('fmtxt').value, 'Mensagem copiada. Cole no WhatsApp do responsável.');
       if ($('facordo')) $('facordo').onclick = () => abrirDe(() => sheetCobrancaAluna(alid), () => sheetAcordo(alid));
       s.querySelectorAll('[data-cancac]').forEach(b => b.onclick = () => { const pd = (S.acordos[b.dataset.cancac] || {}).perdao; confirmar(pd ? 'Desfazer o perdão?' : 'Cancelar acordo?', 'As cobranças antigas voltam para a lista de atraso, com os valores originais.', pd ? 'Desfazer perdão' : 'Cancelar acordo', async () => { await cancelarAcordo(b.dataset.cancac); setTimeout(() => sheetCobrancaAluna(alid), 80); }); });
