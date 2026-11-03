@@ -2009,7 +2009,11 @@ function sheetTamanhos(xid) {
 }
 // a família: escolher o tamanho de cada filho (na tela Pagar)
 function avisoTamanhoFam() {
-  return Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.tamanhos && !(x.rateio && !x.rateio.fechadoEm && C.rateioFechado(x))).map(([xid, x]) => {
+  const travadas = Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && !x.tamanhos && x.evento && (S.extras[x.evento] || {}).tamanhos).map(([xid, x]) => {
+    const ev = S.extras[x.evento], meus = alvoTam(x).filter(id => !x.rateio || x.rateio.fechadoEm ? (x.alunas || []).includes(id) : rtSt(x, id) !== 'nao'); if (!meus.length) return '';
+    return `<div class="rt-card tam-card"><b class="rt-tit">${esc(x.nome)}: tamanho do uniforme</b>
+      ${meus.map(id => `<div class="tam-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span><span class="grow s">Escolhido no evento ${esc(ev.nome)}</span><button type="button" class="tam-trava" data-tamtrava="1" aria-label="Tamanho já escolhido no evento">${esc(tamEsc(ev, id) || '—')} 🔒</button></div>`).join('')}</div>`; }).join('');
+  return travadas + Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.tamanhos && !(x.rateio && !x.rateio.fechadoEm && C.rateioFechado(x))).map(([xid, x]) => {
     const meus = alvoTam(x).filter(id => !x.rateio || x.rateio.fechadoEm ? (x.alunas || []).includes(id) : rtSt(x, id) !== 'nao'); if (!meus.length) return '';
     return `<div class="rt-card tam-card"><b class="rt-tit">${esc(x.nome)}: tamanho do uniforme</b>
       ${meus.map(id => { const t = tamEsc(x, id);
@@ -2017,6 +2021,7 @@ function avisoTamanhoFam() {
           <select data-tmx="${esc(xid)}" data-tmi="${esc(id)}" aria-label="Tamanho de ${esc(primeiro(S.alunas[id].nome))}"><option value="">Tamanho</option>${x.tamanhos.opcoes.map(o => `<option ${t === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`; }).join('')}</div>`; }).join('');
 }
 function ligarTamanhoFam(v, depois) {
+  v.querySelectorAll('[data-tamtrava]').forEach(b => b.onclick = () => aviso('Tamanho já escolhido no evento. Não pode ser editado.'));
   v.querySelectorAll('[data-tmx]').forEach(b => b.onchange = async () => { if (!b.value) return; b.disabled = true;
     try { if (!MOCK && S.papel === 'f') await servidor('eventoResposta', { eid: S.eid, xid: b.dataset.tmx, alid: b.dataset.tmi, tam: b.value });
       else await B.set(`escolas/${S.eid}/extras/${b.dataset.tmx}`, { tamEsc: { [b.dataset.tmi]: { t: b.value, em: Date.now(), quem: 'familia' } } }, { merge: true });
@@ -2057,7 +2062,7 @@ function sheetExtra(xid, op = {}) {
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
     <div id="xtamblk">${formTamHTML(x, 'x', 'A família escolhe o tamanho no app, e você vê o resumo para o fornecedor.')}
     ${x && x.tamanhos ? `<button type="button" class="btn ghost" id="xtamver">Ver os tamanhos escolhidos</button>` : ''}</div>
-    <div id="xtamev" hidden><label class="liga trava"><span class="grow"><b>Pedir tamanho do uniforme</b><span class="s">Evento com tamanho do uniforme já escolhido. Os tamanhos vêm do evento e não mudam aqui.</span></span><input type="checkbox" role="switch" checked disabled><span class="trilho" aria-hidden="true"></span></label>
+    <div id="xtamev" hidden><label class="liga trava" id="xtamtrava"><span class="grow"><b>Pedir tamanho do uniforme</b><span class="s">Evento com tamanho do uniforme já escolhido. Os tamanhos vêm do evento e não mudam aqui.</span></span><input type="checkbox" role="switch" checked disabled><span class="trilho" aria-hidden="true"></span></label>
       <button type="button" class="btn ghost" id="xtamevver">Ver os tamanhos do evento</button></div>
     ${blocoNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.', x && x.recebedor)}
     <div class="field"><span class="lb" id="xparalb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
@@ -2094,6 +2099,7 @@ function sheetExtra(xid, op = {}) {
     const tamSalvar = () => tamDoEvento() ? null : tamSalvar0();
     function verTamEv() { if (!$('xtamev')) return; const t = tamDoEvento(); $('xtamblk').hidden = t; $('xtamev').hidden = !t; }
     $('xtamevver').onclick = () => abrirDe(() => sheetExtra(xid, op), () => sheetTamanhos(evento));
+    $('xtamtrava').onclick = e => { e.preventDefault(); aviso('Tamanho já escolhido no evento. Não pode ser editado.'); };
     verTamEv();
     if ($('xtamver')) $('xtamver').onclick = () => abrirDe(() => sheetExtra(xid), () => sheetTamanhos(xid));
     s.querySelectorAll('[data-xm]').forEach(b => b.onclick = () => { dividir = b.dataset.xm === 'dividir';
