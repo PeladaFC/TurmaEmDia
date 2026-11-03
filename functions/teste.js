@@ -281,18 +281,6 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.deepStrictEqual([it('a1').v, it('a3')], [500, undefined]); // a escola fechou: vale o que ficou gravado
     S.delete('escolas/e1/extras/rt1');
   });
-  await t('taxa com obrigados: o obrigado não pode recusar e entra na divisão; valor por aluno com convite', async () => {
-    const futuro = Date.now() + 864e5;
-    S.set('escolas/e1/extras/rt2', { tipo: 'taxa', nome: 'Ônibus', v: 0, venc: '2026-11-15', convidados: ['a1', 'a2', 'a3'], alunas: [], grupos: [], turmas: [], part: {}, rateio: { total: 900, prazoEm: futuro, obrig: ['a1', 'a2'] } });
-    const A = require('./acoes')(db), it = id => C.itensAluna({ ...d(), extras: { rt2: S.get('escolas/e1/extras/rt2') } }, id, H).find(i => i.xid === 'rt2');
-    let r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'rt2', alid: 'a1', st: 'nao' }, 'ok:mae'), r); assert.strictEqual(r.code, 409);
-    assert.deepStrictEqual(C.rateioParticipantes(S.get('escolas/e1/extras/rt2')), ['a1', 'a2']);
-    S.set('escolas/e1/extras/rt2', { ...S.get('escolas/e1/extras/rt2'), part: { a3: { st: 'interesse' } }, rateio: { total: 900, prazoEm: Date.now() - 1000, obrig: ['a1', 'a2'] } });
-    assert.deepStrictEqual([it('a1').v, it('a3').v], [300, 300]);
-    S.set('escolas/e1/extras/rt2', { ...S.get('escolas/e1/extras/rt2'), part: {}, rateio: { porAluno: 85, total: null, prazoEm: Date.now() - 1000, obrig: ['a1'] } });
-    assert.deepStrictEqual([it('a1').v, it('a3')], [85, undefined]); // valor por aluno: o obrigado paga 85; quem não aceitou, nada
-    S.delete('escolas/e1/extras/rt2');
-  });
   await t('evento em que a família se inscreve: ela confirma "Já fiz a inscrição" e pode desfazer só o que ela confirmou', async () => {
     S.set('escolas/e1/extras/ev2', { tipo: 'evento', cobranca: 'familia', semCobranca: true, nome: 'Festival', data: '2026-11-20', convidados: ['a1'], alunas: [], part: {} });
     const A = require('./acoes')(db);

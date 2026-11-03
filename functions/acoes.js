@@ -79,7 +79,6 @@ module.exports = db => {
         if (!(x.convidados || []).includes(alid)) throw erro('Esta taxa não é para este aluno.', 403);
         if (!['interesse', 'nao'].includes(st)) throw erro('Pedido inválido.', 400);
         if (C.rateioFechado(x)) throw erro('As respostas já fecharam. Fale com a escola.', 409);
-        if (C.rateioObrig(x).has(alid)) throw erro('Para este aluno a participação é obrigatória. Fale com a escola.', 409);
         t.update(ref, { [`part.${alid}`]: { st, em: Date.now(), por: u.uid, quem: 'familia' } });
         return;
       }

@@ -82,13 +82,9 @@
      (fechadoEm). Fechado, cada participante paga o total dividido, arredondado para cima no centavo (todos iguais;
      a sobra de centavos fica no caixa). Ao fechar pela escola, o valor e a lista ficam gravados (v, alunas). */
   const rateioFechado = (x, agora = Date.now()) => !!(x && x.rateio) && (!!x.rateio.fechadoEm || (Number(x.rateio.prazoEm) || 0) <= agora);
-  // taxa dividida: quem a escola marcou como obrigado participa sempre; os outros convidados escolhem
-  const rateioObrig = x => new Set(((x && x.rateio && x.rateio.obrig) || []).filter(id => (x.convidados || []).includes(id)));
-  const rateioParticipantes = x => { const ob = rateioObrig(x); return (x.convidados || []).filter(id => ob.has(id) || (((x.part || {})[id]) || {}).st === 'interesse'); };
+  const rateioParticipantes = x => (x.convidados || []).filter(id => (((x.part || {})[id]) || {}).st === 'interesse');
   const rateioCada = (total, n) => n > 0 ? Math.ceil(Math.round(Number(total) * 100) / n) / 100 : 0;
-  // valor de cada participante: dividido (total ÷ participantes) ou fixo por aluno (convite com valor por aluno: rateio.porAluno)
-  const rateioValor = (x, n) => x.rateio.porAluno ? r2(x.rateio.porAluno) : rateioCada(x.rateio.total, n);
-  const valorExtra = (x, alid) => x && x.rateio && !x.rateio.fechadoEm ? rateioValor(x, rateioParticipantes(x).length)
+  const valorExtra = (x, alid) => x && x.rateio && !x.rateio.fechadoEm ? rateioCada(x.rateio.total, rateioParticipantes(x).length)
     : r2(x && x.valores && x.valores[alid] != null ? x.valores[alid] : (x || {}).v);
   // alunas que uma cobrança extra alcança: grupos + turmas + avulsas
   function alvoExtra(x, alunas, grupos) {
@@ -351,5 +347,5 @@
     r.alerta = !!(itens.length || r.detalhes || r.alergias || r.remedios || r.semPrimeiros);
     return r;
   }
-  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioObrig, rateioParticipantes, rateioCada, rateioValor, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, prazoEmMs, prazoPassou, freqAluno };
+  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, prazoEmMs, prazoPassou, freqAluno };
 });
