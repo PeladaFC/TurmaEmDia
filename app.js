@@ -2055,8 +2055,10 @@ function sheetExtra(xid, op = {}) {
     <div class="field"><label for="xven">Vencimento</label><input id="xven" type="date" value="${esc(x ? x.venc : hoje())}" ${temPag ? 'disabled' : ''}></div></div>
     ${temPag ? '<div class="note">Já há pagamentos desta cobrança: o valor padrão e o vencimento não mudam mais. Quem já pagou fica como está; dá para incluir alunos e mudar o valor de quem ainda não pagou.</div>' : ''}
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
-    ${formTamHTML(x, 'x', 'A família escolhe o tamanho no app, e você vê o resumo para o fornecedor.')}
-    ${x && x.tamanhos ? `<button type="button" class="btn ghost" id="xtamver">Ver os tamanhos escolhidos</button>` : ''}
+    <div id="xtamblk">${formTamHTML(x, 'x', 'A família escolhe o tamanho no app, e você vê o resumo para o fornecedor.')}
+    ${x && x.tamanhos ? `<button type="button" class="btn ghost" id="xtamver">Ver os tamanhos escolhidos</button>` : ''}</div>
+    <div id="xtamev" hidden><label class="liga trava"><span class="grow"><b>Pedir tamanho do uniforme</b><span class="s">Evento com tamanho do uniforme já escolhido. Os tamanhos vêm do evento e não mudam aqui.</span></span><input type="checkbox" role="switch" checked disabled><span class="trilho" aria-hidden="true"></span></label>
+      <button type="button" class="btn ghost" id="xtamevver">Ver os tamanhos do evento</button></div>
     ${blocoNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.', x && x.recebedor)}
     <div class="field"><span class="lb" id="xparalb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
     <div class="xresumo" id="xcont"></div>
@@ -2086,7 +2088,13 @@ function sheetExtra(xid, op = {}) {
       else if ($('xevnota')) $('xevnota').textContent = '';
       sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
     ligarBlocoNota('xnota', 'xrec');
-    const tamSalvar = ligarFormTam(s, x, 'x');
+    const tamSalvar0 = ligarFormTam(s, x, 'x');
+    // taxa ligada a um evento que já pede o tamanho: vale o do evento, e aqui fica fechado
+    const tamDoEvento = () => { const e = evento && S.extras[evento]; return !!(e && e.tamanhos); };
+    const tamSalvar = () => tamDoEvento() ? null : tamSalvar0();
+    function verTamEv() { if (!$('xtamev')) return; const t = tamDoEvento(); $('xtamblk').hidden = t; $('xtamev').hidden = !t; }
+    $('xtamevver').onclick = () => abrirDe(() => sheetExtra(xid, op), () => sheetTamanhos(evento));
+    verTamEv();
     if ($('xtamver')) $('xtamver').onclick = () => abrirDe(() => sheetExtra(xid), () => sheetTamanhos(xid));
     s.querySelectorAll('[data-xm]').forEach(b => b.onclick = () => { dividir = b.dataset.xm === 'dividir';
       s.querySelectorAll('[data-xm]').forEach(c => c.setAttribute('aria-pressed', String(c === b)));
@@ -2101,7 +2109,7 @@ function sheetExtra(xid, op = {}) {
       if (convite() && $('xven').value < $('xpdia').value) $('xven').value = somaDias($('xpdia').value, 5); }
     if ($('xtodos')) { $('xtodos').onchange = () => { todos = $('xtodos').checked; verTodos(); sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); resumo(); }; verTodos(); }
     if ($('xtot')) $('xtot').oninput = () => resumo();
-    if ($('xev')) $('xev').onchange = () => { evento = $('xev').value || null; escolherEvento(true); };
+    if ($('xev')) $('xev').onchange = () => { evento = $('xev').value || null; escolherEvento(true); verTamEv(); };
     if (evento) setTimeout(() => escolherEvento(false), 0);
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'evento') sheetEvento(null); });
     $('xval').oninput = () => { s.querySelectorAll('[data-xv]').forEach(i => { if (vals[i.dataset.xv] == null && !i.classList.contains('pend')) i.value = fmtValor(padrao()); }); resumo(); };
