@@ -1166,13 +1166,13 @@ function tCobrancas(v) {
     <div class="hero">
       <div><div class="label">Recebido em ${esc(C.nomeMes(mes))}</div><div class="big num">${cur(rec)}</div>
         <div class="sub num">de ${cur(tot.esp)} previstos${tot.esp ? ` · ${Math.round(pc(rec))}%` : ''}</div></div>
-      <div class="stack" role="img" aria-label="Recebido ${cur(rec)}, a vencer ${cur(tot.aVencer)}, vencido ${cur(tot.vencido)}">
-        <i class="s-in" style="width:${pc(rec)}%"></i><i class="s-warn" style="width:${pc(tot.aVencer)}%"></i><i class="s-out" style="width:${pc(tot.vencido)}%"></i></div>
-      <div class="tiles tiles-lin">
-        <div class="tile"><span class="lbl"><span class="sw s-in"></span>Recebido</span><b class="num">${cur(rec)}</b><span class="s num">App ${cur(tot.pix).replace('R$', '').trim()} · Dinheiro ${cur(tot.din).replace('R$', '').trim()}</span></div>
-        <div class="tile"><span class="lbl"><span class="sw s-warn"></span>A vencer</span><b class="num">${cur(tot.aVencer)}</b><span class="s">no prazo</span></div>
-        <div class="tile"><span class="lbl"><span class="sw s-out"></span>Vencido</span><b class="num" style="color:var(--out)">${cur(tot.vencido)}</b><span class="s">deste mês</span></div>
-      </div>
+      <div class="pizza">${pizzaSVG([{ v: rec, cor: 'var(--in, #2f7d6d)' }, { v: tot.aVencer, cor: 'var(--warn, #c9962b)' }, { v: tot.vencido, cor: 'var(--out, #b0402a)' }], `Recebido ${cur(rec)}, a vencer ${cur(tot.aVencer)}, vencido ${cur(tot.vencido)}`)}
+        <ul class="pizza-leg">
+          <li><i class="s-in"></i><span class="grow pz-nome">Recebido</span><span class="pz-val"><b class="num">${cur(rec)}</b><span class="s num">${Math.round(pc(rec))}%</span></span></li>
+          <li><i class="s-warn"></i><span class="grow pz-nome">A vencer<span class="s">no prazo</span></span><span class="pz-val"><b class="num">${cur(tot.aVencer)}</b><span class="s num">${Math.round(pc(tot.aVencer))}%</span></span></li>
+          <li><i class="s-out"></i><span class="grow pz-nome">Vencido<span class="s">deste mês</span></span><span class="pz-val"><b class="num" style="color:var(--out)">${cur(tot.vencido)}</b><span class="s num">${Math.round(pc(tot.vencido))}%</span></span></li>
+        </ul></div>
+      <div class="sub num" style="text-align:center">Recebido pelo app ${cur(tot.pix)} · em dinheiro ${cur(tot.din)}</div>
     </div>
     ${antigos.length && filtro !== 'antigos' ? `<button class="banner" data-fl="antigos" style="border:0;text-align:left;width:100%;background:var(--out-soft)"><span>Além disso, <b>${cur(C.r2(antigos.reduce((s, x) => s + x.vAntes, 0)))}</b> vencidos de meses passados, de ${antigos.length} aluno${antigos.length === 1 ? '' : 's'}.</span><span style="color:var(--out);font-weight:800">Ver ›</span></button>` : ''}
     <section><h2>Quem deve</h2>
@@ -3538,13 +3538,19 @@ function tFinanceiro(v) {
 // contabilidade rápida da escola: o que caiu na conta da escola, saídas e saldo
 // gráfico de pizza das saídas por categoria, com a legenda (valor e %)
 const CORES_PIZZA = ['#8a6a48', '#c0533a', '#2f7d6d', '#d2a03c', '#5b6f9a', '#9c5d8a', '#6f8f3a', '#b9825a', '#4f9bb0', '#7a7266'];
-function pizzaHTML(cats) {
-  const tot = cats.reduce((s, [, x]) => s + x, 0) || 1, R = 46, C0 = 50;
+// fatias: [{ v, cor }]; as de valor zero não aparecem
+function pizzaSVG(fatias, rotulo) {
+  const L = fatias.filter(f => f.v > 0), tot = L.reduce((s, f) => s + f.v, 0), R = 46, C0 = 50;
+  if (!tot) return `<svg viewBox="0 0 100 100" role="img" aria-label="${esc(rotulo)}"><circle cx="${C0}" cy="${C0}" r="${R}" fill="var(--line)"/></svg>`;
   let a0 = -Math.PI / 2;
-  const fatias = cats.map(([c, x], i) => { const ang = x / tot * Math.PI * 2, a1 = a0 + ang, cor = CORES_PIZZA[i % CORES_PIZZA.length];
-    const d = cats.length === 1 ? '' : `M${C0},${C0} L${(C0 + R * Math.cos(a0)).toFixed(2)},${(C0 + R * Math.sin(a0)).toFixed(2)} A${R},${R} 0 ${ang > Math.PI ? 1 : 0} 1 ${(C0 + R * Math.cos(a1)).toFixed(2)},${(C0 + R * Math.sin(a1)).toFixed(2)} Z`;
-    a0 = a1; return cats.length === 1 ? `<circle cx="${C0}" cy="${C0}" r="${R}" fill="${cor}"/>` : `<path d="${d}" fill="${cor}" stroke="var(--surface)" stroke-width="1"/>`; }).join('');
-  return `<div class="pizza"><svg viewBox="0 0 100 100" role="img" aria-label="Saídas por categoria">${fatias}</svg>
+  const ps = L.map(f => { const ang = f.v / tot * Math.PI * 2, a1 = a0 + ang;
+    const d = `M${C0},${C0} L${(C0 + R * Math.cos(a0)).toFixed(2)},${(C0 + R * Math.sin(a0)).toFixed(2)} A${R},${R} 0 ${ang > Math.PI ? 1 : 0} 1 ${(C0 + R * Math.cos(a1)).toFixed(2)},${(C0 + R * Math.sin(a1)).toFixed(2)} Z`;
+    a0 = a1; return L.length === 1 ? `<circle cx="${C0}" cy="${C0}" r="${R}" fill="${f.cor}"/>` : `<path d="${d}" fill="${f.cor}" stroke="var(--surface)" stroke-width="1"/>`; }).join('');
+  return `<svg viewBox="0 0 100 100" role="img" aria-label="${esc(rotulo)}">${ps}</svg>`;
+}
+function pizzaHTML(cats) {
+  const tot = cats.reduce((s, [, x]) => s + x, 0) || 1;
+  return `<div class="pizza">${pizzaSVG(cats.map(([, x], i) => ({ v: x, cor: CORES_PIZZA[i % CORES_PIZZA.length] })), 'Saídas por categoria')}
     <ul class="pizza-leg">${cats.map(([c, x], i) => `<li><i style="background:${CORES_PIZZA[i % CORES_PIZZA.length]}"></i><span class="grow pz-nome">${esc(c)}</span><span class="pz-val"><b class="num">${brl(x)}</b><span class="s num">${Math.round(x / tot * 100)}%</span></span></li>`).join('')}</ul></div>`;
 }
 function finEscola(v) {
