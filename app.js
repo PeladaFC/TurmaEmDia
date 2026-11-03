@@ -1978,6 +1978,47 @@ function seletorAtletas(raiz, o) {
   return { desenhar, pendente, origem, valDe };
 }
 
+/* ---- Tamanho do uniforme numa taxa: a escola escolhe letras ou numeração; a família (ou a escola) escolhe o de cada aluno ---- */
+const TAM_PADRAO = { letras: ['PP', 'P', 'M', 'G', 'GG'], numeros: ['2', '4', '6', '8', '10', '12', '14', '16'] };
+const IDADE_LETRA = { PP: '2 a 5 anos', P: '6 a 9 anos', M: '10 a 12 anos', G: '13 a 14 anos', GG: '15 anos ou mais' };
+const tamRot = (x, t) => x && x.tamanhos && x.tamanhos.tipo === 'letras' && IDADE_LETRA[t] ? `${t} (${IDADE_LETRA[t]})` : t;
+const tamEsc = (x, id) => ((((x || {}).tamEsc || {})[id]) || {}).t || '';
+// sugestão pela idade: nas letras, pela faixa; na numeração, o primeiro número igual ou acima da idade
+function tamSugerido(x, id) {
+  const op = ((x || {}).tamanhos || {}).opcoes || [], n = C.idadeNoAno((S.alunas[id] || {}).nascimento, new Date().getFullYear()); if (!op.length || n == null) return '';
+  if (x.tamanhos.tipo === 'letras') { const l = n <= 5 ? 'PP' : n <= 9 ? 'P' : n <= 12 ? 'M' : n <= 14 ? 'G' : 'GG'; return op.includes(l) ? l : ''; }
+  const nums = op.map(Number).filter(v => !isNaN(v)).sort((a, b) => a - b); const v = nums.find(v => v >= n) ?? nums[nums.length - 1]; return v != null ? String(v) : '';
+}
+const alvoTam = x => [...new Set([...(x.alunas || []), ...(x.convidados || [])])].filter(id => S.alunas[id]);
+// a escola: resumo para o fornecedor e o tamanho de cada aluno
+function sheetTamanhos(xid) {
+  const x = S.extras[xid]; if (!x || !x.tamanhos) return fecharSheet();
+  const ids = porNome(Object.fromEntries(alvoTam(x).map(id => [id, S.alunas[id]]))).map(([id]) => id), op = x.tamanhos.opcoes || [];
+  const cont = op.map(t => [t, ids.filter(id => tamEsc(x, id) === t).length]).filter(([, n]) => n), faltam = ids.filter(id => !tamEsc(x, id));
+  sheet(`<h3>Tamanhos · ${esc(x.nome)}</h3>
+    <div class="faixa-card" style="background:var(--bg)"><b class="num">${cont.length ? esc(cont.map(([t, n]) => `${n} ${t}`).join(' · ')) : 'Ninguém escolheu ainda'}</b>
+      <span class="s">${faltam.length ? `Faltam ${faltam.length} escolher${faltam.length <= 5 ? ': ' + esc(faltam.map(id => primeiro(S.alunas[id].nome)).join(', ')) : ''}.` : 'Todos já escolheram.'} A família escolhe no app. A escola também pode escolher aqui.</span></div>
+    <ul class="list">${ids.map(id => `<li><div class="grow"><div class="t">${esc(S.alunas[id].nome)}</div>${linhas(esc([idade(S.alunas[id].nascimento), tamSugerido(x, id) && !tamEsc(x, id) ? 'sugerido: ' + tamSugerido(x, id) : ''].filter(Boolean).join(' · ')))}</div>
+      <select data-tm="${esc(id)}" aria-label="Tamanho de ${esc(S.alunas[id].nome)}" style="width:auto;min-width:92px"><option value="">—</option>${op.map(t => `<option ${tamEsc(x, id) === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></li>`).join('')}</ul>
+    <div class="err" id="tmerr" role="alert"></div><button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
+    sh.querySelectorAll('[data-tm]').forEach(sl => sl.onchange = async () => { try { await B.set(`escolas/${S.eid}/extras/${xid}`, { tamEsc: { [sl.dataset.tm]: sl.value ? { t: sl.value, em: Date.now(), quem: 'escola' } : null } }, { merge: true }); setTimeout(() => sheetTamanhos(xid), 60); } catch (e) { $('tmerr').textContent = msgErro(e); } });
+  });
+}
+// a família: escolher o tamanho de cada filho (na tela Pagar)
+function avisoTamanhoFam() {
+  return Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.tamanhos && !(x.rateio && !x.rateio.fechadoEm && C.rateioFechado(x))).map(([xid, x]) => {
+    const meus = alvoTam(x).filter(id => !x.rateio || x.rateio.fechadoEm ? (x.alunas || []).includes(id) : rtSt(x, id) !== 'nao'); if (!meus.length) return '';
+    return `<div class="rt-card"><b class="rt-tit">${esc(x.nome)}: tamanho do uniforme</b><span class="s">Escolha o tamanho${meus.length > 1 ? ' de cada um' : ''}. Dá para mudar até a escola fechar o pedido.</span>
+      ${meus.map(id => { const t = tamEsc(x, id), sg = tamSugerido(x, id);
+        return `<div class="rt-fil"><div class="ev-ja-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span>${t ? `<span class="s">Tamanho ${esc(t)}</span>` : '<span class="ev-pend">Falta escolher</span>'}</div>
+          <div class="opcoes">${x.tamanhos.opcoes.map(o => `<button type="button" class="pick" data-tmx="${esc(xid)}" data-tmi="${esc(id)}" data-tmv="${esc(o)}" aria-pressed="${t === o}">${esc(tamRot(x, o))}${!t && o === sg ? ' · sugerido' : ''}</button>`).join('')}</div></div>`; }).join('')}</div>`; }).join('');
+}
+function ligarTamanhoFam(v) {
+  v.querySelectorAll('[data-tmx]').forEach(b => b.onclick = async () => { b.disabled = true;
+    try { if (!MOCK && S.papel === 'f') await servidor('eventoResposta', { eid: S.eid, xid: b.dataset.tmx, alid: b.dataset.tmi, tam: b.dataset.tmv });
+      else await B.set(`escolas/${S.eid}/extras/${b.dataset.tmx}`, { tamEsc: { [b.dataset.tmi]: { t: b.dataset.tmv, em: Date.now(), quem: 'familia' } } }, { merge: true });
+      aviso('✓ Tamanho escolhido'); setTimeout(render, 60); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
+}
 // ---- Taxas (e cobranças antigas de eventos) ----
 function sheetExtra(xid, op = {}) {
   const x = xid ? S.extras[xid] : null, ed = !!x;
@@ -2011,6 +2052,10 @@ function sheetExtra(xid, op = {}) {
     <div class="field"><label for="xven">Vencimento</label><input id="xven" type="date" value="${esc(x ? x.venc : hoje())}" ${temPag ? 'disabled' : ''}></div></div>
     ${temPag ? '<div class="note">Já há pagamentos desta cobrança: o valor padrão e o vencimento não mudam mais. Quem já pagou fica como está; dá para incluir alunos e mudar o valor de quem ainda não pagou.</div>' : ''}
     ${S.admin ? `<div class="field"><label for="xrec">O pagamento vai para</label><select id="xrec" ${temPag ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : `<div class="note">A escola escolhe para quem vai o pagamento desta cobrança.</div>`}
+    <label class="liga"><span class="grow"><b>Pedir tamanho do uniforme</b><span class="s">A família escolhe o tamanho no app, e você vê o resumo para o fornecedor.</span></span><input type="checkbox" role="switch" id="xtam" ${x && x.tamanhos ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+    <div id="xtamw" ${x && x.tamanhos ? '' : 'hidden'}><div class="field"><span class="lb">Tamanhos por</span><div class="seg"><button type="button" data-tt="letras" aria-pressed="${!(x && x.tamanhos && x.tamanhos.tipo === 'numeros')}">Letras</button><button type="button" data-tt="numeros" aria-pressed="${!!(x && x.tamanhos && x.tamanhos.tipo === 'numeros')}">Numeração</button></div></div>
+      <div class="field"><label for="xtamop">Tamanhos (separados por vírgula)</label><input id="xtamop" maxlength="120" value="${esc(((x && x.tamanhos && x.tamanhos.opcoes) || TAM_PADRAO.letras).join(', '))}"><span class="sub" id="xtamdica"></span></div>
+      ${x && x.tamanhos ? `<button type="button" class="btn ghost" id="xtamver">Ver os tamanhos escolhidos</button>` : ''}</div>
     ${blocoNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.', x && x.recebedor)}
     <div class="field"><span class="lb" id="xparalb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
     <div class="xresumo" id="xcont"></div>
@@ -2040,6 +2085,12 @@ function sheetExtra(xid, op = {}) {
       else if ($('xevnota')) $('xevnota').textContent = '';
       sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
     ligarBlocoNota('xnota', 'xrec');
+    let tamTipo = x && x.tamanhos && x.tamanhos.tipo === 'numeros' ? 'numeros' : 'letras';
+    const dicaTam = () => { $('xtamdica').textContent = tamTipo === 'letras' ? 'A família vê a idade de cada letra: PP (2 a 5 anos), P (6 a 9), M (10 a 12), G (13 a 14), GG (15 ou mais).' : 'Na numeração, o app sugere o número mais perto da idade da criança.'; };
+    $('xtam').onchange = () => { $('xtamw').hidden = !$('xtam').checked; dicaTam(); }; dicaTam();
+    s.querySelectorAll('[data-tt]').forEach(b => b.onclick = () => { tamTipo = b.dataset.tt; s.querySelectorAll('[data-tt]').forEach(c => c.setAttribute('aria-pressed', String(c === b))); $('xtamop').value = TAM_PADRAO[tamTipo].join(', '); dicaTam(); });
+    if ($('xtamver')) $('xtamver').onclick = () => abrirDe(() => sheetExtra(xid), () => sheetTamanhos(xid));
+    const tamSalvar = () => { if (!$('xtam').checked) return null; const op = [...new Set($('xtamop').value.split(',').map(t => t.trim().toUpperCase()).filter(Boolean))].slice(0, 20); return op.length ? { tipo: tamTipo, opcoes: op } : null; };
     s.querySelectorAll('[data-xm]').forEach(b => b.onclick = () => { dividir = b.dataset.xm === 'dividir';
       s.querySelectorAll('[data-xm]').forEach(c => c.setAttribute('aria-pressed', String(c === b)));
       $('xdivw').hidden = !dividir; $('xvalw').hidden = dividir; verTodos();
@@ -2067,7 +2118,7 @@ function sheetExtra(xid, op = {}) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(venc)) return err('Escolha a data de vencimento.');
         const ids = [...selA].filter(id => S.alunas[id]); if (!ids.length) return err('Toque num quadro e marque quem paga.');
         $('xok').disabled = true; const agora = Date.now();
-        try { await B.set(`escolas/${S.eid}/extras/${novoId()}`, { tipo: 'taxa', nome, v: C.rateioCada(total, ids.length), venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: ids, valores: {}, grupos: [], turmas: [], part: Object.fromEntries(ids.map(id => [id, { st: 'interesse', quem: 'escola' }])), rateio: { total: C.r2(total), prazoEm: agora, fechadoEm: agora, todos: true }, origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: agora });
+        try { await B.set(`escolas/${S.eid}/extras/${novoId()}`, { tipo: 'taxa', nome, v: C.rateioCada(total, ids.length), venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: ids, valores: {}, grupos: [], turmas: [], part: Object.fromEntries(ids.map(id => [id, { st: 'interesse', quem: 'escola' }])), rateio: { total: C.r2(total), prazoEm: agora, fechadoEm: agora, todos: true }, tamanhos: tamSalvar(), origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: agora });
           fecharSheet(); aviso(`✓ Taxa salva. ${brl(C.rateioCada(total, ids.length))} para cada um dos ${ids.length}.`); } catch (e) { err(msgErro(e)); $('xok').disabled = false; }
         return;
       }
@@ -2083,7 +2134,7 @@ function sheetExtra(xid, op = {}) {
         if (venc < dia) return err('O vencimento precisa ser no dia em que as respostas fecham ou depois.');
         const ids = [...selA].filter(id => S.alunas[id]); if (!ids.length) return err('Toque num quadro e marque quem pode participar.');
         $('xok').disabled = true;
-        try { await B.set(`escolas/${S.eid}/extras/${novoId()}`, { tipo: 'taxa', nome, v: 0, venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: [], valores: {}, grupos: [], turmas: [], part: {}, rateio: { ...(dividir ? { total: C.r2(total) } : { porAluno: C.r2(v), total: null }), prazoEm, fechadoEm: null }, origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: Date.now() });
+        try { await B.set(`escolas/${S.eid}/extras/${novoId()}`, { tipo: 'taxa', nome, v: 0, venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: [], valores: {}, grupos: [], turmas: [], part: {}, rateio: { ...(dividir ? { total: C.r2(total) } : { porAluno: C.r2(v), total: null }), prazoEm, fechadoEm: null }, tamanhos: tamSalvar(), origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: Date.now() });
           fecharSheet(); aviso('✓ Taxa salva. O convite foi enviado às famílias.'); } catch (e) { err(msgErro(e)); $('xok').disabled = false; }
         return;
       }
@@ -2095,7 +2146,7 @@ function sheetExtra(xid, op = {}) {
       const valores = {}; for (const id of ids) if (vals[id] != null && C.r2(vals[id]) !== C.r2(v)) { if (!(vals[id] > 0)) return err(`Confira o valor de ${S.alunas[id].nome}.`); valores[id] = C.r2(vals[id]); }
       $('xok').disabled = true;
       const base = legado ? { tipo: x.tipo, data: x.data || null, dataFim: x.dataFim || null, local: x.local || null } : { tipo: 'taxa' };
-      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { ...base, nome, v, venc, nota: notaSalvar('xnota', 'xrec', x && x.nota === true), alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
+      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { ...base, nome, v, venc, tamanhos: tamSalvar(), nota: notaSalvar('xnota', 'xrec', x && x.nota === true), alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
       catch (e) { err(msgErro(e)); $('xok').disabled = false; }
     };
     if ($('xdel')) $('xdel').onclick = () => temPag ? ($('xerr').textContent = 'Esta cobrança já tem pagamentos e não pode ser excluída. Desmarque os alunos que não vão participar.') : confirmar('Excluir cobrança?', `"${esc(x.nome)}" sai da lista de todos os alunos.`, 'Excluir', () => B.del(`escolas/${S.eid}/extras/${xid}`));
@@ -2247,11 +2298,13 @@ function sheetRateio(xid) {
     <div class="note">${x.rateio.fechadoEm || fechado ? `Respostas fechadas. Cada participante recebeu a cobrança de ${brl(cada)}, com vencimento em ${dataBR(x.venc)}.${!x.rateio.porAluno && part.length && C.r2(cada * part.length) > x.rateio.total ? ` A divisão não é exata: os ${brl(C.r2(cada * part.length - x.rateio.total))} a mais ficam no caixa.` : ''}`
       : `As respostas fecham sozinhas em ${quandoRT(x.rateio.prazoEm)}. Ao fechar, cada participante recebe a cobrança, com vencimento em ${dataBR(x.venc)}. Ninguém é cobrado antes disso.${nSem ? ' O botão verde pergunta pelo WhatsApp a quem ainda não respondeu.' : ''}`}</div>
     <ul class="list rt-lista">${lista || '<li class="empty">Ninguém convidado.</li>'}</ul>
+    ${x.tamanhos ? '<button type="button" class="btn ghost" id="rttam">Tamanhos do uniforme</button>' : ''}
     <div class="err" id="rterr" role="alert"></div>
     ${fechado ? '<button class="btn ghost" data-fechar>Fechar</button>' : `<div class="actions"><button class="btn ghost" data-fechar>Voltar</button><button class="btn" id="rtfim">Fechar agora e cobrar</button></div>`}
     ${!nPg ? '<button class="btn ghost" id="rtdel" style="color:var(--out)">Excluir taxa</button>' : ''}`, sh => {
     sh.querySelectorAll('[data-rp]').forEach(b => b.onclick = async () => { const id = b.dataset.rp, st = rtSt(x, id) === b.dataset.rs ? null : b.dataset.rs;
       try { await B.set(`escolas/${S.eid}/extras/${xid}`, { part: { [id]: st ? { st, em: Date.now(), por: EU.uid, quem: 'escola' } : null } }, { merge: true }); setTimeout(() => sheetRateio(xid), 60); } catch (e) { $('rterr').textContent = msgErro(e); } });
+    if ($('rttam')) $('rttam').onclick = () => abrirDe(() => sheetRateio(xid), () => sheetTamanhos(xid));
     if ($('rtfim')) $('rtfim').onclick = () => { if (!part.length) return $('rterr').textContent = 'Ninguém disse que vai participar ainda. Não há com quem dividir.';
       duploToque($('rtfim'), async () => { try { await B.set(`escolas/${S.eid}/extras/${xid}`, { rateio: { ...x.rateio, fechadoEm: Date.now() }, alunas: part, v: cada }, { merge: true }); aviso(`Cobrança de ${brl(cada)} enviada a ${part.length} participante${part.length === 1 ? '' : 's'}`); setTimeout(() => sheetRateio(xid), 60); } catch (e) { $('rterr').textContent = msgErro(e); } }, `Cobrar ${brl(cada)} de ${part.length}?`); };
     if ($('rtdel')) $('rtdel').onclick = () => confirmar('Excluir taxa?', `"${esc(x.nome)}" sai da lista de todos.`, 'Excluir', () => B.del(`escolas/${S.eid}/extras/${xid}`));
@@ -4015,7 +4068,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoRateioFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
+    ${avisoRateioFam()}${avisoTamanhoFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
     ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
@@ -4051,7 +4104,7 @@ function tPagar(v) {
   if ($('pfdesl')) $('pfdesl').onclick = () => { const recD = $('pfdesl').dataset.rec; confirmar('Desligar a cobrança automática?', 'As próximas cobranças voltam a ser pagas por você, pelo app. O cartão continua salvo.', 'Desligar', async () => {
     try { if (!MOCK) await servidor('pagar', { acao: 'automatico', eid: S.eid, rec: recD, ligar: false }); (S.cartoes || []).forEach(c => c.auto = false); aviso('Cobrança automática desligada'); render(); } catch (e) { aviso(msgErro(e)); } }); };
   if ($('plimpa')) $('plimpa').onclick = () => { S.sel.clear(); render(); };
-  ligarRateioFam(v);
+  ligarRateioFam(v); ligarTamanhoFam(v);
 }
 // Meus filhos: termo, atestado, documentos e contrato numa lista só (nome à esquerda, situação à direita; toque para agir)
 function docsFilhaHTML(id) {
@@ -5581,11 +5634,13 @@ function sheetDocsEscola() {
 
 // juntar os documentos dos alunos marcados num PDF só (para a competição)
 // informações do aluno para a lista (PDF e WhatsApp), na ordem em que aparecem
-const CAMPOS_LISTA = [['idade', 'Idade'], ['nasc', 'Data de nascimento'], ['cat', 'Categoria'], ['turma', 'Turma'], ['resp', 'Responsável'], ['tel', 'Telefone']];
-function infoAluno(id, campos) {
+const CAMPOS_LISTA = [['idade', 'Idade'], ['nasc', 'Data de nascimento'], ['cat', 'Categoria'], ['turma', 'Turma'], ['tam', 'Tamanho do uniforme'], ['resp', 'Responsável'], ['tel', 'Telefone']];
+// tamanho do uniforme do aluno: o da taxa de uniforme mais recente em que foi escolhido (de preferência a do evento da lista)
+const tamDoAluno = (id, evento) => { const ts = Object.values(S.extras || {}).filter(x => x && x.tamanhos && tamEsc(x, id)).sort((a, b) => (b.evento === evento) - (a.evento === evento) || (b.criadoEm || 0) - (a.criadoEm || 0)); return ts.length ? 'Tam. ' + tamEsc(ts[0], id) : ''; };
+function infoAluno(id, campos, evento) {
   const a = S.alunas[id] || {}, r = respDe(id) || {}, f = {
     idade: () => idade(a.nascimento), nasc: () => a.nascimento ? dataBRA(a.nascimento) : '', cat: () => catNome(id), turma: () => turmasTxt(a),
-    resp: () => r.nome || '', tel: () => r.telefone ? foneBR(r.telefone) : '' };
+    resp: () => r.nome || '', tel: () => r.telefone ? foneBR(r.telefone) : '', tam: () => tamDoAluno(id, evento) };
   return campos.map(c => f[c] ? f[c]() : '').filter(Boolean);
 }
 function sheetJuntarDocs(op = {}) {
@@ -5593,7 +5648,7 @@ function sheetJuntarDocs(op = {}) {
   const temAtest = Object.keys(S.alunas).some(id => atestadoMeta(id));
   const temOutros = Object.keys(S.alunas).some(id => avulsosDe(id).length);
   const tipos = [...tiposDoc().map(t => t.id), ...(temOutros ? ['_outros'] : []), ...(temAtest ? ['_atest'] : [])], selT = new Set(op.tipos || []);
-  const camposOk = CAMPOS_LISTA.filter(([k]) => k !== 'cat' || categorias().length), selC = new Set(['idade', ...(categorias().length ? ['cat'] : [])]);
+  const camposOk = CAMPOS_LISTA.filter(([k]) => (k !== 'cat' || categorias().length) && (k !== 'tam' || Object.values(S.extras || {}).some(x => x && x.tamanhos))), selC = new Set(['idade', ...(categorias().length ? ['cat'] : [])]);
   sheet(`<h3>Lista dos alunos</h3>
     <div class="sub">Escolha quem entra e o que aparece de cada um. Sai um PDF, com os documentos se quiser, para mandar à competição ou ao grupo.</div>
     <div class="field"><label for="jdtit">Para qual competição?</label><input id="jdtit" maxlength="80" value="${esc(op.titulo || '')}" placeholder="Ex.: Copa Recife Sub-11"></div>
@@ -5654,7 +5709,7 @@ function sheetJuntarDocs(op = {}) {
       err(''); if (!al.length) return err('Escolha ao menos um aluno.');
       const titulo = $('jdtit').value.trim(), b = $('jdok'); b.disabled = true; $('jdpronto').innerHTML = '';
       try {
-        const arqs = await juntarDocsArquivos({ titulo, alids: al, tids: ts, campos: camposSel(), capa: !ts.length || $('jdcapa').checked, separado: ts.length && modo === 'sep' }, txt => { b.textContent = txt; });
+        const arqs = await juntarDocsArquivos({ titulo, alids: al, tids: ts, campos: camposSel(), evento: op.evento, capa: !ts.length || $('jdcapa').checked, separado: ts.length && modo === 'sep' }, txt => { b.textContent = txt; });
         b.disabled = false; b.textContent = 'Gerar PDF de novo'; b.classList.add('ghost'); mostrarPronto(arqs);
       } catch (e) { err(e.message || msgErro(e)); b.textContent = 'Gerar PDF'; b.disabled = false; }
     };
@@ -5695,7 +5750,7 @@ const WIN_EXTRA = '—–“”‘’…•€';
 const pdfTxt = s => [...String(s ?? '')].map(ch => { const c = ch.charCodeAt(0); if ((c >= 32 && c <= 126) || (c >= 160 && c <= 255) || WIN_EXTRA.includes(ch)) return ch; const b = ch.normalize('NFD').replace(/[̀-ͯ]/g, ''); return b && b.charCodeAt(0) < 127 ? b[0] : ''; }).join('');
 // junta os documentos: num PDF só ou um PDF para cada documento (com a lista dos alunos à parte)
 // devolve [{ nome, bytes }]
-async function juntarDocsArquivos({ titulo, alids, tids, campos = ['nasc'], capa, separado }, progresso = () => { }) {
+async function juntarDocsArquivos({ titulo, alids, tids, campos = ['nasc'], evento, capa, separado }, progresso = () => { }) {
   progresso('Preparando…');
   const L = await carregarPdfLib(), FONTES = new Map();
   const novoPdf = async () => { const d = await L.PDFDocument.create(); FONTES.set(d, { F: await d.embedFont(L.StandardFonts.Helvetica), FB: await d.embedFont(L.StandardFonts.HelveticaBold) }); return d; };
@@ -5718,7 +5773,7 @@ async function juntarDocsArquivos({ titulo, alids, tids, campos = ['nasc'], capa
       escrever(pg, 'ALUNO(A)', M, y, { neg: true, tam: 8, cor: cinza }); y += 6; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.6, color: linhaC }); y += 14; };
     topo(false);
     alids.forEach((id, i) => {
-      const info = infoAluno(id, campos).join('  ·  '), linhas = expandeTipos(id, tids).map(t => [`${tipoDoc(t).nome}: ${statusTxt(id, t)}`, !metaJunta(id, t) || situacaoDoc(metaJunta(id, t)).st === 'vencido']), alto = 14 + (info ? 13 : 0) + Math.ceil(linhas.length / 2) * 12 + 8;
+      const info = infoAluno(id, campos, evento).join('  ·  '), linhas = expandeTipos(id, tids).map(t => [`${tipoDoc(t).nome}: ${statusTxt(id, t)}`, !metaJunta(id, t) || situacaoDoc(metaJunta(id, t)).st === 'vencido']), alto = 14 + (info ? 13 : 0) + Math.ceil(linhas.length / 2) * 12 + 8;
       if (y + alto > H - M) { pg = pdf.addPage([W, H]); y = M + 8; topo(true); }
       escrever(pg, `${i + 1}. ${(S.alunas[id] || {}).nome || ''}`, M, y, { neg: true, tam: 11 }); y += 14;
       if (info) { escrever(pg, info, M + 14, y, { tam: 9.5, cor: cinza }); y += 13; }

@@ -67,11 +67,22 @@ module.exports = db => {
     return { ok: true };
   });
 
-  const eventoResposta = responder(async (u, { eid, xid, alid, st }) => {
-    if (!idOk(eid) || !idOk(xid) || !idOk(alid) || !['interesse', 'nao', 'inscrito'].includes(st)) throw erro('Pedido inválido.', 400);
+  const eventoResposta = responder(async (u, { eid, xid, alid, st, tam }) => {
+    if (!idOk(eid) || !idOk(xid) || !idOk(alid) || (tam == null && !['interesse', 'nao', 'inscrito'].includes(st)) || (tam != null && typeof tam !== 'string')) throw erro('Pedido inválido.', 400);
     const a = await ler(`escolas/${eid}/alunas/${alid}`);
     if (!a || !a.responsavelId || !(await db.doc(`escolas/${eid}/membros/${u.uid}/vinculos/${a.responsavelId}`).get()).exists) throw erro('Você só pode responder pelos seus filhos.', 403);
     const ref = db.doc(`escolas/${eid}/extras/${xid}`);
+    // taxa de uniforme: a família escolhe o tamanho de cada filho, entre os da tabela que a escola montou
+    if (tam != null) {
+      await db.runTransaction(async t => {
+        const x = (await t.get(ref)).data();
+        if (!x || x.tipo !== 'taxa' || !x.tamanhos) throw erro('Esta taxa não pede tamanho.', 404);
+        if (!(x.alunas || []).includes(alid) && !(x.convidados || []).includes(alid)) throw erro('Esta taxa não é para este aluno.', 403);
+        if (!(x.tamanhos.opcoes || []).includes(tam)) throw erro('Escolha um dos tamanhos da lista.', 400);
+        t.update(ref, { [`tamEsc.${alid}`]: { t: tam, em: Date.now(), por: u.uid, quem: 'familia' } });
+      });
+      return { ok: true };
+    }
     await db.runTransaction(async t => {
       const x = (await t.get(ref)).data();
       // taxa dividida: a família diz se o filho participa, até o dia e horário que a escola marcou
