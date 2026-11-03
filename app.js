@@ -2001,15 +2001,15 @@ function sheetTamanhos(xid) {
 function avisoTamanhoFam() {
   return Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.tamanhos && !(x.rateio && !x.rateio.fechadoEm && C.rateioFechado(x))).map(([xid, x]) => {
     const meus = alvoTam(x).filter(id => !x.rateio || x.rateio.fechadoEm ? (x.alunas || []).includes(id) : rtSt(x, id) !== 'nao'); if (!meus.length) return '';
-    return `<div class="rt-card"><b class="rt-tit">${esc(x.nome)}: tamanho do uniforme</b><span class="s">Escolha o tamanho${meus.length > 1 ? ' de cada um' : ''}. Dá para mudar até a escola fechar o pedido.</span>
+    return `<div class="rt-card tam-card"><b class="rt-tit">${esc(x.nome)}: tamanho do uniforme</b>
       ${meus.map(id => { const t = tamEsc(x, id);
-        return `<div class="rt-fil"><div class="ev-ja-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span>${t ? `<span class="s">Tamanho ${esc(t)}</span>` : '<span class="ev-pend">Falta escolher</span>'}</div>
-          <div class="opcoes">${x.tamanhos.opcoes.map(o => `<button type="button" class="pick" data-tmx="${esc(xid)}" data-tmi="${esc(id)}" data-tmv="${esc(o)}" aria-pressed="${t === o}">${esc(tamRot(x, o))}</button>`).join('')}</div></div>`; }).join('')}</div>`; }).join('');
+        return `<label class="tam-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span><span class="grow">${t ? '' : '<span class="ev-pend">Falta escolher</span>'}</span>
+          <select data-tmx="${esc(xid)}" data-tmi="${esc(id)}" aria-label="Tamanho de ${esc(primeiro(S.alunas[id].nome))}"><option value="">Tamanho</option>${x.tamanhos.opcoes.map(o => `<option ${t === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></label>`; }).join('')}</div>`; }).join('');
 }
 function ligarTamanhoFam(v) {
-  v.querySelectorAll('[data-tmx]').forEach(b => b.onclick = async () => { b.disabled = true;
-    try { if (!MOCK && S.papel === 'f') await servidor('eventoResposta', { eid: S.eid, xid: b.dataset.tmx, alid: b.dataset.tmi, tam: b.dataset.tmv });
-      else await B.set(`escolas/${S.eid}/extras/${b.dataset.tmx}`, { tamEsc: { [b.dataset.tmi]: { t: b.dataset.tmv, em: Date.now(), quem: 'familia' } } }, { merge: true });
+  v.querySelectorAll('[data-tmx]').forEach(b => b.onchange = async () => { if (!b.value) return; b.disabled = true;
+    try { if (!MOCK && S.papel === 'f') await servidor('eventoResposta', { eid: S.eid, xid: b.dataset.tmx, alid: b.dataset.tmi, tam: b.value });
+      else await B.set(`escolas/${S.eid}/extras/${b.dataset.tmx}`, { tamEsc: { [b.dataset.tmi]: { t: b.value, em: Date.now(), quem: 'familia' } } }, { merge: true });
       aviso('✓ Tamanho escolhido'); setTimeout(render, 60); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
 }
 // ---- Taxas (e cobranças antigas de eventos) ----
