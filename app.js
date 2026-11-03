@@ -1945,6 +1945,7 @@ function quadrosDe(selA, comEventos, foco) {
       const ins = cv.filter(id => partDe(x, id) === 'inscrito'), vao = cv.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)));
       if (ins.length) q.push(['ei:' + xid, `Inscrição confirmada · ${x.nome}`, ins]);
       if (vao.length > ins.length) q.push(['ev:' + xid, `Disseram que vão · ${x.nome}`, vao]); } }
+  for (const c of categorias()) q.push(['c:' + c.id, `Categoria ${c.nome}`, ativos.filter(id => (catDe(id) || {}).id === c.id)]);
   return [...q, ...porNome(S.grupos).map(([g, G]) => ['g:' + g, G.nome, (G.alunas || []).filter(id => S.alunas[id])]),
     ...ordenar(S.turmas).map(([t, T]) => ['t:' + t, T.nome, alunasDaTurma(t).map(([id]) => id)])];
 }
@@ -2299,7 +2300,7 @@ function sheetVerEvento(xid) {
     ${fotosHTML(xid, fotosDoEvento(xid, x, () => { if ($('evmsg')) sheetVerEvento(xid); }))}
     <div class="tiles"><div class="tile"><span class="lbl">Inscritos</span><b class="num">${g.inscrito.length}</b></div><div class="tile"><span class="lbl">${app ? 'A pagar' : fam ? 'Falta confirmar' : 'Querem ir'}</span><b class="num">${g.interesse.length}</b></div><div class="tile"><span class="lbl">Sem resposta</span><b class="num">${g.sem.length}</b></div></div>
     <button type="button" class="btn ghost btn-ico" id="evmsg">${ICO_WA}<span>Mensagem para o grupo</span></button>
-    <button type="button" class="btn ghost" id="evdocs">Juntar documentos dos atletas (PDF)</button>
+    <button type="button" class="btn ghost" id="evdocs">Lista dos atletas (PDF)</button>
     ${app ? sec('Vão · aguardando pagamento', g.interesse, id => ({ valor: valorCol(brl(C.valorExtra(x, id)), '<span class="chip aberto">A pagar</span>'), acoes: vaiNao(id) }), 'Ninguém com inscrição a pagar.')
       : fam ? sec('Vão · falta confirmar a inscrição', g.interesse, id => ({ valor: x.valorInscricao > 0 ? valorCol(brl(x.valorInscricao)) : '', acoes: `${vaiNao(id)}${bt(id, 'inscrito', 'Já inscrito', 'ghost ev-insc')}` }), 'Todos que vão já confirmaram a inscrição.')
       : sec('Querem ir', g.interesse, id => ({ valor: x.valorInscricao > 0 ? valorCol(brl(x.valorInscricao)) : '', acoes: `${vaiNao(id)}${bt(id, 'inscrito', 'Inscrever', 'ev-insc')}` }), 'Ninguém aguardando inscrição.')}
@@ -2468,7 +2469,7 @@ function tAlunas(v) {
     <div class="field"><input id="abusca" type="search" placeholder="Buscar aluno(a), responsável ou telefone" value="${esc(S.busca || '')}" aria-label="Buscar"></div>
     ${vis.length ? vis.map(({ rid, r, al }) => `<ul class="list">
         <li class="resp-cab ${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''}><div class="grow"><div class="label">Responsável</div><div class="resp-l1"><span class="t">${esc(r.nome)}</span>${rid ? `<span class="resp-fone num">– ${esc(foneBR(r.telefone) || 'sem telefone')}</span>` : ''}</div></div>${rid && r.codigo ? `<span class="chip resp-cod">${esc(r.codigo)}</span>` : ''}${rid && S.admin ? waPendencias(al.map(([id]) => id)) : ''}</li>
-        ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(idade(a.nascimento) || 'Sem data de nascimento'), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].filter(Boolean).slice(0, 1).join(''))}</li>`; }).join('')}
+        ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc([idade(a.nascimento) || 'Sem data de nascimento', catNome(id)].filter(Boolean).join(' · ')) + (catErrada(id) ? ' <span class="fx-pend atraso">Categoria?</span>' : ''), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].filter(Boolean).slice(0, 1).join(''))}</li>`; }).join('')}
         ${rid ? `<li class="tap" data-nova="${esc(rid)}" style="min-height:44px"><span class="sub">+ Outro(a) aluno(a) com ${esc(primeiro(r.nome))}</span></li>` : ''}
       </ul>`).join('') : `<div class="empty">${q ? 'Nada encontrado.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre cada aluno(a) com a turma e o responsável. Se o telefone ou o CPF do responsável já existir, o app sugere agrupar os irmãos.</span>'}</div>`}`;
   $('abusca').oninput = e => { S.busca = e.target.value; render(); };
@@ -2539,6 +2540,53 @@ function sheetResp(rid) {
 // mês no formato mês/ano (11/2026), de 3 anos atrás a 1 ano à frente
 const opcoesMes = atual => { const h = mesHoje(), l = []; for (let k = -36; k <= 12; k++) l.push(mesMais(h, k)); if (atual && !l.includes(atual)) l.push(atual); l.sort();
   return l.map(m => `<option value="${m}" ${m === atual ? 'selected' : ''}>${m.slice(5)}/${m.slice(0, 4)}</option>`).join(''); };
+/* ---- Categorias: a escola define pelo ano/data de nascimento ("nascidos de … até …"); o app distribui e avisa quando não bate ---- */
+const categorias = () => ((S.cfg || {}).categorias || []).filter(c => c && c.id && c.nome).sort((a, b) => String(b.de || '').localeCompare(String(a.de || '')) || a.nome.localeCompare(b.nome, 'pt-BR'));
+const catPorNasc = n => n ? categorias().find(c => (!c.de || n >= c.de) && (!c.ate || n <= c.ate)) || null : null;
+const catSugerida = id => catPorNasc((S.alunas[id] || {}).nascimento);
+// a categoria do aluno: a escolhida à mão, se houver; senão a da data de nascimento
+const catDe = id => { const a = S.alunas[id] || {}, m = a.categoria && categorias().find(c => c.id === a.categoria); return m || catSugerida(id); };
+const catNome = id => (catDe(id) || {}).nome || '';
+// escolhida à mão e diferente da data de nascimento: o app sugere mudar
+const catErrada = id => { const a = S.alunas[id] || {}, sg = catSugerida(id); return !!(a.categoria && sg && a.categoria !== sg.id && categorias().some(c => c.id === a.categoria)); };
+function sheetCategorias() {
+  const ano = new Date().getFullYear();
+  let L = categorias().map(c => ({ ...c }));
+  const linhaC = (c, i) => `<div class="cat-lin"><div class="field"><label for="ctn${i}">Nome</label><input id="ctn${i}" data-cn="${i}" maxlength="30" value="${esc(c.nome || '')}" placeholder="Ex.: Sub-11"></div>
+    <div class="two"><div class="field"><label for="ctd${i}">Nascidos de</label><input id="ctd${i}" type="date" data-cd="${i}" value="${esc(c.de || '')}"></div><div class="field"><label for="cta${i}">até</label><input id="cta${i}" type="date" data-ca="${i}" value="${esc(c.ate || '')}"></div></div>
+    <button type="button" class="link" data-cx="${i}" style="color:var(--out);align-self:flex-start">Tirar esta categoria</button></div>`;
+  sheet(`<h3>Categorias</h3>
+    <div class="sub">Diga quem entra em cada categoria pela data de nascimento. O app coloca cada aluno na categoria certa e avisa quando alguma escolhida à mão não bate.</div>
+    <div id="ctl"></div><button type="button" class="add-disc add-largo" id="ctadd">+ Categoria</button>
+    <div id="ctres"></div>
+    <div class="err" id="cterr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Voltar</button><button type="button" class="btn" id="ctok">Salvar categorias</button></div>`, sh => {
+    const ler = () => sh.querySelectorAll('[data-cn]').forEach(i => { const k = Number(i.dataset.cn); L[k].nome = i.value.trim(); L[k].de = $('ctd' + k).value; L[k].ate = $('cta' + k).value; });
+    const resumo = () => { // conta com as categorias da tela (ainda sem salvar)
+      const ok = L.filter(c => c.nome), por = n => n ? ok.find(c => (!c.de || n >= c.de) && (!c.ate || n <= c.ate)) : null;
+      const al = Object.entries(S.alunas).filter(([, a]) => !a.anonimizadoEm && C.ativaNoMes(a, mesHoje()));
+      const sem = al.filter(([, a]) => !a.categoria && !por(a.nascimento)), erradas = al.filter(([, a]) => a.categoria && por(a.nascimento) && por(a.nascimento).id !== a.categoria);
+      $('ctres').innerHTML = !ok.length ? '' : `<div class="faixa-card" style="background:var(--bg)"><b>Como ficam os ${al.length} alunos</b>
+        <span class="s num">${ok.map(c => `${esc(c.nome)}: ${al.filter(([, a]) => (a.categoria && ok.some(x => x.id === a.categoria) ? a.categoria : (por(a.nascimento) || {}).id) === c.id).length}`).join(' · ')}</span>
+        ${sem.length ? `<span class="s">Sem categoria: ${sem.length} (${esc(sem.slice(0, 4).map(([, a]) => primeiro(a.nome)).join(', '))}${sem.length > 4 ? '…' : ''}). Confira as datas ou o nascimento deles.</span>` : ''}
+        ${erradas.length ? `<span class="s" style="color:var(--out)">${erradas.length} escolhida${erradas.length === 1 ? '' : 's'} à mão não bate${erradas.length === 1 ? '' : 'm'} com a data de nascimento: ${esc(erradas.slice(0, 4).map(([, a]) => primeiro(a.nome)).join(', '))}${erradas.length > 4 ? '…' : ''}.</span><button type="button" class="btn ghost" id="ctfix" data-ids="${esc(erradas.map(([id]) => id).join(','))}">Usar a data de nascimento para ${erradas.length === 1 ? 'ele(a)' : 'eles'}</button>` : ''}</div>`;
+      if ($('ctfix')) $('ctfix').onclick = async () => { try { await B.lote($('ctfix').dataset.ids.split(',').map(id => ({ op: 'merge', p: `escolas/${S.eid}/alunas/${id}`, d: { categoria: null } }))); aviso('Categorias corrigidas'); setTimeout(resumo, 80); } catch (e) { $('cterr').textContent = msgErro(e); } };
+    };
+    const desenhar = () => { $('ctl').innerHTML = L.length ? L.map(linhaC).join('') : '<div class="note">Nenhuma categoria ainda.</div>';
+      sh.querySelectorAll('[data-cx]').forEach(b => b.onclick = () => { ler(); L.splice(Number(b.dataset.cx), 1); desenhar(); });
+      sh.querySelectorAll('#ctl input').forEach(i => i.addEventListener('change', () => { ler(); resumo(); })); resumo(); };
+    $('ctadd').onclick = () => { ler(); const ult = L[L.length - 1], y = ult && ult.de ? Number(ult.de.slice(0, 4)) - 2 : ano - 10;
+      L.push({ id: novoId(), nome: '', de: `${y}-01-01`, ate: `${y + 1}-12-31` }); desenhar(); const i = $('ctn' + (L.length - 1)); i && i.focus(); };
+    desenhar();
+    $('ctok').onclick = async () => { ler(); const err = m => $('cterr').textContent = m;
+      if (L.some(c => !c.nome)) return err('Dê um nome para cada categoria, como "Sub-11".');
+      if (L.some(c => c.de && c.ate && c.de > c.ate)) return err('Em alguma categoria, o "de" está depois do "até".');
+      const dup = L.find((c, i) => L.some((d, j) => j < i && d.nome.toLowerCase() === c.nome.toLowerCase())); if (dup) return err(`Há duas categorias "${dup.nome}".`);
+      $('ctok').disabled = true;
+      try { await B.set(`escolas/${S.eid}/config/geral`, { categorias: L.map(({ id, nome, de, ate }) => ({ id, nome, de: de || null, ate: ate || null })) }, { merge: true }); aviso('✓ Categorias salvas'); fecharSheet(); }
+      catch (e) { err(msgErro(e)); $('ctok').disabled = false; } };
+  });
+}
 function sheetAluna(alid, ridPadrao, turmaPadrao) {
   // aluno novo sem nenhuma turma cadastrada: primeiro a turma, depois volta para o cadastro com ela marcada
   if (!alid && !turmaPadrao && !Object.keys(S.turmas).length) return sheet(`<h3>Primeiro, cadastre uma turma</h3>
@@ -2564,6 +2612,8 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
     <div class="field"><label for="anome">Nome do(a) aluno(a)</label><input id="anome" maxlength="60" value="${esc(a ? a.nome : '')}"></div>
     <div class="two"><div class="field"><label for="anasc">Data de nascimento</label><input id="anasc" type="date" max="${hoje()}" value="${esc(a ? a.nascimento || '' : '')}"></div>
     <div class="field"><span class="lb">Idade</span><div id="aidade" class="num campo-fixo">${esc(idade(a && a.nascimento) || '—')}</div></div></div>
+    ${categorias().length ? `<div class="field"><label for="acat">Categoria</label><select id="acat"><option value="">Pela data de nascimento</option>${categorias().map(c => `<option value="${esc(c.id)}" ${a && a.categoria === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select>
+      <span class="sub" id="acatnota"></span></div>` : ''}
     <div class="field"><span class="lb">Turma</span>
       <div class="checks">${listaT.map(([tid, t]) => { const n = alunasDaTurma(tid).length, cheia = t.vagas && n >= t.vagas && !minhas.has(tid); return `<label><input type="checkbox" data-tu="${esc(tid)}" ${minhas.has(tid) ? 'checked' : ''}><span class="grow"><span class="t" style="display:block">${esc(t.nome)}</span><span class="s">${esc(C.faixaTxt(t))}</span>${t.horario ? `<span class="s">${esc(t.horario)}</span>` : ''}${profNome(t) || localDe(t) ? `<span class="s">${esc([profNome(t), localDe(t)].filter(Boolean).join(' · '))}</span>` : ''}${t.vagas && !cheia ? `<span class="s num">${t.vagas - n === 1 ? 'Resta 1 vaga' : `Restam ${t.vagas - n} vagas`}</span>` : ''}<span class="s fora" data-fx="${esc(tid)}" style="color:var(--out);font-weight:700"></span></span><span class="valor-col">${adm ? `<b class="num">${brl(t.preco)}</b>` : ''}${cheia ? '<span class="chip vencido">Cheia</span>' : ''}</span></label>`; }).join('') || '<div class="grp">Nenhuma turma cadastrada ainda</div>'}</div></div>
     ${Object.keys(S.grupos).length ? `<div class="field"><span class="lb">Grupos</span><div class="chips">${porNome(S.grupos).map(([g, G]) => `<button type="button" class="pick" data-gr="${esc(g)}" aria-pressed="${meusG.has(g)}">${esc(G.nome)}</button>`).join('')}</div></div>` : ''}
@@ -2649,7 +2699,12 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       $('aconta').innerHTML = r ? contaMensalidade(r, sim[id], 'Mensalidade') : '<div class="sub">Marque ao menos uma turma.</div>';
     };
     ['rtel', 'rcpf'].forEach(id => $(id).addEventListener('input', sugerir));
-    $('anasc').addEventListener('input', () => { $('aidade').textContent = idade($('anasc').value) || '—'; });
+    $('anasc').addEventListener('input', () => { $('aidade').textContent = idade($('anasc').value) || '—'; verCat(); });
+    function verCat() { if (!$('acat')) return; const sg = catPorNasc($('anasc').value), v = $('acat').value, n = $('acatnota');
+      if (!v) { n.innerHTML = sg ? `Pela data de nascimento: <b>${esc(sg.nome)}</b>.` : $('anasc').value ? 'Nenhuma categoria pega essa data de nascimento. Confira as categorias em Ajustes.' : ''; return; }
+      if (sg && sg.id !== v) { n.innerHTML = `<span style="color:var(--out)">Pela data de nascimento seria <b>${esc(sg.nome)}</b>.</span> <button type="button" class="link" id="acatusa">Usar ${esc(sg.nome)}</button>`; $('acatusa').onclick = () => { $('acat').value = ''; verCat(); }; }
+      else n.textContent = 'Escolhida à mão.'; }
+    if ($('acat')) { $('acat').onchange = verCat; verCat(); }
     s.querySelectorAll('input,select').forEach(el => el.addEventListener('input', prev)); sugerir(); prev();
     if (adm) {
       const toca = id => { $(id).checked = !$(id).checked; prev(); };
@@ -2685,7 +2740,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         const id = alid || novoId(), ops = []; let r = rid;
         if (r) ops.push({ op: 'merge', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim() } });
         else { r = novoId(); const cod = novoCodigo(); ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim(), codigo: cod, criadoEm: Date.now() } }, { op: 'set', p: 'codigos/' + cod, d: { eid: S.eid, rid: r } }); }
-        ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ...(primeiroMes() !== undefined ? { primeiroMes: primeiroMes() } : {}),
+        ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, ...($('acat') ? { categoria: $('acat').value || null } : {}), turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ...(primeiroMes() !== undefined ? { primeiroMes: primeiroMes() } : {}),
           // aluno novo depois do vencimento do mês: a primeira mensalidade vence em 3 dias, sem multa
           ...(!ed && C.vencMens(ini, S.cfg) < hoje() ? { vencPrimeiro: new Date(Date.now() + 3 * 864e5 - 3 * 36e5).toISOString().slice(0, 10) } : {}), ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
         if (S.docs[id] && S.docs[id].responsavelId !== r) ops.push({ op: 'merge', p: `escolas/${S.eid}/docsAlunos/${id}`, d: { responsavelId: r } });
@@ -5508,7 +5563,7 @@ function sheetDocsEscola() {
   for (const [alid] of ativos) for (const t of docsDoAluno(alid)) { const st = situacaoDoc(docDe(alid, t)).st; if (st === 'vencido' || st === 'vence') alertas.push([alid, t, st]); }
   alertas.sort((x, y) => (x[2] === 'vencido' ? 0 : 1) - (y[2] === 'vencido' ? 0 : 1));
   sheet(`<h3>Documentos dos alunos</h3>
-    <button type="button" class="btn" id="dejunta">Juntar documentos em PDF</button>
+    <button type="button" class="btn" id="dejunta">Lista e documentos em PDF</button>
     <div class="note">Para mandar a uma competição: escolha os alunos e os documentos, e o app junta tudo num PDF só.</div>
     ${alertas.length ? `<section><h2>Vencidos ou vencendo</h2><ul class="list">${alertas.map(([al, t]) => linha(al, t)).join('')}</ul></section>` : ''}
     <section><h2>Por documento</h2>
@@ -5518,29 +5573,39 @@ function sheetDocsEscola() {
     </section>
     <button type="button" class="linha-botao" id="detipos"><span class="grow"><b>Mudar os tipos de documento</b><span class="s">${esc(tiposDoc().map(t => t.nome).join(', ') || 'Nenhum')}</span></span><span aria-hidden="true">›</span></button>
     <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
-    $('dejunta').onclick = () => abrirDe(volta, () => sheetJuntarDocs({ volta }));
+    $('dejunta').onclick = () => abrirDe(volta, () => sheetJuntarDocs({ volta, tipos: tiposDoc().map(t => t.id) }));
     $('detipos').onclick = () => abrirDe(volta, () => sheetTiposDoc(volta));
     sh.querySelectorAll('[data-dal]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; abrirDe(volta, () => sheetDocAluno(li.dataset.dal, li.dataset.dt, volta)); });
   });
 }
 
 // juntar os documentos dos alunos marcados num PDF só (para a competição)
+// informações do aluno para a lista (PDF e WhatsApp), na ordem em que aparecem
+const CAMPOS_LISTA = [['idade', 'Idade'], ['nasc', 'Data de nascimento'], ['cat', 'Categoria'], ['turma', 'Turma'], ['resp', 'Responsável'], ['tel', 'Telefone']];
+function infoAluno(id, campos) {
+  const a = S.alunas[id] || {}, r = respDe(id) || {}, f = {
+    idade: () => idade(a.nascimento), nasc: () => a.nascimento ? dataBRA(a.nascimento) : '', cat: () => catNome(id), turma: () => turmasTxt(a),
+    resp: () => r.nome || '', tel: () => r.telefone ? foneBR(r.telefone) : '' };
+  return campos.map(c => f[c] ? f[c]() : '').filter(Boolean);
+}
 function sheetJuntarDocs(op = {}) {
   const selA = new Set(op.pre || []), usados = new Set();
   const temAtest = Object.keys(S.alunas).some(id => atestadoMeta(id));
   const temOutros = Object.keys(S.alunas).some(id => avulsosDe(id).length);
-  const tipos = [...tiposDoc().map(t => t.id), ...(temOutros ? ['_outros'] : []), ...(temAtest ? ['_atest'] : [])], selT = new Set(op.tipos || tiposDoc().map(t => t.id));
-  sheet(`<h3>Juntar documentos</h3>
-    <div class="sub">Um PDF só, com os documentos dos alunos marcados, para mandar à competição pelo WhatsApp ou e-mail.</div>
+  const tipos = [...tiposDoc().map(t => t.id), ...(temOutros ? ['_outros'] : []), ...(temAtest ? ['_atest'] : [])], selT = new Set(op.tipos || []);
+  const camposOk = CAMPOS_LISTA.filter(([k]) => k !== 'cat' || categorias().length), selC = new Set(['idade', ...(categorias().length ? ['cat'] : [])]);
+  sheet(`<h3>Lista dos alunos</h3>
+    <div class="sub">Escolha quem entra e o que aparece de cada um. Sai um PDF, com os documentos se quiser, para mandar à competição ou ao grupo.</div>
     <div class="field"><label for="jdtit">Para qual competição?</label><input id="jdtit" maxlength="80" value="${esc(op.titulo || '')}" placeholder="Ex.: Copa Recife Sub-11"></div>
-    <div class="field"><span class="lb">Quais documentos?</span><div class="opcoes" id="jdtipos">${tipos.map(t => `<button type="button" class="pick" data-jt="${esc(t)}" aria-pressed="${selT.has(t)}">${esc(tipoDoc(t).nome)}</button>`).join('')}</div></div>
+    <div class="field"><span class="lb">O que aparece de cada aluno? (o nome sempre aparece)</span><div class="opcoes" id="jdcampos">${camposOk.map(([k, n]) => `<button type="button" class="pick" data-jc="${k}" aria-pressed="${selC.has(k)}">${n}</button>`).join('')}</div></div>
+    <div class="field"><span class="lb">Anexar documentos? (opcional)</span><div class="opcoes" id="jdtipos">${tipos.map(t => `<button type="button" class="pick" data-jt="${esc(t)}" aria-pressed="${selT.has(t)}">${esc(tipoDoc(t).nome)}</button>`).join('')}</div></div>
     <div class="field"><span class="lb">Quais alunos? Toque num quadro para escolher</span><div id="jdquadros"></div></div>
     <div id="jdresumo"></div>
-    <div class="field"><span class="lb">Como enviar?</span><div class="insc-ops" id="jdmodo">${[['um', 'Um PDF só', 'Todos os documentos juntos, num arquivo.'], ['sep', 'Um arquivo para cada documento', 'Cada documento num PDF com o nome do aluno. Vão todos de uma vez.']].map(([k, n, d]) => `<button type="button" class="insc-op" data-jm="${k}" aria-pressed="${k === 'um'}"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${d}</span></span></button>`).join('')}</div></div>
-    <label class="check"><input type="checkbox" id="jdcapa" checked> <span id="jdcapat">Primeira página com a lista dos alunos e a data de nascimento</span></label>
+    <div id="jddocw" hidden><div class="field"><span class="lb">Como enviar?</span><div class="insc-ops" id="jdmodo">${[['um', 'Um PDF só', 'Todos os documentos juntos, num arquivo.'], ['sep', 'Um arquivo para cada documento', 'Cada documento num PDF com o nome do aluno. Vão todos de uma vez.']].map(([k, n, d]) => `<button type="button" class="insc-op" data-jm="${k}" aria-pressed="${k === 'um'}"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>${n}</b><span class="s">${d}</span></span></button>`).join('')}</div></div>
+    <label class="check"><input type="checkbox" id="jdcapa" checked> <span id="jdcapat">Primeira página com a lista dos alunos</span></label></div>
     <div class="err" id="jderr" role="alert"></div>
     <div id="jdpronto"></div>
-    <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="jdok">Gerar</button></div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="jdok">Gerar PDF</button></div>
     <div class="note">Depois de gerar, toque em Enviar. No celular, o compartilhar abre: escolha o WhatsApp ou o e-mail. No computador, os arquivos são baixados.</div>`, sh => {
     if (op.volta) SHEET_VOLTAR = op.volta;
     const resumo = () => {
@@ -5548,6 +5613,8 @@ function sheetJuntarDocs(op = {}) {
       let tem = 0; const faltam = [], vencidos = [];
       for (const id of al) for (const t of expandeTipos(id, ts)) { const m = metaJunta(id, t), st = situacaoDoc(m).st; if (!m) faltam.push([id, t]); else { tem++; if (st === 'vencido') vencidos.push([id, t]); } }
       const nomes = l => l.slice(0, 6).map(([id, t]) => `${primeiro(S.alunas[id].nome)} (${tipoDoc(t).nome.toLowerCase()})`).join(', ') + (l.length > 6 ? ` e mais ${l.length - 6}` : '');
+      $('jddocw').hidden = !ts.length;
+      if (al.length && !ts.length) { $('jdresumo').innerHTML = `<div class="faixa-card" style="background:var(--bg)"><b class="num">${al.length} aluno${al.length === 1 ? '' : 's'} na lista</b><span class="s">Sem documentos: o PDF é só a lista.</span></div>`; return; }
       $('jdresumo').innerHTML = !al.length || !ts.length ? '' : `<div class="faixa-card" style="background:var(--bg)"><b class="num">${al.length} aluno${al.length === 1 ? '' : 's'} · ${tem} documento${tem === 1 ? '' : 's'} no PDF</b>
         ${faltam.length ? `<span class="s">Faltam ${faltam.length}: ${esc(nomes(faltam))}. Na lista da primeira página aparece "falta".</span>` : '<span class="s">Todos os documentos estão no app.</span>'}
         ${vencidos.length ? `<span class="s" style="color:var(--out);font-weight:700">Vencidos: ${esc(nomes(vencidos))}.</span>` : ''}</div>`;
@@ -5555,10 +5622,12 @@ function sheetJuntarDocs(op = {}) {
     const sel = seletorAtletas($('jdquadros'), { quadros: quadrosDe(selA, true, op.evento), selA, usados, aoMudar: resumo });
     sel.desenhar();
     sh.querySelectorAll('[data-jt]').forEach(b => b.onclick = () => { const t = b.dataset.jt; selT.has(t) ? selT.delete(t) : selT.add(t); b.setAttribute('aria-pressed', selT.has(t)); resumo(); });
+    sh.querySelectorAll('[data-jc]').forEach(b => b.onclick = () => { const k = b.dataset.jc; selC.has(k) ? selC.delete(k) : selC.add(k); b.setAttribute('aria-pressed', selC.has(k)); limparPronto(); });
+    const camposSel = () => camposOk.map(([k]) => k).filter(k => selC.has(k));
     let modo = 'um';
-    const limparPronto = () => { $('jdpronto').innerHTML = ''; $('jdok').textContent = 'Gerar'; $('jdok').classList.remove('ghost'); };
+    const limparPronto = () => { $('jdpronto').innerHTML = ''; $('jdok').textContent = 'Gerar PDF'; $('jdok').classList.remove('ghost'); };
     sh.querySelectorAll('[data-jm]').forEach(b => b.onclick = () => { modo = b.dataset.jm; sh.querySelectorAll('[data-jm]').forEach(x => x.setAttribute('aria-pressed', x.dataset.jm === modo));
-      $('jdcapat').textContent = modo === 'sep' ? 'Junto, um arquivo com a lista dos alunos e a data de nascimento' : 'Primeira página com a lista dos alunos e a data de nascimento'; limparPronto(); });
+      $('jdcapat').textContent = modo === 'sep' ? 'Junto, um arquivo com a lista dos alunos' : 'Primeira página com a lista dos alunos'; limparPronto(); });
     sh.addEventListener('change', e => { if (e.target.id === 'jdcapa' || e.target.closest('#jdquadros')) limparPronto(); });
     sh.querySelectorAll('[data-jt]').forEach(b => b.addEventListener('click', limparPronto));
     $('jdtit').addEventListener('input', limparPronto);
@@ -5582,12 +5651,12 @@ function sheetJuntarDocs(op = {}) {
     };
     $('jdok').onclick = async () => {
       const err = m => $('jderr').textContent = m || '', al = porNome(S.alunas).filter(([id]) => selA.has(id)).map(([id]) => id), ts = tipos.filter(t => selT.has(t));
-      err(''); if (!ts.length) return err('Escolha ao menos um documento.'); if (!al.length) return err('Escolha ao menos um aluno.');
+      err(''); if (!al.length) return err('Escolha ao menos um aluno.');
       const titulo = $('jdtit').value.trim(), b = $('jdok'); b.disabled = true; $('jdpronto').innerHTML = '';
       try {
-        const arqs = await juntarDocsArquivos({ titulo, alids: al, tids: ts, capa: $('jdcapa').checked, separado: modo === 'sep' }, txt => { b.textContent = txt; });
-        b.disabled = false; b.textContent = 'Gerar de novo'; b.classList.add('ghost'); mostrarPronto(arqs);
-      } catch (e) { err(e.message || msgErro(e)); b.textContent = 'Gerar'; b.disabled = false; }
+        const arqs = await juntarDocsArquivos({ titulo, alids: al, tids: ts, campos: camposSel(), capa: !ts.length || $('jdcapa').checked, separado: ts.length && modo === 'sep' }, txt => { b.textContent = txt; });
+        b.disabled = false; b.textContent = 'Gerar PDF de novo'; b.classList.add('ghost'); mostrarPronto(arqs);
+      } catch (e) { err(e.message || msgErro(e)); b.textContent = 'Gerar PDF'; b.disabled = false; }
     };
   });
 }
@@ -5626,7 +5695,7 @@ const WIN_EXTRA = '—–“”‘’…•€';
 const pdfTxt = s => [...String(s ?? '')].map(ch => { const c = ch.charCodeAt(0); if ((c >= 32 && c <= 126) || (c >= 160 && c <= 255) || WIN_EXTRA.includes(ch)) return ch; const b = ch.normalize('NFD').replace(/[̀-ͯ]/g, ''); return b && b.charCodeAt(0) < 127 ? b[0] : ''; }).join('');
 // junta os documentos: num PDF só ou um PDF para cada documento (com a lista dos alunos à parte)
 // devolve [{ nome, bytes }]
-async function juntarDocsArquivos({ titulo, alids, tids, capa, separado }, progresso = () => { }) {
+async function juntarDocsArquivos({ titulo, alids, tids, campos = ['nasc'], capa, separado }, progresso = () => { }) {
   progresso('Preparando…');
   const L = await carregarPdfLib(), FONTES = new Map();
   const novoPdf = async () => { const d = await L.PDFDocument.create(); FONTES.set(d, { F: await d.embedFont(L.StandardFonts.Helvetica), FB: await d.embedFont(L.StandardFonts.HelveticaBold) }); return d; };
@@ -5639,19 +5708,20 @@ async function juntarDocsArquivos({ titulo, alids, tids, capa, separado }, progr
     pg.drawText(caber(t, f, tam, o.max || (W - x - M)), { x, y: H - y, size: tam, font: f, color: o.cor || preto }); };
   const nasc = id => { const n = (S.alunas[id] || {}).nascimento; return n ? dataBRA(n) : '—'; };
   const statusTxt = (id, t) => { const m = metaJunta(id, t), s = situacaoDoc(m); return !m ? 'falta' : s.st === 'vencido' ? `venceu ${dataBRA(m.validade)}` : m.validade ? `até ${dataBRA(m.validade)}` : 'ok'; };
-  const tit = titulo || 'Documentos dos alunos';
+  const tit = titulo || (tids.length ? 'Documentos dos alunos' : 'Lista dos alunos');
   const limpaNome = t => String(t || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80);
   // lista dos alunos
   const desenharCapa = pdf => {
     let pg = pdf.addPage([W, H]), y = M + 8;
     const topo = cont => { pg.drawRectangle({ x: 0, y: H - 6, width: W, height: 6, color: corEsc }); escrever(pg, escola, M, y + 4, { neg: true, tam: 10, cor: cinza }); y += 26;
       escrever(pg, cont ? `${tit} (continuação)` : tit, M, y, { neg: true, tam: 18 }); y += 18; escrever(pg, `${alids.length} aluno${alids.length === 1 ? '' : 's'} · gerado em ${geradoEm}`, M, y, { tam: 9.5, cor: cinza }); y += 22;
-      escrever(pg, 'ALUNO(A)', M, y, { neg: true, tam: 8, cor: cinza }); escrever(pg, 'NASCIMENTO', W - M - 90, y, { neg: true, tam: 8, cor: cinza }); y += 6; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.6, color: linhaC }); y += 14; };
+      escrever(pg, 'ALUNO(A)', M, y, { neg: true, tam: 8, cor: cinza }); y += 6; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.6, color: linhaC }); y += 14; };
     topo(false);
     alids.forEach((id, i) => {
-      const linhas = expandeTipos(id, tids).map(t => [`${tipoDoc(t).nome}: ${statusTxt(id, t)}`, !metaJunta(id, t) || situacaoDoc(metaJunta(id, t)).st === 'vencido']), alto = 14 + Math.ceil(linhas.length / 2) * 12 + 8;
+      const info = infoAluno(id, campos).join('  ·  '), linhas = expandeTipos(id, tids).map(t => [`${tipoDoc(t).nome}: ${statusTxt(id, t)}`, !metaJunta(id, t) || situacaoDoc(metaJunta(id, t)).st === 'vencido']), alto = 14 + (info ? 13 : 0) + Math.ceil(linhas.length / 2) * 12 + 8;
       if (y + alto > H - M) { pg = pdf.addPage([W, H]); y = M + 8; topo(true); }
-      escrever(pg, `${i + 1}. ${(S.alunas[id] || {}).nome || ''}`, M, y, { neg: true, tam: 11, max: W - 2 * M - 100 }); escrever(pg, nasc(id), W - M - 90, y, { tam: 10.5 }); y += 14;
+      escrever(pg, `${i + 1}. ${(S.alunas[id] || {}).nome || ''}`, M, y, { neg: true, tam: 11 }); y += 14;
+      if (info) { escrever(pg, info, M + 14, y, { tam: 9.5, cor: cinza }); y += 13; }
       linhas.forEach(([l, ruim], k) => { const col = k % 2; escrever(pg, l, M + 14 + col * ((W - 2 * M - 14) / 2), y, { tam: 9, cor: ruim ? vermelho : cinza, max: (W - 2 * M - 14) / 2 - 8 }); if (col === 1 || k === linhas.length - 1) y += 12; });
       y += 4; pg.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.4, color: linhaC }); y += 14;
     });
@@ -5682,6 +5752,7 @@ async function juntarDocsArquivos({ titulo, alids, tids, capa, separado }, progr
   };
   const fechar = async (pdf, t) => { pdf.setTitle(pdfTxt(t)); pdf.setProducer('Turma em Dia'); pdf.setCreator('Turma em Dia'); return pdf.save(); };
   const lista = []; for (const id of alids) for (const t of expandeTipos(id, tids)) if (metaJunta(id, t)) lista.push([id, t]);
+  if (!tids.length) { const pdf = await novoPdf(); desenharCapa(pdf); progresso('Finalizando…'); return [{ nome: limpaNome(`Lista ${titulo || escola}`) + '.pdf', bytes: await fechar(pdf, tit) }]; }
   if (!lista.length) throw new Error('Nenhum dos alunos marcados tem esses documentos no app.');
   if (!separado) {
     const pdf = await novoPdf(); if (capa) desenharCapa(pdf);
@@ -6406,6 +6477,7 @@ function sheetAjustes() {
     <section><h2>Aparência</h2>
       <button type="button" class="linha-botao" id="japar">${c.logo ? `<img src="${esc(c.logo)}" alt="" class="mini-logo">` : '<span class="mini-logo vazio">Logo</span>'}<span class="grow"><b>Cor e logo da escola</b><span class="s">Toque para mudar</span></span><span class="cor-amostra" style="background:${hexOk(c.cor) ? c.cor : COR_PADRAO}"></span><span aria-hidden="true">›</span></button>
     </section>
+    <section><h2>Categorias</h2><button type="button" class="linha-botao" id="jcats"><span class="grow"><b>Categorias por data de nascimento</b><span class="s">${categorias().length ? esc(categorias().map(c => c.nome).join(', ')) : 'Ex.: Sub-9, Sub-11. O app distribui os alunos sozinho'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
     <section><h2>Documentos dos alunos</h2><button type="button" class="linha-botao" id="jdocs"><span class="grow"><b>Tipos de documento</b><span class="s">${esc(tiposDoc().map(t => t.nome).join(', ') || 'Nenhum')}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
     <div class="err" id="jerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="jok">Salvar ajustes</button></div>
@@ -6419,6 +6491,7 @@ function sheetAjustes() {
     if ($('jnf')) $('jnf').onclick = () => abrirDe(sheetAjustes, () => sheetNotaFiscal());
     if ($('jct')) $('jct').onclick = () => abrirDe(sheetAjustes, () => sheetContratoModelo());
     $('jdocs').onclick = () => abrirDe(sheetAjustes, () => sheetTiposDoc(sheetAjustes));
+    $('jcats').onclick = () => abrirDe(sheetAjustes, () => sheetCategorias());
     ligarNotasPlataforma(sheetAjustes);
     $('japar').onclick = () => abrirDe(sheetAjustes, sheetAparencia);
     $('jmsgs').onclick = () => abrirDe(sheetAjustes, () => sheetModelos());
@@ -6525,7 +6598,7 @@ async function semearMock() {
   await B.cadastrar('Paula Diretora', 'admin@teste.com', '123456'); const uA = window.__mock.cur().uid;
   const eid = 'esc1', p = `escolas/${eid}`, m = mesHoje(), m1 = mesMais(m, -1), m2 = mesMais(m, -2), set = (q, d) => B.set(q, d);
   const qs = new URLSearchParams(location.search), formasTeste = qs.has('formas');
-  const cfg = { atraso: { ativo: true, multa: 2, juros: 1 }, vencDia: 10, pixRepassa: false, descIrmas: 0.1, descMulti: 0.15, mpConectadoEm: Date.now(), mpTaxaApp: 0.01, mpChave: 'TEST-PUB', pixChave: '12.345.678/0001-90',
+  const cfg = { categorias: [{ id: 'c7', nome: 'Sub-7', de: '2019-01-01', ate: '2020-12-31' }, { id: 'c9', nome: 'Sub-9', de: '2017-01-01', ate: '2018-12-31' }, { id: 'c11', nome: 'Sub-11', de: '2015-01-01', ate: '2016-12-31' }, { id: 'c13', nome: 'Sub-13', de: '2013-01-01', ate: '2014-12-31' }], atraso: { ativo: true, multa: 2, juros: 1 }, vencDia: 10, pixRepassa: false, descIrmas: 0.1, descMulti: 0.15, mpConectadoEm: Date.now(), mpTaxaApp: 0.01, mpChave: 'TEST-PUB', pixChave: '12.345.678/0001-90',
     ...(formasTeste ? { pixRepassa: true, formas: { boleto: true, cartao: true, parcelado: true, maxParcelas: 6, recorrente: true } } : {}) };
   // ?mock=1&marca=1: a escola de exemplo com cor e escudo próprios (para ver a abertura com a cara da escola)
   if (/[?&]marca=1/.test(location.search)) { cfg.cor = '#1E5A8A'; cfg.logo = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 80'><path d='M40 4 70 14v24c0 19-13 32-30 38C23 70 10 57 10 38V14z' fill='#1E5A8A'/><path d='M40 12 62 19v19c0 14-9 24-22 29-13-5-22-15-22-29V19z' fill='#fff'/><text x='40' y='47' text-anchor='middle' font-family='Arial Black,Arial' font-weight='900' font-size='19' fill='#1E5A8A'>EM</text></svg>"); }
