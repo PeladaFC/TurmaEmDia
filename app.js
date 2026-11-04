@@ -1871,7 +1871,15 @@ function sheetPix(chaves, voltar) {
       parar = B.ouvirDoc(`escolas/${S.eid}/cobrancas/${d.chave}`, c => {
         if (!c || !$('pxst')) return;
         if (c.status === 'approved') {
-          if (n + 1 < N) { aviso(`Pix para ${primeiro(nomeRec(d.rec))} confirmado. Agora o próximo.`); setTimeout(() => passo(n + 1), 400); return; }
+          // um Pix de vários pago: mostra bem claro "1 de 3 pago ✓" antes de passar para o próximo QR Code
+          if (n + 1 < N) { parar && parar(); parar = null;
+            $('pxc').innerHTML = `<div class="pix-ok" role="status"><div class="pix-ok-passos">${lotes.map((l, i) => `<span class="${i <= n ? 'ok' : i === n + 1 ? 'prox' : ''}">${i <= n ? '✓' : i + 1}</span>`).join('<i></i>')}</div>
+              <svg class="pix-ok-ic" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg>
+              <h3>Pix ${n + 1} de ${N} pago</h3><span class="sub">${brl(d.valor)} para ${esc(nomeRec(d.rec))}</span>
+              <div class="pix-ok-prox">Agora falta ${N - n - 1 === 1 ? 'o último Pix' : `${N - n - 1} Pix`}: <b>${brl(lotes[n + 1].valor)}</b> para ${esc(nomeRec(lotes[n + 1].rec))}</div>
+              <button type="button" class="btn" id="pxprox">Ir para o Pix ${n + 2} de ${N}</button><div class="pix-ok-barra"><i></i></div></div>`;
+            let foi = false; const ir = () => { if (foi || !$('pxprox')) return; foi = true; passo(n + 1); };
+            $('pxprox').onclick = ir; setTimeout(ir, 4500); return; }
           $('pxc').innerHTML = `<div class="done"><div class="ok">✓</div><h3>Pagamento confirmado!</h3><span class="sub">${N > 1 ? `${N} Pix, ${brl(total)} no total` : brl(c.valor) + ' recebidos por Pix'}. Obrigado!</span></div>`; S.sel = null; parar && parar(); parar = null;
         } else if (['rejected', 'cancelled', 'expired'].includes(c.status)) $('pxst').innerHTML = `<i style="background:var(--out)"></i>Este Pix foi cancelado ou venceu. Feche e gere outro.`;
       }, () => { });

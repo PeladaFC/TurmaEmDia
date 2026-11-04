@@ -917,6 +917,22 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 .rt-fil{gap:6px;padding-top:8px}
 .rt-fil .actions .btn{padding:8px 10px;font-size:.82rem;min-height:38px;line-height:1.15}
 .tam-lin{padding:4px 0}.tam-lin select,.tam-trava{min-height:36px;padding:6px 10px}
+.pix-ok{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:8px 0 4px}
+.pix-ok h3{margin:4px 0 0;font-size:1.35rem}
+.pix-ok-ic{width:84px;height:84px}
+.pix-ok-ic circle{fill:none;stroke:var(--in);stroke-width:3;stroke-dasharray:151;stroke-dashoffset:151;animation:pxCirc .5s ease-out forwards}
+.pix-ok-ic path{fill:none;stroke:var(--in);stroke-width:4.5;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:36;stroke-dashoffset:36;animation:pxCheck .35s .45s ease-out forwards}
+.pix-ok-ic{animation:pxPop .3s .75s ease-out}
+@keyframes pxCirc{to{stroke-dashoffset:0}}@keyframes pxCheck{to{stroke-dashoffset:0}}@keyframes pxPop{50%{transform:scale(1.08)}}
+.pix-ok-passos{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.pix-ok-passos span{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:.9rem;border:2px solid var(--line);color:var(--muted)}
+.pix-ok-passos span.ok{background:var(--in);border-color:var(--in);color:#fff}
+.pix-ok-passos span.prox{border-color:var(--accent);color:var(--accent)}
+.pix-ok-passos i{width:18px;height:2px;background:var(--line)}
+.pix-ok-prox{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:10px 12px;font-size:.92rem;width:100%}
+.pix-ok-barra{width:100%;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.pix-ok-barra i{display:block;height:100%;width:0;background:var(--in);animation:pxBarra 4.5s linear forwards}
+@keyframes pxBarra{to{width:100%}}
 </style>
 </head>
 <body>
