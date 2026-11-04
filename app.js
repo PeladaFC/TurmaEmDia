@@ -2188,8 +2188,9 @@ function sheetEvento(xid) {
       ${temPagEv ? '<div class="note">Já há inscrições pagas pelo app, então o valor e a forma de pagar não mudam mais.</div>' : ''}</div>
     <div class="field"><span class="lb">Responder até</span><div class="two"><input id="eprazo" type="date" aria-label="Dia" value="${esc((x && x.prazo) || '')}"><input id="ephora" type="time" aria-label="Horário" value="${esc((x && x.prazoHora) || '18:00')}"></div>
       <span class="s">Depois desse dia e horário, as famílias não respondem mais. Deixe o dia em branco para não ter prazo.</span></div>
+    <div class="field so-app"><span class="lb">Vencimento</span><div class="two"><input id="even" type="date" aria-label="Dia do vencimento" value="${esc((x && x.venc) || '')}" ${temPagEv ? 'disabled' : ''}><input id="evhora" type="time" aria-label="Horário limite" value="${esc((x && x.vencHora) || '18:00')}" ${temPagEv ? 'disabled' : ''}></div>
+      <span class="s">Dia e horário limite para pagar.</span></div>
     <div class="grade2">
-      <div class="field so-app"><label for="even">Vencimento</label><input id="even" type="date" value="${esc((x && x.venc) || '')}" ${temPagEv ? 'disabled' : ''}></div>
       <div class="field"><label for="einsc">Valor (R$)</label><input id="einsc" inputmode="decimal" value="${esc(x && (x.cobranca === 'app' ? x.v : x.valorInscricao) ? fmtValor(x.cobranca === 'app' ? x.v : x.valorInscricao) : '')}" placeholder="0,00" ${temPagEv ? 'disabled' : ''}></div>
       ${S.admin ? `<div class="field so-app"><label for="erec">Recebe</label><select id="erec" ${temPagEv ? 'disabled' : ''}>${opcoesRec(x ? x.recebedor : 'escola')}</select></div>` : ''}
     </div>
@@ -2255,7 +2256,7 @@ function sheetEvento(xid) {
       const id = xid || novoId();
       try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', nota: S.admin ? notaSalvar('enota', 'erec', x && x.nota === true) : !!(x && x.nota === true), fotos: fotos.length, endereco: $('eend').value.trim() || null, links: linksOk, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
           valorInscricao: !app && insc > 0 ? C.r2(insc) : null, tamanhos: tamSalvarE(), prazo: $('eprazo').value || null, prazoHora: $('eprazo').value ? ($('ephora').value || '18:00') : null, convidados: ids, origem: sel.origem(), part,
-          v: app ? C.r2(insc) : 0, venc: app ? venc : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
+          v: app ? C.r2(insc) : 0, venc: app ? venc : null, vencHora: app ? ($('evhora').value || '18:00') : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         if (fotosMudou && (fotos.length || (x && x.fotos))) { // sem foto nenhuma, antes e agora: nada a guardar
           try { await B.set(`escolas/${S.eid}/midiaEventos/${id}`, { fotos }); delete MIDIA_EV[id]; }
           catch (e) { fecharSheet(); aviso('O evento foi salvo, mas as fotos não. Tente pôr as fotos de novo daqui a pouco.'); return; }
@@ -2360,7 +2361,7 @@ function sheetVerEvento(xid) {
     return b(vai, 'interesse', 'Vai', 'ev-v') + b(nao, 'nao', 'Não vai', 'ev-n'); };
   const sec = (tit, ids, acoes, vazio) => `<section><h2>${tit} <span class="sub num">${ids.length}</span></h2>${ids.length ? `<ul class="list">${ids.map(id => lin(id, acoes(id))).join('')}</ul>` : `<div class="note">${vazio}</div>`}</section>`;
   sheet(`<h3>${esc(x.nome)}</h3>
-    ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', app ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo caixa da escola · vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? prazoTxt(x) : '']])}
+    ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', app ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo caixa da escola · vence ${dataBR(x.venc)}${x.vencHora ? ' às ' + x.vencHora.replace(':00', 'h').replace(':', 'h') : ''}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? prazoTxt(x) : '']])}
     ${fimDe(x) < hoje() ? `<div class="banner"><span><b>Evento encerrado</b> em ${dataBR(fimDe(x))}. Para mudar alguma coisa, o app pede confirmação.</span></div>` : ''}
     ${localEventoHTML(x)}
     ${fotosHTML(xid, fotosDoEvento(xid, x, () => { if ($('evmsg')) sheetVerEvento(xid); }))}
@@ -2465,7 +2466,7 @@ function blocoEventosFamilia() {
   const L = eventosAtivos().filter(([, x]) => fimDe(x) >= h).map(([xid, x]) => ({ xid, x, ids: convidadosDe(x).filter(id => meus.includes(id)) })).filter(e => e.ids.length);
   if (!L.length) return '';
   return `<section><h2>Eventos</h2>${L.map(({ xid, x, ids }) => `<div class="filha ev-fam"><div class="t" style="font-size:1.05rem">${esc(x.nome)}</div>
-    ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', pelaEscola(x) ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo app, vence ${dataBR(x.venc)}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? prazoTxt(x) : '']])}
+    ${ddl([['Quando', esc(periodoTxt(x))], ['Local', esc(x.local || '')], ['Organiza', esc(x.organizador || '')], ['Inscrição', pelaEscola(x) ? `<span class="num">${brl(x.v)}</span> <span class="sub">pelo app, vence ${dataBR(x.venc)}${x.vencHora ? ' às ' + x.vencHora.replace(':00', 'h').replace(':', 'h') : ''}</span>` : x.valorInscricao ? `<span class="num">${brl(x.valorInscricao)}</span> <span class="sub">paga ao organizador</span>` : ''], ['Responder até', x.prazo ? prazoTxt(x) : '']])}
     ${localEventoHTML(x)}
     ${fotosHTML(xid, fotosDoEvento(xid, x, agendar))}
     ${ids.map(id => respFamilia(xid, x, id)).join('')}</div>`).join('')}</section>`;
