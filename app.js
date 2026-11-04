@@ -2857,8 +2857,8 @@ function saudeProfHTML(alid) {
   const it = [];
   x.itens.forEach(t => it.push(['Saúde', t]));
   if (x.detalhes) it.push(['Detalhes', x.detalhes]);
-  if (x.alergias) it.push(['Alergias', x.alergias]);
-  if (x.remedios) it.push(['Remédios', x.remedios]);
+  if (C.temInfo(x.alergias)) it.push(['Alergias', C.temInfo(x.alergias)]);
+  if (C.temInfo(x.remedios)) it.push(['Remédios', C.temInfo(x.remedios)]);
   if (x.semPrimeiros) it.push(['Atenção', 'A família não autoriza os primeiros socorros pela escola: em caso de problema, ligue para o contato de emergência']);
   if (x.atestado) it.push(['Atestado', { ok: 'Entregue e conferido pela escola', conferir: 'Enviado; a escola ainda vai conferir', recusado: 'A escola pediu outro', falta: 'Ainda não foi entregue' }[x.atestado]]);
   const e = x.emergencia, tel = e && e.telefone ? C.soDigitos(e.telefone) : '';
@@ -2875,8 +2875,8 @@ function saudePerfilHTML(alid) {
   const it = [];
   PERGUNTAS_SAUDE.forEach(([k]) => { if ((t.respostas || {})[k]) it.push(['Saúde', SAUDE_CURTA[k]]); });
   if (t.detalhes) it.push(['Detalhes', t.detalhes]);
-  if (t.alergias) it.push(['Alergias', t.alergias]);
-  if (t.remedios) it.push(['Remédios', t.remedios]);
+  if (C.temInfo(t.alergias)) it.push(['Alergias', C.temInfo(t.alergias)]);
+  if (C.temInfo(t.remedios)) it.push(['Remédios', C.temInfo(t.remedios)]);
   if (t.primeirosSocorros === false) it.push(['Atenção', 'Não autoriza os primeiros socorros pela escola']);
   if (t.imagem === false) it.push(['Imagem', 'Não autoriza o uso de imagem (fotos e vídeos)']);
   if (x.atest) it.push(['Atestado', x.as === 'recusado' ? 'Atestado recusado: a família precisa mandar outro' : x.as === 'conferir' ? 'Atestado enviado: falta a escola conferir' : 'Falta o atestado médico']);
@@ -4857,7 +4857,7 @@ function sheetTermo(alid) {
       <div class="field" id="tsimw" hidden><label for="tsim">Conte um pouco sobre o que marcou "sim"</label><textarea id="tsim" class="msg-edit" rows="3" style="min-height:80px">${esc(t.detalhes || '')}</textarea>
         <div class="aviso-lei"><b>Atestado médico</b><span>Com alguma resposta "sim", a escola vai pedir um atestado médico dizendo que a criança pode fazer a atividade.</span></div></div></section>
     <section><h2>2. Para a escola saber</h2>
-      <div class="field"><label for="talerg">Alergias</label><input id="talerg" maxlength="200" value="${esc(t.alergias || '')}" placeholder="Ex.: dipirona, amendoim. Deixe em branco se não tiver"></div>
+      <div class="field"><label for="talerg">Alergias</label><input id="talerg" maxlength="200" value="${esc(t.alergias || '')}" placeholder="Deixe em branco se não tiver"></div>
       <div class="field"><label for="tremed">Remédios de uso contínuo</label><input id="tremed" maxlength="200" value="${esc(t.remedios || '')}" placeholder="Nome e horário, se tiver"></div>
       <div class="field"><label for="tplano">Plano de saúde (opcional)</label><input id="tplano" maxlength="100" value="${esc(t.plano || '')}" placeholder="Nome do plano e número da carteirinha"></div>
       <div class="label" style="margin-top:4px">Contato de emergência</div>
@@ -4895,7 +4895,7 @@ function sheetTermo(alid) {
       if (!$('tverd').checked) return err('Marque esta declaração.', $('tverd').closest('label'));
       if ($('tassin').value.trim().split(/\s+/).length < 2) return err('Digite seu nome completo para assinar.', $('tassin').closest('.field'));
       $('tok').disabled = true;
-      const d = { responsavelId: a.responsavelId || null, respostas: resp_, detalhes: sim ? $('tsim').value.trim() : '', alergias: $('talerg').value.trim(), remedios: $('tremed').value.trim(), plano: $('tplano').value.trim(),
+      const d = { responsavelId: a.responsavelId || null, respostas: resp_, detalhes: sim ? $('tsim').value.trim() : '', alergias: C.temInfo($('talerg').value), remedios: C.temInfo($('tremed').value), plano: $('tplano').value.trim(),
         emergencia: { nome: $('tenome').value.trim(), telefone: $('tetel').value.trim(), parentesco: $('teparen').value.trim() }, primeirosSocorros: true, imagem: img,
         assinatura: { nome: $('tassin').value.trim(), uid: EU.uid, email: EU.email || '' }, em: Date.now(), versao: VERSAO_TERMO_MAT, atestado: (() => { const ant = t.atestado; if (ant && (ant.enviadoEm || ant.recebidoEm)) return sim && !ant.pedidoEm ? { ...ant, pedidoEm: Date.now() } : ant; return sim ? { pedidoEm: Date.now() } : null; })() };
       // nada se perde: a versão anterior vai para o histórico, com o que mudou; a escola precisa tocar em "Ciente"
@@ -4937,7 +4937,7 @@ function corpoTermo(t, marcar = new Set()) {
   const sn = (k, v) => m(ROT_SAUDE[k], v ? '<b style="color:var(--out)">Sim</b>' : 'Não'), e = t.emergencia || {};
   const emerg = ['Contato de emergência', 'Telefone de emergência', 'Parentesco'].some(k => marcar.has(k));
   return `<section><h2>Saúde</h2><dl class="dl dl-largo">${PERGUNTAS_SAUDE.map(([k, q]) => `<dt>${esc(q)}</dt><dd>${sn(k, (t.respostas || {})[k])}</dd>`).join('')}</dl>${t.detalhes ? `<div class="note"><b>Detalhes:</b> ${m('Detalhes de saúde', esc(t.detalhes))}</div>` : ''}</section>
-    <section><h2>Para a escola saber</h2>${ddl([['Alergias', m('Alergias', esc(t.alergias || 'Nenhuma'))], ['Remédios', m('Remédios', esc(t.remedios || 'Nenhum'))], ['Plano de saúde', m('Plano de saúde', esc(t.plano || '—'))],
+    <section><h2>Para a escola saber</h2>${ddl([['Alergias', m('Alergias', esc(C.temInfo(t.alergias) || 'Nenhuma'))], ['Remédios', m('Remédios', esc(C.temInfo(t.remedios) || 'Nenhum'))], ['Plano de saúde', m('Plano de saúde', esc(t.plano || '—'))],
       ['Emergência', (emerg ? s => `<mark class="mudou">${s}</mark>` : s => s)(`${esc(e.nome || '')}${e.parentesco ? ' (' + esc(e.parentesco) + ')' : ''}<br><span class="num">${esc(e.telefone || '')}</span>`)]])}</section>
     <section><h2>Autorizações</h2>${ddl([['Primeiros socorros', 'Autorizado'], ['Uso de imagem', m('Uso de imagem', t.imagem ? 'Autorizado' : '<b style="color:var(--out)">Não autorizado</b>')]])}</section>`;
 }
@@ -4986,7 +4986,7 @@ function cartaoTermo(alid) {
     ${wa ? `<div class="at-botoes"><a class="btn btn-mini" href="${esc(wa)}" target="_blank" rel="noopener">Pedir pelo WhatsApp</a></div>` : ''}</div>`;
   const pend = x.pend || [], campos = [...new Set(pend.flatMap(p => itensMudou(p.mudou).map(([k]) => k)))];
   const sims = PERGUNTAS_SAUDE.filter(([k]) => r[k]).map(([k]) => ROT_SAUDE[k]);
-  const destaque = [...sims.map(n => ['Saúde', n]), t.alergias ? ['Alergia', t.alergias] : null, t.remedios ? ['Remédio', t.remedios] : null, t.imagem === false ? ['Imagem', 'não autoriza uso de imagem'] : null].filter(Boolean);
+  const destaque = [...sims.map(n => ['Saúde', n]), C.temInfo(t.alergias) ? ['Alergia', C.temInfo(t.alergias)] : null, C.temInfo(t.remedios) ? ['Remédio', C.temInfo(t.remedios)] : null, t.imagem === false ? ['Imagem', 'não autoriza uso de imagem'] : null].filter(Boolean);
   const tipo = pend.length ? 'alerta' : x.st === 'vencido' || x.atest ? 'aviso' : 'ok';
   const titulo = pend.length ? 'O termo de saúde mudou' : x.st === 'vencido' ? 'Termo de matrícula vencido' : x.as === 'conferir' ? 'Termo assinado · atestado para conferir' : x.atest ? 'Termo assinado · falta atestado médico' : 'Termo de matrícula assinado';
   const sub = pend.length ? `${esc(campos.slice(0, 4).join(', '))}${campos.length > 4 ? ' e mais' : ''} · ${horaCurta(pend.at(-1).em)}. Veja o que mudou e toque em "Ciente".`

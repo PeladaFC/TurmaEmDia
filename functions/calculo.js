@@ -333,6 +333,9 @@
     return { fase, venc, atraso, restam: Math.max(0, -atraso), encerrar: atraso >= 90, bloqueio: fase === 'leitura' ? 'leitura' : fase === 'suspensa' ? 'suspensa' : null };
   }
 
+  // alergias e remédios: "não", "não tem", "nada", "nenhuma"… contam como vazio (não é alergia e não acende alerta)
+  const NADA_RE = /^(n|nao|nada|nenhum|nenhuma|nenhum[ao]? conhecid[ao]s?|nao tem|nao tenho|nao possui|nao ha|nao usa|nao toma|sem|sem alergias?|sem remedios?|nao tem alergias?|nao toma remedios?|nao usa remedios?|nao que eu saiba|negativo|na|n\/a|x|-+|0)$/;
+  const temInfo = t => { const v = String(t || '').trim(), n = v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[.!,;]+$/g, '').replace(/\s+/g, ' ').trim(); return !n || NADA_RE.test(n) ? '' : v; };
   /* Saúde para o professor: o resumo do termo de matrícula (só o que não é "não"), as alergias, os remédios, se a escola
      pode dar os primeiros socorros, a situação do atestado e o contato de emergência. O termo inteiro e os documentos ficam com a escola. */
   const SAUDE_CURTA = { coracao: 'Problema no coração ou só faz atividade com orientação médica', esforco: 'Dor no peito, falta de ar ou cansaço exagerado no esforço', desmaio: 'Já desmaiou ou teve tontura forte no exercício',
@@ -340,7 +343,7 @@
   function saudeProfessor(t) {
     if (!t) return null;
     const itens = Object.keys(SAUDE_CURTA).filter(k => (t.respostas || {})[k]).map(k => SAUDE_CURTA[k]), at = t.atestado || null;
-    const e = t.emergencia || {}, r = { itens, detalhes: t.detalhes || '', alergias: t.alergias || '', remedios: t.remedios || '', semPrimeiros: t.primeirosSocorros === false,
+    const e = t.emergencia || {}, r = { itens, detalhes: t.detalhes || '', alergias: temInfo(t.alergias), remedios: temInfo(t.remedios), semPrimeiros: t.primeirosSocorros === false,
       atestado: (() => { const a = at || {}, novo = x => x && Date.now() - x < 365 * 864e5;
         if (novo(a.recebidoEm) && (!a.enviadoEm || a.recebidoEm >= a.enviadoEm)) return 'ok';
         if (novo(a.enviadoEm) && !(a.recusa && a.recusa.em > a.enviadoEm)) return 'conferir';
@@ -349,5 +352,5 @@
     r.alerta = !!(itens.length || r.detalhes || r.alergias || r.remedios || r.semPrimeiros);
     return r;
   }
-  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, rateioValor, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, prazoEmMs, prazoPassou, freqAluno };
+  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, rateioValor, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, temInfo, prazoEmMs, prazoPassou, freqAluno };
 });
