@@ -4040,7 +4040,7 @@ function camposTurmaHorarios(hs) {
   $('hormais').onclick = () => { hs.mexeu = true; hs.push({ dias: [], ini: '', fim: '' }); desenhar(); };
   return hs;
 }
-const camposHorariosHTML = () => '<div id="hors" class="ob-corpo" style="padding:0"></div><button type="button" class="hor-mais" id="hormais">+ Acrescentar horário</button>';
+const camposHorariosHTML = () => '<div id="hors" class="hors"></div><button type="button" class="hor-mais" id="hormais">+ Acrescentar horário</button>';
 // o que vai para a turma: horários válidos, todos os dias, início do primeiro e o texto
 function salvarHorarios(hs, textoAntigo) {
   const ok = hs.filter(h => h.dias.length);
