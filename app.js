@@ -3469,8 +3469,9 @@ function sheetCaderneta(tid, mes) {
         <tfoot><tr><td class="cad-nome">Presentes</td>${L.map(c => `<td class="num ${c.semAula ? 'cad-sem' : ''}">${c.semAula ? '' : Object.values(c.pres || {}).filter(x => x === 'p').length}</td>`).join('')}<td></td></tr></tfoot>
       </table></div>
       <span class="s">P presente · F falta · J falta justificada. Coluna cinza: não teve aula. Toque no dia para abrir a chamada. Em vermelho, presença abaixo de 75%.</span>`;
-    sheet(titulo + corpo + (S.admin && L.length ? '<div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="cdpdf">Baixar PDF</button></div>' : '<button class="btn ghost" data-fechar style="width:100%">Fechar</button>'), sh => {
+    sheet(titulo + corpo + (S.admin && L.length ? '<button class="btn ghost" id="cdver" style="width:100%;margin-top:10px">Visualizar o PDF</button><div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="cdpdf">Baixar PDF</button></div>' : '<button class="btn ghost" data-fechar style="width:100%">Fechar</button>'), sh => {
       ligar();
+      if ($('cdver')) $('cdver').onclick = () => { try { verPdf(cadernetaPdf(t, mes, L, al, pctDe), `Caderneta ${t.nome}.pdf`); } catch (e) { aviso(msgErro(e)); } };
       if ($('cdpdf')) $('cdpdf').onclick = async () => { try { const r = await salvarArquivo(`Caderneta ${t.nome} ${nomeMesAno(mes)}.pdf`.replace(/[\\/:*?"<>|]/g, '-'), cadernetaPdf(t, mes, L, al, pctDe), 'application/pdf'); if (r === 'baixado') aviso('PDF baixado'); } catch (e) { aviso(msgErro(e)); } };
       sh.querySelectorAll('[data-cdd]').forEach(th => th.onclick = () => abrirDe(() => sheetCaderneta(tid, mes), () => sheetChamada(tid, th.dataset.cdd)));
     });
@@ -3759,6 +3760,13 @@ function dadosRelatorio(pid, mes) {
   return { recebidos: rec, atrasados: atr, aVencer: ven, resumo: { recebido: soma(rec), atraso: soma(atr), aVencer: soma(ven), nRec: rec.length, nAtr: atr.length, nVen: ven.length } };
 }
 // vários arquivos de uma vez: no celular, um compartilhar só (WhatsApp, e-mail); senão baixa um por um
+// abrir um PDF para ver antes de enviar (abre o leitor de PDF do celular ou do navegador)
+function verPdf(bytes, nome) {
+  const u = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const w = window.open(u, '_blank');
+  if (!w) { const a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; if (nome) a.title = nome; document.body.appendChild(a); a.click(); a.remove(); }
+  setTimeout(() => URL.revokeObjectURL(u), 120000);
+}
 async function salvarArquivos(arqs, tipo) {
   if (arqs.length === 1) return salvarArquivo(arqs[0].nome, arqs[0].bytes, tipo);
   try { if (window.claude && window.claude.use) { const dl = await window.claude.use('downloads'); if (dl) { for (const a of arqs) await dl.save({ filename: a.nome, data: new Blob([a.bytes], { type: tipo }) }); return 'salvo'; } } }
@@ -3920,6 +3928,7 @@ function sheetEnviarRelatorio(pid, mes) {
   const podeArquivo = !window.claude && navigator.canShare && navigator.canShare({ files: [arq] });
   sheet(`<h3>Enviar para ${esc(P.nome)}</h3>
     <div class="sub">Relatório de ${esc(C.nomeMes(mes))} · ${esc(nome)}</div>
+    <button type="button" class="btn ghost" id="ever">Visualizar o PDF</button>
     ${!numeroWa(P.telefone) ? `<div class="banner"><span>Cadastre o WhatsApp do(a) professor(a) para abrir a conversa direto.</span><button id="eedit">Cadastrar</button></div>` : ''}
     ${podeArquivo ? `<button class="btn wa-btn" id="eshare">${ICO_WA} Enviar PDF</button>
       <div class="note">Abre o compartilhar do celular com o PDF anexado. Escolha WhatsApp e ${esc(primeiro(P.nome))}.</div>`
@@ -3928,6 +3937,7 @@ function sheetEnviarRelatorio(pid, mes) {
       <div class="note">O WhatsApp não deixa um site anexar o arquivo sozinho numa conversa. No app publicado, no celular, este botão abre o compartilhar com o PDF já anexado.</div>`}
     <button class="btn ghost" data-fechar>Fechar</button>`, () => {
     if ($('eedit')) $('eedit').onclick = () => sheetProf(pid);
+    $('ever').onclick = () => verPdf(bytes, nome);
     if ($('esave')) $('esave').onclick = async () => { const r = await salvarArquivo(nome, bytes, 'application/pdf'); if (r !== 'cancelado') { aviso('PDF salvo. Agora abra a conversa.'); $('esave').textContent = 'Salvo ✓'; } };
     if ($('eshare')) $('eshare').onclick = async () => { try { await navigator.share({ files: [arq], title: nome, text: txt }); aviso('Relatório enviado'); fecharSheet(); } catch (e) { if (e.name !== 'AbortError') aviso('Não deu para compartilhar. Use Baixar PDF.'); } };
   });
@@ -5721,7 +5731,7 @@ function sheetJuntarDocs(op = {}) {
     sh.querySelectorAll('[data-jc]').forEach(b => b.onclick = () => { const k = b.dataset.jc; selC.has(k) ? selC.delete(k) : selC.add(k); b.setAttribute('aria-pressed', selC.has(k)); limparPronto(); });
     const camposSel = () => camposOk.map(([k]) => k).filter(k => selC.has(k));
     let modo = 'um';
-    const limparPronto = () => { $('jdpronto').innerHTML = ''; $('jdok').textContent = 'Gerar PDF'; $('jdok').classList.remove('ghost'); };
+    const limparPronto = () => { $('jdpronto').innerHTML = ''; $('jdok').hidden = false; $('jdok').textContent = 'Gerar PDF'; $('jdok').classList.remove('ghost'); };
     sh.querySelectorAll('[data-jm]').forEach(b => b.onclick = () => { modo = b.dataset.jm; sh.querySelectorAll('[data-jm]').forEach(x => x.setAttribute('aria-pressed', x.dataset.jm === modo));
       $('jdcapat').textContent = modo === 'sep' ? 'Junto, um arquivo com a lista dos alunos' : 'Primeira página com a lista dos alunos'; limparPronto(); });
     sh.addEventListener('change', e => { if (e.target.id === 'jdcapa' || e.target.closest('#jdquadros')) limparPronto(); });
@@ -5735,7 +5745,9 @@ function sheetJuntarDocs(op = {}) {
         ${lotes.length > 1 ? `<span class="s">O celular manda até 10 arquivos de cada vez. Toque em cada botão, um depois do outro, e escolha a mesma conversa.</span>` : ''}
         ${lotes.map((l, i) => { const a = lotes.slice(0, i).reduce((s, x) => s + x.length, 0) + 1, z = a + l.length - 1;
           return `<button type="button" class="btn" data-lote="${i}">${lotes.length > 1 ? `Enviar ${a} a ${z}` : arqs.length === 1 ? 'Enviar o PDF' : `Enviar os ${arqs.length} arquivos`}</button>`; }).join('')}
-        ${arqs.length > 1 ? `<details class="doc-lista"><summary>Ver os arquivos</summary><ul>${arqs.map(a => `<li>${esc(a.nome)} <span class="s num">${kb(a.bytes.length)}</span></li>`).join('')}</ul></details>` : ''}</div>`;
+        ${arqs.length === 1 ? '<button type="button" class="btn ghost" data-ver="0">Visualizar o PDF</button>' : `<details class="doc-lista" open><summary>Visualizar os arquivos</summary><ul>${arqs.map((a, i) => `<li><button type="button" class="link" data-ver="${i}">${esc(a.nome)}</button> <span class="s num">${kb(a.bytes.length)}</span></li>`).join('')}</ul></details>`}</div>`;
+      $('jdpronto').querySelectorAll('[data-ver]').forEach(b => b.onclick = () => { const a = arqs[Number(b.dataset.ver)]; verPdf(a.bytes, a.nome); });
+      $('jdok').hidden = true; // já gerou: para cancelar, é só fechar; mudou alguma escolha, o botão volta
       $('jdpronto').querySelectorAll('[data-lote]').forEach(b => b.onclick = async () => {
         const r = await salvarArquivos(lotes[Number(b.dataset.lote)], 'application/pdf');
         if (r === 'cancelado') return;
