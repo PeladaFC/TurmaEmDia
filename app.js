@@ -1874,15 +1874,23 @@ function sheetPix(chaves, voltar) {
         if (!c || !$('pxst')) return;
         if (c.status === 'approved') {
           // um Pix de vários pago: mostra bem claro "1 de 3 pago ✓" antes de passar para o próximo QR Code
-          if (n + 1 < N) { parar && parar(); parar = null; const shA = $('pxc').closest('.sheet'), altA = shA ? shA.offsetHeight : 0;
-            $('pxc').innerHTML = `<div class="pix-ok" role="status"><div class="pix-ok-passos">${lotes.map((l, i) => `<span class="${i <= n ? 'ok' : i === n + 1 ? 'prox' : ''}">${i <= n ? '✓' : i + 1}</span>`).join('<i></i>')}</div>
-              <svg class="pix-ok-ic" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg>
-              <h3>Pix ${n + 1} de ${N} pago</h3><span class="sub">${brl(d.valor)} para ${esc(nomeRec(d.rec))}</span>
-              <div class="pix-ok-prox">Agora falta ${N - n - 1 === 1 ? 'o último Pix' : `${N - n - 1} Pix`}: <b>${brl(lotes[n + 1].valor)}</b> para ${esc(nomeRec(lotes[n + 1].rec))}</div>
-              <button type="button" class="btn" id="pxprox">Ir para o Pix ${n + 2} de ${N}</button><div class="pix-ok-barra"><i></i></div></div>`;
+          if (n + 1 < N) { parar && parar(); parar = null;
+            // "Pix 1 de N pago" no mesmo desenho da tela do QR Code: o ✔ no lugar do QR, o aviso no lugar do código e o botão no lugar de "Copiar"
+            const shA = $('pxc').closest('.sheet'); if (shA) shA.scrollTop = 0;
+            const altA = shA ? shA.offsetHeight : 0, base = $('pxc').getBoundingClientRect().top;
+            const pos = sel => { const e = $('pxc').querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { t: Math.round(r.top - base), h: Math.round(r.height) }; };
+            const pT = pos('.pix-topo'), pQ = pos('.qrbox'), pC = pos('.code'), pB = pos('#pxcopy'), altC = $('pxc').offsetHeight;
+            const lugar = (p, extra = '') => p ? `position:absolute;left:0;right:0;top:${p.t}px;height:${p.h}px;${extra}` : '';
+            $('pxc').innerHTML = `<div class="pix-ok" role="status" style="position:relative;height:${altC}px;display:block;padding:0">
+              <div class="pix-topo" style="${lugar(pT)}"><div class="pix-ok-passos">${lotes.map((l, i) => `<span class="${i <= n ? 'ok' : i === n + 1 ? 'prox' : ''}">${i <= n ? '✓' : i + 1}</span>`).join('<i></i>')}</div><span class="sub">${N} Pix, um para cada recebedor · total ${brl(total)}</span></div>
+              <div style="${lugar(pQ, 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px')}"><svg class="pix-ok-ic" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg>
+                <h3>Pix ${n + 1} de ${N} pago</h3><span class="sub">${brl(d.valor)} para ${esc(nomeRec(d.rec))}</span></div>
+              <div class="pix-ok-prox" style="${lugar(pC, 'display:flex;align-items:center;justify-content:center')}"><span>Agora falta ${N - n - 1 === 1 ? 'o último Pix' : `${N - n - 1} Pix`}: <b>${brl(lotes[n + 1].valor)}</b> para ${esc(nomeRec(lotes[n + 1].rec))}</span></div>
+              <button type="button" class="btn" id="pxprox" style="${lugar(pB)}">Ir para o Pix ${n + 2} de ${N}</button>
+              <div class="pix-ok-barra" style="${pB ? `position:absolute;left:0;right:0;top:${pB.t + pB.h + 14}px` : ''}"><i></i></div></div>`;
             $('pxf').hidden = true; // nesta tela só o caminho para o próximo Pix
-            // a janela fica da mesma altura da tela do QR Code (sem "pular"); o conteúdo fica no meio
-            if (shA) { shA.scrollTop = 0; const sobra = altA - shA.offsetHeight; if (sobra > 0) { const ok = $('pxc').querySelector('.pix-ok'); ok.style.paddingTop = ok.style.paddingBottom = Math.floor(sobra / 2) + 'px'; const resto = altA - shA.offsetHeight; if (resto) ok.style.paddingBottom = Math.max(0, Math.floor(sobra / 2) + resto) + 'px'; } }
+            // a janela fica da mesma altura (o Fechar sumiu: o espaço dele vai para o fim)
+            if (shA) { const resto = altA - shA.offsetHeight; if (resto > 0) $('pxc').querySelector('.pix-ok').style.height = (altC + resto) + 'px'; }
             let foi = false; const ir = () => { if (foi || !$('pxprox')) return; foi = true; passo(n + 1); const sh = $('pxc') && $('pxc').closest('.sheet'); if (sh) sh.scrollTop = 0; };
             $('pxprox').onclick = ir; setTimeout(ir, 4500); return; }
           $('pxc').innerHTML = `<div class="done"><div class="ok">✓</div><h3>Pagamento confirmado!</h3><span class="sub">${N > 1 ? `${N} Pix, ${brl(total)} no total` : brl(c.valor) + ' recebidos por Pix'}. Obrigado!</span></div>`; S.sel = null; parar && parar(); parar = null;
