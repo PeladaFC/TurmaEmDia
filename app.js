@@ -3107,7 +3107,7 @@ function pedirFotos() {
   ids.forEach(id => FOTOS_PEDIDAS.add(id));
   Promise.all(ids.map(id => fotoAluno(id).catch(() => null))).then(fs => { if (fs.some(Boolean)) agendar(); });
 }
-const chipMensal = m => !m ? '' : m.st === 'pago' ? '<span class="chip pago">Pago</span>' : m.st === 'atrasado' ? '<span class="chip vencido">Atrasado</span>' : m.st === 'acordo' ? '<span class="chip">Em acordo</span>' : `<span class="chip aberto">Vence ${esc(dataBR(m.venc))}</span>`;
+const chipMensal = m => !m ? '' : m.st === 'pago' ? '<span class="chip pago">Pago</span>' : m.st === 'atrasado' ? `<span class="chip vencido">Vencido ${m.venc ? esc(dataBR(m.venc)) : ''}</span>` : m.st === 'acordo' ? '<span class="chip">Em acordo</span>' : `<span class="chip aberto">Vence ${esc(dataBR(m.venc))}</span>`;
 
 /* ---- Área do professor: o servidor monta só o que ele pode ver ---- */
 async function profServidor(acao, d = {}) {
@@ -3232,21 +3232,41 @@ function tPAlunos(v) {
 }
 function tPFin(v) {
   if (ppCarregando(v)) return;
-  const pp = S.pp, T = pp.totais, f = S.pfFiltro || 'todos', ativos = pp.alunos.filter(a => a.mensal);
+  // só o que é dele: mensalidades das turmas em que ele recebe (parte > 0) e cobranças com parte dele
+  const pp = S.pp, T = pp.totais, f = S.pfFiltro || 'todos', ativos = pp.alunos.filter(a => a.mensal && a.mensal.v > 0);
   const lista = ativos.filter(a => f === 'todos' || (f === 'pagos' ? a.mensal.st === 'pago' : a.mensal.st !== 'pago'));
   const nPag = ativos.filter(a => a.mensal.st === 'pago').length, nomeT = id => (S.turmas[id] || {}).nome || '';
-  const nfP = (S.profs[S.prof] || {}).nf || {};
+  const nfP = (S.profs[S.prof] || {}).nf || {}, mostrar = !!S.pfMostrar, modo = S.pfAtr || 'todos', abre = S.pfAbre = S.pfAbre || new Set();
+  const atr = pp.atr || [], porAluno = {}; atr.forEach(x => (porAluno[x.alid] = porAluno[x.alid] || []).push(x));
+  const al = id => pp.alunos.find(a => a.id === id) || {}, soma = l => C.r2(l.reduce((s, x) => s + x.v, 0));
+  const dividas = l => `<ul class="list pf-div">${l.map(x => `<li><div class="grow"><div class="t">${esc(x.cobranca)}</div>${linhas(`Venceu ${esc(dataBR(x.venc))}`)}</div>${valorCol(brl(x.v), '', 'out')}</li>`).join('')}</ul>`;
+  const linhaAl = (id, chave) => { const l = porAluno[id] || [], k = chave + id, aberto = abre.has(k);
+    return `<li class="tap pf-ab" data-pfab="${esc(k)}"><div class="grow"><div class="t">${esc(al(id).nome || l[0].aluno)}</div>${linhas(`${l.length} cobrança${l.length === 1 ? '' : 's'} em atraso`)}</div>${valorCol(brl(soma(l)), '', 'out')}<span class="pf-seta" aria-hidden="true">${aberto ? '▴' : '▾'}</span></li>${aberto ? `<li class="pf-sub">${dividas(l)}</li>` : ''}`; };
+  const idsAtr = Object.keys(porAluno).sort((x, y) => String(al(x).nome || porAluno[x][0].aluno).localeCompare(String(al(y).nome || porAluno[y][0].aluno), 'pt-BR'));
+  let atrHTML = '';
+  if (modo === 'todos') atrHTML = `<ul class="list">${idsAtr.map(id => linhaAl(id, 'a:')).join('')}</ul>`;
+  else if (modo === 'turma') { const ts = [...new Set(idsAtr.flatMap(id => al(id).turmas || []))].sort((a, b) => nomeT(a).localeCompare(nomeT(b), 'pt-BR'));
+    atrHTML = `<ul class="list">${ts.map(t => { const ids = idsAtr.filter(id => (al(id).turmas || []).includes(t)), k = 't:' + t, aberto = abre.has(k);
+      return `<li class="tap pf-ab" data-pfab="${esc(k)}"><div class="grow"><div class="t">${esc(nomeT(t) || 'Turma')}</div>${linhas(`${ids.length} aluno${ids.length === 1 ? '' : 's'} em atraso`)}</div>${valorCol(brl(soma(ids.flatMap(id => porAluno[id]))), '', 'out')}<span class="pf-seta" aria-hidden="true">${aberto ? '▴' : '▾'}</span></li>${aberto ? `<li class="pf-sub"><ul class="list">${ids.map(id => linhaAl(id, k + ':')).join('')}</ul></li>` : ''}`; }).join('')}</ul>`; }
+  else { const meses = [...new Set(atr.map(x => String(x.venc).slice(0, 7)))].sort().reverse();
+    atrHTML = meses.map(m => { const l = atr.filter(x => String(x.venc).slice(0, 7) === m).sort((a, b) => String(a.aluno).localeCompare(String(b.aluno), 'pt-BR'));
+      return `<div class="pf-mes"><div class="label">${esc(nomeMesAno(m))} · <span class="num">${brl(soma(l))}</span></div><ul class="list">${l.map(x => `<li><div class="grow"><div class="t">${esc(x.aluno)}</div>${linhas(esc(x.cobranca))}</div>${valorCol(brl(x.v), '', 'out')}</li>`).join('')}</ul></div>`; }).join(''); }
   v.innerHTML = `<div class="headrow"><h2>Financeiro</h2></div>
     <div class="sub">A parte que cabe a você nas suas turmas. Quem cobra as famílias é a escola.</div>
     <button type="button" class="linha-botao" id="pnf" style="margin:10px 0"><span class="grow"><b>Minha nota fiscal</b><span class="s">${nfP.ligado ? 'Ligada: sai sozinha, no seu CNPJ' : 'Para emitir nota da sua parte, com o seu CNPJ'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>
     <div class="pf-resumo"><div><span>Recebido</span><b class="num">${brl(T.recebido)}</b></div><div><span>A receber</span><b class="num">${brl(T.aVencer)}</b></div><div class="${T.atrasado ? 'ruim' : ''}"><span>Atrasado</span><b class="num">${brl(T.atrasado)}</b></div></div>
     <section><h2>Mensalidades de ${esc(C.nomeMes(S.mes))}</h2>
       <div class="opcoes c3" id="pfiltro">${[['todos', `Todos (${ativos.length})`], ['pagos', `Pagaram (${nPag})`], ['faltam', `Faltam (${ativos.length - nPag})`]].map(([k, n]) => `<button type="button" class="pick" data-pff="${k}" aria-pressed="${f === k}">${n}</button>`).join('')}</div>
-      <ul class="list" style="margin-top:10px">${lista.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(a.turmas.map(nomeT).join(' · ')), a.mensal.st === 'pago' && a.mensal.d ? `Pago em ${esc(dataBR(String(a.mensal.d).slice(0, 10)))}` : '')}</div>${valorCol(a.mensal.v > 0 ? brl(a.mensal.v) : '—', chipMensal(a.mensal))}</li>`).join('') || '<li><span class="sub">Ninguém aqui.</span></li>'}</ul></section>
-    ${pp.atr.length ? `<section><h2>Atrasados</h2><ul class="list">${pp.atr.map(x => `<li><div class="grow"><div class="t">${esc(x.aluno)}</div>${linhas(esc(x.cobranca), `Venceu ${esc(dataBR(x.venc))}`)}</div>${valorCol(brl(x.v), '', 'out')}</li>`).join('')}</ul></section>` : ''}
-    ${pp.rec.length ? `<section><h2>Recebido em ${esc(C.nomeMes(S.mes))}</h2><ul class="list">${pp.rec.map(x => `<li><div class="grow"><div class="t">${esc(x.aluno)}</div>${linhas(esc(x.cobranca), `${esc(dataBR(String(x.d).slice(0, 10)))}${x.via ? ' · ' + esc(NOME_VIA[x.via] || x.via) : ''}`)}</div>${valorCol(brl(x.v))}</li>`).join('')}</ul></section>` : ''}
-    <div class="note">Os valores são a sua parte: o que cai para você nas turmas em que você recebe. Se a turma recebe pela escola, aparece só se a família pagou.</div>`;
-  v.querySelectorAll('[data-pff]').forEach(b => b.onclick = () => { S.pfFiltro = b.dataset.pff; render(); });
+      <button type="button" class="btn ghost pf-mostra" id="pfmostra">${mostrar ? 'Esconder alunos' : 'Mostrar alunos'}</button>
+      ${mostrar ? `<ul class="list" style="margin-top:10px">${lista.map(a => `<li class="tap" data-pal="${esc(a.id)}">${avatarAluno(a.id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc(a.turmas.map(nomeT).join(' · ')), a.mensal.st === 'pago' && a.mensal.d ? `Pago em ${esc(dataBR(String(a.mensal.d).slice(0, 10)))}` : '')}</div>${valorCol(brl(a.mensal.v), chipMensal(a.mensal))}</li>`).join('') || '<li><span class="sub">Ninguém aqui.</span></li>'}</ul>` : ''}</section>
+    ${atr.length ? `<section><h2>Atrasados</h2>
+      <div class="opcoes c3" id="pfatr">${[['todos', 'Todos'], ['turma', 'Por turma'], ['mes', 'Por mês']].map(([k, n]) => `<button type="button" class="pick" data-pfa="${k}" aria-pressed="${modo === k}">${n}</button>`).join('')}</div>
+      <div style="margin-top:10px">${atrHTML}</div></section>` : ''}
+    <div class="note">Aparece só o que é seu: as mensalidades das turmas em que você recebe e as cobranças com parte sua.</div>`;
+  v.querySelectorAll('[data-pff]').forEach(b => b.onclick = () => { S.pfFiltro = b.dataset.pff; S.pfMostrar = true; render(); });
+  $('pfmostra').onclick = () => { S.pfMostrar = !mostrar; render(); };
+  v.querySelectorAll('[data-pfa]').forEach(b => b.onclick = () => { S.pfAtr = b.dataset.pfa; S.pfAbre = new Set(); render(); });
+  v.querySelectorAll('[data-pfab]').forEach(li => li.onclick = () => { const k = li.dataset.pfab; abre.has(k) ? abre.delete(k) : abre.add(k); render(); });
   if ($('pnf')) $('pnf').onclick = () => sheetNotaFiscal();
   v.querySelectorAll('[data-pal]').forEach(li => li.onclick = () => sheetPerfilAluno(li.dataset.pal));
 }
