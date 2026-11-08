@@ -3338,11 +3338,31 @@ function registrarSW() {
   navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.abrir) { lerLinkChamada(e.data.abrir); render(); } });
 }
 // ?chamada=eid.tid (vem do toque no aviso): abre a chamada de hoje dessa turma
-function lerLinkChamada(url) { try { const v = new URL(url, location.href).searchParams.get('chamada'); if (v && v.includes('.')) { const [eid, tid] = v.split('.'); PEND_CH = { eid, tid }; } } catch (e) { } }
+// links dos avisos no celular: ?chamada=eid.tid (professor), ?pagar=eid~chave (abre o pagamento daquela cobrança),
+// ?evento=eid~xid (abre os eventos para responder), ?filhos=1 (pendências do cadastro)
+function lerLinkChamada(url) {
+  try {
+    const q = new URL(url, location.href).searchParams, v = q.get('chamada'), pg = q.get('pagar'), ev = q.get('evento');
+    if (v && v.includes('.')) { const [eid, tid] = v.split('.'); PEND_CH = { eid, tid }; }
+    else if (pg && pg.includes('~')) { const i = pg.indexOf('~'); PEND_CH = { eid: pg.slice(0, i), k: pg.slice(i + 1) }; }
+    else if (ev && ev.includes('~')) { const i = ev.indexOf('~'); PEND_CH = { eid: ev.slice(0, i), xid: ev.slice(i + 1) }; }
+    else if (q.get('filhos') && S && S.eid) PEND_CH = { eid: S.eid, filhos: true };
+  } catch (e) { }
+}
 function abrirChamadaPendente() {
   if (!PEND_CH || !S) return;
   if (S.eid !== PEND_CH.eid) { if (MINHAS[PEND_CH.eid]) { const x = PEND_CH; PEND_CH = null; abrirEscola(x.eid).then(() => { PEND_CH = x; }); } return; }
-  if (!S.turmas[PEND_CH.tid] || $('overlay').innerHTML) return;
+  if ($('overlay').innerHTML) return;
+  if (PEND_CH.k || PEND_CH.xid || PEND_CH.filhos) {
+    if (S.papel !== 'f' || !S.carregado.has('alunas')) return;
+    const x = PEND_CH; PEND_CH = null;
+    if (x.filhos) return irPara('filhas');
+    if (x.xid) { const e = S.extras[x.xid]; return irPara(e && e.tipo === 'taxa' ? 'pagar' : 'feventos'); }
+    const it = Object.keys(S.alunas).flatMap(id => itensDe(id)).find(i => i.k === x.k && !i.pago);
+    irPara('pagar'); if (!it) return aviso('Esta cobrança já foi paga.');
+    S.sel = new Set([it.k]); render(); return setTimeout(() => (outrasFormas() ? sheetFormas : sheetPix)([it.k]), 80);
+  }
+  if (!S.turmas[PEND_CH.tid]) return;
   const tid = PEND_CH.tid; PEND_CH = null; setTimeout(() => sheetChamada(tid, hoje()), 50);
 }
 // professor: aviso da chamada; família: avisos de vencimento, pendências e eventos (o servidor guarda o aparelho)

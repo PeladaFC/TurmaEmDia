@@ -32,6 +32,7 @@ const A = require('./acoes')(db);
 exports.adminConvite = A.adminConvite;
 exports.eventoResposta = A.eventoResposta;
 exports.familiaPush = A.familiaPush;
+exports.respostaPush = A.respostaPush;
 
 const E = require('./espelho')(db);
 exports.espelharProf = E.espelharProf;

@@ -1,10 +1,11 @@
 /* Turma em Dia · avisos automáticos no celular das famílias (notificação push), todo dia às 10h (rotinaDiaria).
-   No máximo 1 aviso por dia para cada família, juntando tudo numa mensagem só.
+   Cada cobrança vai num aviso próprio, que abre direto o pagamento dela. Cada pergunta (evento, competição,
+   taxa dividida) vai num aviso com os botões "Vai" / "Não vai" (respondem sem abrir o app: respostaPush).
    - Mensalidades, taxas e parcelas de acordo: 3 dias antes do vencimento, no dia, e depois de vencido
      no dia seguinte e mais 3 vezes, de 7 em 7 dias (dias 1, 8, 15 e 22 depois do vencimento). Depois disso, para.
      Quem tem acordo ativo não recebe aviso de atraso das cobranças antigas (só das parcelas do acordo).
    - Pendências do cadastro (termo, atestado, documentos, contrato): 1 vez por semana, até 4 semanas.
-   - Eventos: no dia seguinte ao que a escola criou e 1 dia antes do prazo de resposta, para quem ainda não respondeu.
+   - Eventos e taxas divididas: no dia seguinte ao que a escola criou e 1 dia antes do prazo, para quem ainda não respondeu.
    A escola desliga tudo em Ajustes (config/geral.pushFamilias = false).
    O aparelho da família fica em escolas/{eid}/membros/{uid}.push (o servidor grava, pela ação familiaPush). */
 'use strict';
@@ -36,10 +37,12 @@ module.exports = (db, enviar) => {
     return r.responses.map(x => ({ ok: x.success, codigo: x.error && x.error.code }));
   });
   const ler = async p => { const s = await db.doc(p).get(); return s.exists ? s.data() : null; };
+  const LP = require('./linkPush')(db);
+  const API = () => `https://southamerica-east1-${process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || 'turma-em-dia-57c1e'}.cloudfunctions.net/respostaPush`;
   const col = async p => Object.fromEntries((await db.collection(p).get()).docs.map(d => [d.id, d.data()]));
 
-  // o que avisar hoje para uma família (lista de frases; a primeira vai em destaque)
-  function frasesPagamento(d, alunas, hoje) {
+  // cobranças: um aviso para cada uma, que abre direto o pagamento dela
+  function avisosPagamento(eid, d, alunas, hoje) {
     const out = [], ate = somaDias(hoje, 3);
     for (const [alid, a] of Object.entries(alunas)) {
       const acordo = Object.values(d.acordos).some(A => A && A.alid === alid && !A.cancelado && !A.perdao);
@@ -47,9 +50,11 @@ module.exports = (db, enviar) => {
       for (const i of C.itensAluna({ ...d, alunas: d.alunas, pag: d.pags[alid] || {} }, alid, ate)) {
         if (i.pago || !(i.v > 0) || !i.venc) continue;
         const n = dias(hoje, i.venc), nome = primeiro(a.nome);
-        if (n === 3) out.push({ ord: 2, t: `${i.desc} de ${nome} vence em 3 dias (${brl(i.v)}).`, c: `${i.desc} de ${nome}: vence em 3 dias` });
-        else if (n === 0) out.push({ ord: 1, t: `${i.desc} de ${nome} vence hoje (${brl(i.v)}).`, c: `${i.desc} de ${nome}: vence hoje` });
-        else if (n < 0 && APOS_VENC.includes(-n) && !(acordo && i.tipo !== 'a')) out.push({ ord: 0, t: `${i.desc} de ${nome} está vencida desde ${dm(i.venc)}.`, c: `${i.desc} de ${nome}: venceu ${dm(i.venc)}` });
+        let t = null;
+        if (n === 3) t = `${i.desc} de ${nome} vence em 3 dias: ${brl(i.v)}.`;
+        else if (n === 0) t = `${i.desc} de ${nome} vence hoje: ${brl(i.v)}.`;
+        else if (n < 0 && APOS_VENC.includes(-n) && !(acordo && i.tipo !== 'a')) t = `${i.desc} de ${nome} está vencida desde ${dm(i.venc)}.`;
+        if (t) out.push({ corpo: `${t} Toque para pagar.`, url: `./?pagar=${eid}~${encodeURIComponent(i.k)}`, acoes: [{ a: 'pagar', t: 'Pagar com Pix' }] });
       }
     }
     return out;
@@ -67,16 +72,26 @@ module.exports = (db, enviar) => {
     }
     return out;
   }
-  function frasesEventos(d, alunas, hoje, agora) {
-    const out = [], amanha = somaDias(hoje, 1);
+  // perguntas (evento, competição, taxa dividida): um aviso por aluno, com "Vai" / "Não vai" no próprio aviso
+  async function avisosPerguntas(eid, uid, d, alunas, hoje, agora) {
+    const out = [], amanha = somaDias(hoje, 1), dataR = ms => new Date(ms - 3 * 36e5).toISOString().slice(0, 10);
     for (const [xid, x] of Object.entries(d.extras)) {
-      if (!x || !(x.tipo === 'evento' || x.tipo === 'competicao') || C.prazoPassou(x, agora)) continue;
-      const fim = x.dataFim && x.dataFim >= x.data ? x.dataFim : x.data; if (fim && fim < hoje) continue;
-      const quem = Object.keys(alunas).filter(id => (x.convidados || []).includes(id) && !((x.part || {})[id] || {}).st);
-      if (!quem.length) continue;
-      const nomes = quem.map(id => primeiro(alunas[id].nome)).join(' e '), criado = d.criados[xid] || 0;
-      if (criado > agora - DIA) out.push({ ord: 3, t: `Novo evento: ${x.nome || 'evento'}. ${nomes} vai? Responda no app.`, c: `Novo evento: ${x.nome || 'evento'}` });
-      else if (x.prazo === amanha) out.push({ ord: 1, t: `Responda até amanhã: ${x.nome || 'evento'}. ${nomes} vai?`, c: `Responder até amanhã: ${x.nome || 'evento'}` });
+      if (!x) continue;
+      const ev = x.tipo === 'evento' || x.tipo === 'competicao', rt = x.tipo === 'taxa' && !!x.rateio;
+      if (!ev && !rt) continue;
+      if (ev) { if (C.prazoPassou(x, agora)) continue; const fim = x.dataFim && x.dataFim >= x.data ? x.dataFim : x.data; if (fim && fim < hoje) continue; }
+      if (rt && C.rateioFechado(x, agora)) continue;
+      const novo = (d.criados[xid] || 0) > agora - DIA, vespera = ev ? x.prazo === amanha : !!(x.rateio.prazoEm && dataR(x.rateio.prazoEm) === amanha);
+      if (!novo && !vespera) continue;
+      // botões só onde a família responde pelo app (no evento com inscrição feita fora, ela confirma no app)
+      const botoes = rt || x.semCobranca || x.cobranca === 'app';
+      for (const id of Object.keys(alunas).filter(id => (x.convidados || []).includes(id) && !((x.part || {})[id] || {}).st)) {
+        const nome = primeiro(alunas[id].nome), nomeX = x.nome || (rt ? 'taxa' : 'evento');
+        const per = rt ? `${nomeX}: ${nome} vai participar?` : `${nomeX}${x.data ? ` (${dm(x.data)})` : ''}. ${nome} vai?`;
+        const corpo = `${novo ? (rt ? 'Nova taxa dividida' : x.tipo === 'competicao' ? 'Nova competição' : 'Novo evento') : 'Responda até amanhã'}: ${per}`;
+        const r = botoes ? await LP.assinar({ u: uid, e: eid, x: xid, a: id, exp: agora + 7 * DIA }) : null;
+        out.push({ corpo, url: `./?evento=${eid}~${xid}`, ...(r ? { acoes: [{ a: 'interesse', t: 'Vai' }, { a: 'nao', t: 'Não vai' }], resp: r } : {}) });
+      }
     }
     return out;
   }
@@ -89,7 +104,7 @@ module.exports = (db, enviar) => {
     const extrasQ = await db.collection(`escolas/${eid}/extras`).get();
     const d = { cfg, turmas: await col(`escolas/${eid}/turmas`), grupos: await col(`escolas/${eid}/grupos`), extras: {}, criados: {}, acordos: {}, pags: {}, alunas: {}, contrato: (await ler(`escolas/${eid}/config/contrato`)) || {} };
     extrasQ.docs.forEach(x => { d.extras[x.id] = x.data(); d.criados[x.id] = x.createTime ? x.createTime.toMillis() : 0; });
-    const mes = hoje.slice(0, 7);
+    const mes = hoje.slice(0, 7), titulo = e.nome || 'Turma em Dia';
     let enviados = 0;
     for (const m of ms) {
       const rids = (await db.collection(`escolas/${eid}/membros/${m.id}/vinculos`).get()).docs.map(v => v.id);
@@ -101,21 +116,23 @@ module.exports = (db, enviar) => {
       Object.assign(d.alunas, alunas);
       for (const id of Object.keys(alunas)) if (!d.pags[id]) d.pags[id] = (await ler(`escolas/${eid}/pagamentos/${id}`)) || {};
       for (let i = 0; i < rids.length; i += 30) (await db.collection(`escolas/${eid}/acordos`).where('rid', 'in', rids.slice(i, i + 30)).get()).docs.forEach(x => { d.acordos[x.id] = x.data(); });
-      const frases = [...frasesPagamento(d, alunas, hoje), ...frasesEventos(d, alunas, hoje, agora)];
-      // pendências do cadastro: 1 vez por semana, até 4 semanas (volta a contar quando tudo fica em dia)
+      const avisos = [...avisosPagamento(eid, d, alunas, hoje), ...(await avisosPerguntas(eid, m.id, d, alunas, hoje, agora))];
+      // pendências do cadastro: um aviso, 1 vez por semana, até 4 semanas (volta a contar quando tudo fica em dia)
       const md = m.data(), pend = await pendencias(eid, d, alunas, hoje, agora), pp = md.pushPend || null, up = {};
       if (!pend.length) { if (pp) up.pushPend = FieldValue.delete(); }
-      else if (!pp || (pp.n < 4 && dias(pp.ult, hoje) >= 7)) { frases.push({ ord: 4, t: `Falta no cadastro de ${pend.join('; ')}. Resolva pelo app.`, c: `Falta no cadastro de ${pend.join('; ')}` }); up.pushPend = { n: (pp ? pp.n : 0) + 1, ult: hoje }; }
-      if (!frases.length) { if (Object.keys(up).length) await m.ref.update(up); continue; }
-      frases.sort((x, y) => x.ord - y.ord);
-      // vários assuntos: um por linha (o celular mostra as primeiras e o resto ao abrir o aviso)
-      const corpo = frases.length === 1 ? frases[0].t : frases.map(f => '• ' + f.c).join('\n');
-      const titulo = `${e.nome || 'Turma em Dia'}${frases.length > 1 ? ` · ${frases.length} avisos` : ''}`, tokens = md.push;
-      const msg = { notification: { title: titulo, body: corpo }, data: { titulo, corpo, url: './' },
-        android: { notification: { sound: 'default' } }, apns: { payload: { aps: { sound: 'default' } } }, webpush: { headers: { TTL: '43200' } } };
-      const r = await enviar(tokens, msg), mortos = tokens.filter((tk, i) => !r[i].ok && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(r[i].codigo || ''));
-      if (r.some(x => x.ok)) enviados++;
-      await m.ref.update({ ...up, pushDia: hoje, ...(mortos.length ? { push: FieldValue.arrayRemove(...mortos) } : {}) });
+      else if (!pp || (pp.n < 4 && dias(pp.ult, hoje) >= 7)) { avisos.push({ corpo: `Falta no cadastro de ${pend.join('; ')}. Toque para resolver.`, url: './?filhos=1' }); up.pushPend = { n: (pp ? pp.n : 0) + 1, ult: hoje }; }
+      let tokens = md.push;
+      const mortos = new Set();
+      for (const v of avisos) {
+        tokens = tokens.filter(tk => !mortos.has(tk)); if (!tokens.length) break;
+        const data = { titulo, corpo: v.corpo, url: v.url, ...(v.acoes ? { acoes: JSON.stringify(v.acoes) } : {}), ...(v.resp ? { resp: v.resp, api: API() } : {}) };
+        const msg = { notification: { title: titulo, body: v.corpo }, data,
+          android: { notification: { sound: 'default' } }, apns: { payload: { aps: { sound: 'default' } } }, webpush: { headers: { TTL: '43200' } } };
+        const r = await enviar(tokens, msg);
+        tokens.forEach((tk, i) => { if (!r[i].ok && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(r[i].codigo || '')) mortos.add(tk); });
+        if (r.some(x => x.ok)) enviados++;
+      }
+      await m.ref.update({ ...up, pushDia: hoje, ...(mortos.size ? { push: FieldValue.arrayRemove(...mortos) } : {}) });
     }
     return enviados;
   }
@@ -127,5 +144,5 @@ module.exports = (db, enviar) => {
     }
     return { enviados: total };
   }
-  return { interno: { diario, frasesPagamento, frasesEventos, atestadoFalta } };
+  return { interno: { diario, avisosPagamento, avisosPerguntas, atestadoFalta } };
 };

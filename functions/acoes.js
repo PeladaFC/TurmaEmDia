@@ -67,7 +67,7 @@ module.exports = db => {
     return { ok: true };
   });
 
-  const eventoResposta = responder(async (u, { eid, xid, alid, st, tam }) => {
+  async function responderEvento(u, { eid, xid, alid, st, tam }) {
     if (!idOk(eid) || !idOk(xid) || !idOk(alid) || (tam == null && !['interesse', 'nao', 'inscrito'].includes(st)) || (tam != null && typeof tam !== 'string')) throw erro('Pedido inválido.', 400);
     const a = await ler(`escolas/${eid}/alunas/${alid}`);
     if (!a || !a.responsavelId || !(await db.doc(`escolas/${eid}/membros/${u.uid}/vinculos/${a.responsavelId}`).get()).exists) throw erro('Você só pode responder pelos seus filhos.', 403);
@@ -107,6 +107,18 @@ module.exports = db => {
       t.update(ref, up);
     });
     return { ok: true };
+  }
+  const eventoResposta = responder(responderEvento);
+  // botões "Vai" / "Não vai" do aviso no celular: sem login, com o código assinado que veio no aviso
+  const LP = require('./linkPush')(db);
+  const respostaPush = onRequest({ cors: true, maxInstances: 5 }, async (req, res) => {
+    try {
+      if (req.method !== 'POST') return res.status(405).json({ erro: 'Use POST.' });
+      const { r, st } = req.body || {}, o = await LP.abrir(r);
+      if (!o || !['interesse', 'nao'].includes(st)) return res.status(403).json({ erro: 'Aviso vencido. Responda pelo app.' });
+      await responderEvento({ uid: o.u }, { eid: o.e, xid: o.x, alid: o.a, st });
+      res.json({ ok: true });
+    } catch (e) { if (!e.http) logger.error(e); res.status(e.http || 500).json({ erro: e.http ? e.message : 'Não deu certo. Responda pelo app.' }); }
   });
 
   // família: guarda o aparelho para os avisos automáticos (vencimentos, pendências, eventos); até 5 aparelhos
@@ -119,5 +131,5 @@ module.exports = db => {
     return { ok: true };
   });
 
-  return { adminConvite, eventoResposta, familiaPush };
+  return { adminConvite, eventoResposta, familiaPush, respostaPush };
 };
