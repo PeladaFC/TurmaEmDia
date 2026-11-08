@@ -1849,21 +1849,23 @@ function sheetPix(chaves, voltar) {
     try { lotes = await pixCriar(chaves); } catch (e) { $('pxc').innerHTML = `<b>Não deu para gerar o Pix.</b><span>${esc(msgErro(e))}</span>`; return; }
     const total = C.r2(lotes.reduce((s, l) => s + l.valor, 0));
     const passo = n => {
-      if (!$('pxc')) return; parar && parar(); parar = null;
+      if (!$('pxc')) return; parar && parar(); parar = null; $('pxf').hidden = false;
       const d = lotes[n], N = lotes.length, repasse = C.r2(d.valor - d.base), porAluna = {};
       (d.itens || []).forEach(i => (porAluna[i.nome || 'Aluno(a)'] = porAluna[i.nome || 'Aluno(a)'] || []).push(i));
       $('pxc').outerHTML = `<div id="pxc" style="display:flex;flex-direction:column;gap:12px">
-        ${N > 1 ? `<div class="banner"><span>Seu pagamento vai em <b>${N} Pix</b>, um para cada recebedor: ${lotes.map((l, i) => `${i < n ? '✓ ' : ''}${esc(nomeRec(l.rec))} ${brl(l.valor)}`).join(' · ')}. Total ${brl(total)}.</span></div>` : ''}
-        <div class="headrow"><h2>${N > 1 ? `Pix ${n + 1} de ${N}` : 'Pix'} · para ${esc(nomeRec(d.rec))}</h2></div>
-        ${(() => { // só o que está sendo pago, sem valor de cada coisa; a taxa vai junto do último item ("+ taxa de transação")
-          const grupos = Object.entries(porAluna), ult = grupos.length - 1;
-          return grupos.map(([nm, l], g) => `<div class="items"><div class="label">${esc(nm)}</div>${l.map((i, k) => `<div class="item"><span>${esc(i.desc)}${i.v < i.total ? ' <span class="sub">(parte da ' + esc(nomeRec(d.rec).split(' ')[0]) + ')</span>' : ''}${repasse > 0 && g === ult && k === l.length - 1 ? ' + taxa de transação' : ''}</span></div>`).join('')}</div>`).join(''); })()}
+        ${N > 1 ? `<div class="pix-topo"><div class="pix-ok-passos">${lotes.map((l, i) => `<span class="${i < n ? 'ok' : i === n ? 'prox' : ''}">${i < n ? '✓' : i + 1}</span>`).join('<i></i>')}</div><span class="sub">${N} Pix, um para cada recebedor · total ${brl(total)}</span></div>` : ''}
+        <div class="headrow"><h2 class="pix-tit">${N > 1 ? `Pix ${n + 1} de ${N}` : 'Pix'} · para ${esc(nomeRec(d.rec))}</h2></div>
         <div class="tot"><span>Valor deste Pix</span><b class="num">${brl(d.valor)}</b></div>
         <div class="qrbox">${d.qr64 ? `<img src="data:image/png;base64,${d.qr64}" alt="QR Code do Pix">` : qrSVG(d.qr)}</div>
         <div class="code">${esc(d.qr)}</div>
         <button class="btn" id="pxcopy">Copiar código Pix</button>
         <div class="pix-st" id="pxst"><i></i>Aguardando o pagamento. ${n + 1 < N ? 'Quando este Pix cair, aparece o próximo.' : 'Esta tela muda sozinha quando o Pix cair.'}</div>
         <div class="note">O QR vale por 24 horas. No app do banco, escolha Pix → Pagar com QR Code ou Pix copia e cola.</div>
+        <details class="pix-itens"><summary>O que está neste Pix</summary>
+        ${(() => { // só o que está sendo pago, sem valor de cada coisa; a taxa vai junto do último item ("+ taxa de transação")
+          const grupos = Object.entries(porAluna), ult = grupos.length - 1;
+          return grupos.map(([nm, l], g) => `<div class="items"><div class="label">${esc(nm)}</div>${l.map((i, k) => `<div class="item"><span>${esc(i.desc)}${i.v < i.total ? ' <span class="sub">(parte da ' + esc(nomeRec(d.rec).split(' ')[0]) + ')</span>' : ''}${repasse > 0 && g === ult && k === l.length - 1 ? ' + taxa de transação' : ''}</span></div>`).join('')}</div>`).join(''); })()}
+        </details>
         ${MOCK ? `<button class="btn ghost" id="pxmock">Teste: simular Pix pago</button>` : ''}
       </div>`;
       $('pxcopy').onclick = () => copiar(d.qr, 'Código Pix copiado. Cole no app do banco.');
@@ -1878,7 +1880,8 @@ function sheetPix(chaves, voltar) {
               <h3>Pix ${n + 1} de ${N} pago</h3><span class="sub">${brl(d.valor)} para ${esc(nomeRec(d.rec))}</span>
               <div class="pix-ok-prox">Agora falta ${N - n - 1 === 1 ? 'o último Pix' : `${N - n - 1} Pix`}: <b>${brl(lotes[n + 1].valor)}</b> para ${esc(nomeRec(lotes[n + 1].rec))}</div>
               <button type="button" class="btn" id="pxprox">Ir para o Pix ${n + 2} de ${N}</button><div class="pix-ok-barra"><i></i></div></div>`;
-            let foi = false; const ir = () => { if (foi || !$('pxprox')) return; foi = true; passo(n + 1); };
+            $('pxf').hidden = true; // nesta tela só o caminho para o próximo Pix
+            let foi = false; const ir = () => { if (foi || !$('pxprox')) return; foi = true; passo(n + 1); const sh = $('pxc') && $('pxc').closest('.sheet'); if (sh) sh.scrollTop = 0; };
             $('pxprox').onclick = ir; setTimeout(ir, 4500); return; }
           $('pxc').innerHTML = `<div class="done"><div class="ok">✓</div><h3>Pagamento confirmado!</h3><span class="sub">${N > 1 ? `${N} Pix, ${brl(total)} no total` : brl(c.valor) + ' recebidos por Pix'}. Obrigado!</span></div>`; S.sel = null; parar && parar(); parar = null;
         } else if (['rejected', 'cancelled', 'expired'].includes(c.status)) $('pxst').innerHTML = `<i style="background:var(--out)"></i>Este Pix foi cancelado ou venceu. Feche e gere outro.`;
