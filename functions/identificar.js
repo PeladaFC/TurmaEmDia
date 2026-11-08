@@ -111,5 +111,15 @@ module.exports = (db, opcoes = {}) => {
     return { ok: true };
   });
 
-  return { indexarResp, familiaIdentificar, familiaAprovar, interno: { indexar, indexarTudo, chaves } };
+  // a escola cadastra um(a) professor(a) pelo e-mail: se ele(a) já fez o cadastro no app, devolve os dados para preencher
+  const perfilProf = responder(async (u, { eid, email }) => {
+    if (!idOk(eid) || typeof email !== 'string') throw erro('Pedido inválido.', 400);
+    const esc = await ler(`escolas/${eid}`);
+    if (!esc || !(esc.admins || []).includes(u.uid)) throw erro('Só a administração da escola pode fazer isso.', 403);
+    let uid = null; try { uid = (await admin.auth().getUserByEmail(email.trim().toLowerCase())).uid; } catch (e) { return { perfil: null }; }
+    const p = ((await ler(`users/${uid}`)) || {}).perfilProf;
+    return { perfil: p ? { nome: p.nome || '', telefone: p.telefone || '', nascimento: p.nascimento || null, cpf: p.cpf || '', cref: p.cref || null, ensina: p.ensina || null, mp: p.mp || null } : null };
+  });
+
+  return { indexarResp, familiaIdentificar, familiaAprovar, perfilProf, interno: { indexar, indexarTudo, chaves } };
 };

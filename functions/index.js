@@ -38,6 +38,7 @@ const ID = require('./identificar')(db);
 exports.indexarResp = ID.indexarResp;
 exports.familiaIdentificar = ID.familiaIdentificar;
 exports.familiaAprovar = ID.familiaAprovar;
+exports.perfilProf = ID.perfilProf;
 
 const E = require('./espelho')(db);
 exports.espelharProf = E.espelharProf;

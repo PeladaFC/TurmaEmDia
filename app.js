@@ -3946,7 +3946,12 @@ function sheetProf(pid) {
       const verFixo = () => { const lig = $('psal').checked, f = $('psfixo').checked; $('psalw').hidden = !lig; $('psfixw').hidden = !f;
         $('psfixs').textContent = f ? '' : 'O valor de cada mês você adiciona em Financeiro → Professores.'; $('psfixs').hidden = f; };
       $('psal').onchange = verFixo; document.querySelectorAll('.sheet [name=pstipo]').forEach(r => r.onchange = verFixo); verFixo();
-      document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid))); },
+      document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid)));
+      // professor(a) que já fez o cadastro no app: ao digitar o e-mail, os dados dele(a) preenchem o que está vazio
+      $('pemail').addEventListener('change', async () => { const em = $('pemail').value.trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em) || MOCK) return;
+        try { const r = await servidor('perfilProf', { eid: S.eid, email: em }); const q = r && r.perfil; if (!q) return;
+          if (!$('pnome').value.trim()) $('pnome').value = q.nome || ''; if (!$('ptel').value.trim()) $('ptel').value = q.telefone || '';
+          aviso(`Achamos o cadastro de ${primeiro(q.nome) || 'quem tem esse e-mail'}`); } catch (e) { } }); },
     salvar: async () => { const nome = $('pnome').value.trim(); if (!nome) return 'Digite o nome do(a) professor(a).';
       const email = $('pemail').value.trim().toLowerCase(); if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return 'Confira o e-mail.';
       const outro = Object.entries(S.profs).find(([id, x]) => id !== pid && email && String(x.emailApp || '').toLowerCase() === email); if (outro) return `Este e-mail já está com ${outro[1].nome}.`;
