@@ -1120,7 +1120,7 @@ function render() {
     a: [['cobr', 'Pendências', 'pend'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
     p: [['pturmas', 'Turmas', 'escola'], ['palunos', 'Alunos', 'alunas'], ['pfin', 'Financeiro', 'caixa']],
     f: [['filhas', 'Meus filhos', 'filhas'], ['feventos', 'Eventos', 'evento'], ['pagar', 'Pagar', 'cobr']] }[S.papel];
-  const comMes = (adm && ['cobr', 'fin'].includes(S.tab)) || (S.papel === 'p' && S.tab === 'pfin');
+  const comMes = (adm && S.tab === 'fin') || (S.papel === 'p' && S.tab === 'pfin');
   const titulo = adm ? 'Administração' : S.prof ? 'Professor(a) ' + ((S.profs[S.prof] || {}).nome || '') : (Object.values(S.resps)[0] || {}).nome || 'Responsável';
   const foco = document.activeElement && document.activeElement.id, selS = foco && document.activeElement.selectionStart;
   RAIZ().innerHTML = `<div class="wrap">
@@ -1201,12 +1201,7 @@ function atrasados() {
 function tCobrancas(v) {
   if (!Object.keys(S.turmas).length) { v.innerHTML = `<div class="empty"><b>Comece cadastrando as turmas.</b><span>Cada turma tem a sua mensalidade. Depois cadastre os alunos e os responsáveis.</span><button class="btn" id="pgo">Cadastrar turmas</button></div>`; $('pgo').onclick = () => irPara('turmas'); return; }
   const mes = S.mes, h = hoje(), atr = atrasados(), mudFx = mudancasFaixa();
-  // resumo do mês escolhido
-  const tot = { esp: 0, pix: 0, din: 0, aVencer: 0, vencido: 0 };
-  for (const alid of Object.keys(S.alunas)) for (const i of itensDoMes(alid, mes)) {
-    tot.esp += i.v; if (i.pago) { if (ONLINE(i.pago.via)) tot.pix += i.v; else tot.din += i.v; } else if (i.venc < h) tot.vencido += i.v; else tot.aVencer += i.v;
-  }
-  const rec = tot.pix + tot.din, pc = x => tot.esp ? x / tot.esp * 100 : 0, cur = brl;
+  const cur = brl;
   // quem deve: uma lista só, com filtros
   const filtro = S.filtroCobr || 'aberto', q = (S.buscaC || '').trim().toLowerCase(), mesAtual = mesHoje();
   const todos = Object.keys(S.alunas).map(alid => ({ alid, ...resumoAluna(alid) })).filter(r => r.it.length);
@@ -1238,17 +1233,6 @@ function tCobrancas(v) {
   const ext = Object.entries(S.extras).filter(([, x]) => !eventoNovo(x) || pelaEscola(x)).sort((a, b) => String(b[1].venc).localeCompare(String(a[1].venc)));
   const fil = (k, n) => `<button class="pick" data-fl="${k}" aria-pressed="${filtro === k}">${n} <span class="num">${cont[k]}</span></button>`;
   v.innerHTML = `${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}${avisoPendenciasAdm()}
-    <div class="hero">
-      <div><div class="label">Recebido em ${esc(C.nomeMes(mes))}</div><div class="big num">${cur(rec)}</div>
-        <div class="sub num">de ${cur(tot.esp)} previstos${tot.esp ? ` · ${Math.round(pc(rec))}%` : ''}</div></div>
-      <div class="pizza">${pizzaSVG([{ v: rec, cor: 'var(--in, #2f7d6d)' }, { v: tot.aVencer, cor: 'var(--warn, #c9962b)' }, { v: tot.vencido, cor: 'var(--out, #b0402a)' }], `Recebido ${cur(rec)}, a vencer ${cur(tot.aVencer)}, vencido ${cur(tot.vencido)}`)}
-        <ul class="pizza-leg">
-          <li><i class="s-in"></i><span class="grow pz-nome">Recebido</span><span class="pz-val"><b class="num">${cur(rec)}</b><span class="s num">${Math.round(pc(rec))}%</span></span></li>
-          <li><i class="s-warn"></i><span class="grow pz-nome">A vencer<span class="s">no prazo</span></span><span class="pz-val"><b class="num">${cur(tot.aVencer)}</b><span class="s num">${Math.round(pc(tot.aVencer))}%</span></span></li>
-          <li><i class="s-out"></i><span class="grow pz-nome">Vencido<span class="s">deste mês</span></span><span class="pz-val"><b class="num" style="color:var(--out)">${cur(tot.vencido)}</b><span class="s num">${Math.round(pc(tot.vencido))}%</span></span></li>
-        </ul></div>
-      <div class="sub num" style="text-align:center">Recebido pelo app ${cur(tot.pix)} · em dinheiro ${cur(tot.din)}</div>
-    </div>
     ${antigos.length && filtro !== 'antigos' ? `<button class="banner" data-fl="antigos" style="border:0;text-align:left;width:100%;background:var(--out-soft)"><span>Além disso, <b>${cur(C.r2(antigos.reduce((s, x) => s + x.vAntes, 0)))}</b> vencidos de meses passados, de ${antigos.length} aluno${antigos.length === 1 ? '' : 's'}.</span><span style="color:var(--out);font-weight:800">Ver ›</span></button>` : ''}
     <section><h2>Quem deve</h2>
       <div class="chips">${fil('aberto', 'Em aberto')}${fil('vencido', 'Vencidas')}${fil('antigos', 'Meses passados')}${fil('pago', 'Em dia')}${fil('todas', 'Todos')}</div>
@@ -3901,9 +3885,29 @@ function recebidosNoMes(mes) {
   }
   return out.sort((x, y) => String(x.d).localeCompare(String(y.d)));
 }
+// resumo das cobranças do mês (recebido, a vencer, vencido): fica no topo do Financeiro
+function heroCobrMes(mes) {
+  const h = hoje();
+  const tot = { esp: 0, pix: 0, din: 0, aVencer: 0, vencido: 0 };
+  for (const alid of Object.keys(S.alunas)) for (const i of itensDoMes(alid, mes)) {
+    tot.esp += i.v; if (i.pago) { if (ONLINE(i.pago.via)) tot.pix += i.v; else tot.din += i.v; } else if (i.venc < h) tot.vencido += i.v; else tot.aVencer += i.v;
+  }
+  const rec = tot.pix + tot.din, pc = x => tot.esp ? x / tot.esp * 100 : 0, cur = brl;
+  return `<div class="hero">
+      <div><div class="label">Recebido em ${esc(C.nomeMes(mes))}</div><div class="big num">${cur(rec)}</div>
+        <div class="sub num">de ${cur(tot.esp)} previstos${tot.esp ? ` · ${Math.round(pc(rec))}%` : ''}</div></div>
+      <div class="pizza">${pizzaSVG([{ v: rec, cor: 'var(--in, #2f7d6d)' }, { v: tot.aVencer, cor: 'var(--warn, #c9962b)' }, { v: tot.vencido, cor: 'var(--out, #b0402a)' }], `Recebido ${cur(rec)}, a vencer ${cur(tot.aVencer)}, vencido ${cur(tot.vencido)}`)}
+        <ul class="pizza-leg">
+          <li><i class="s-in"></i><span class="grow pz-nome">Recebido</span><span class="pz-val"><b class="num">${cur(rec)}</b><span class="s num">${Math.round(pc(rec))}%</span></span></li>
+          <li><i class="s-warn"></i><span class="grow pz-nome">A vencer<span class="s">no prazo</span></span><span class="pz-val"><b class="num">${cur(tot.aVencer)}</b><span class="s num">${Math.round(pc(tot.aVencer))}%</span></span></li>
+          <li><i class="s-out"></i><span class="grow pz-nome">Vencido<span class="s">deste mês</span></span><span class="pz-val"><b class="num" style="color:var(--out)">${cur(tot.vencido)}</b><span class="s num">${Math.round(pc(tot.vencido))}%</span></span></li>
+        </ul></div>
+      <div class="sub num" style="text-align:center">Recebido pelo app ${cur(tot.pix)} · em dinheiro ${cur(tot.din)}</div>
+    </div>`;
+}
 function tFinanceiro(v) {
   const aba = S.abaFin || 'escola';
-  v.innerHTML = `<div class="seg"><button data-fa="escola" aria-pressed="${aba === 'escola'}">Contas da escola</button><button data-fa="prof" aria-pressed="${aba === 'prof'}">Professores</button></div><div id="fcorpo" style="display:flex;flex-direction:column;gap:16px"></div>`;
+  v.innerHTML = `${heroCobrMes(S.mes)}<div class="seg"><button data-fa="escola" aria-pressed="${aba === 'escola'}">Contas da escola</button><button data-fa="prof" aria-pressed="${aba === 'prof'}">Professores</button></div><div id="fcorpo" style="display:flex;flex-direction:column;gap:16px"></div>`;
   v.querySelectorAll('[data-fa]').forEach(b => b.onclick = () => { S.abaFin = b.dataset.fa; render(); });
   (aba === 'prof' ? finProfessoras : finEscola)($('fcorpo'));
 }
