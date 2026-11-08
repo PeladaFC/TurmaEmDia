@@ -1929,7 +1929,9 @@ function localEventoHTML(x) {
 }
 // arquivos do evento (PDF): a lista fica no evento (x.arquivos), cada arquivo num documento à parte (arquivosEventos)
 const ARQ_EV_MAX = 3, ARQ_EV_BYTES = 700 * 1024;
-const arquivosEvHTML = x => (x.arquivos || []).length ? `<div class="ev-arqs">${x.arquivos.map(a => `<button type="button" class="arq-lnk" data-verarq="${esc(a.id)}">📄 <u>${esc(a.nome)}</u> <span class="s num">${kb(a.tam || 0)}</span></button>`).join('')}</div>` : '';
+const arquivosEvHTML = x => arqLista(x).length ? `<div class="ev-arqs">${arqLista(x).map(a => `<button type="button" class="arq-lnk" data-verarq="${esc(a.id)}">📄 <u>${esc(a.nome)}</u> <span class="s num">${kb(a.tam || 0)}</span></button>`).join('')}</div>` : '';
+// arquivos do evento + os das taxas ligadas a ele (as famílias veem tudo na página do evento)
+function arqLista(x) { const k = ehEvento(x) ? xidDe(x) : null; return [...(x.arquivos || []), ...(k ? Object.values(S.extras || {}).filter(t => t && t.tipo === 'taxa' && t.evento === k).flatMap(t => t.arquivos || []) : [])]; }
 // campo "Arquivos (PDF)" dos formulários de evento e de taxa (p = prefixo dos ids)
 const formArqsHTML = (p, titulo, dica) => `<div class="field"><span class="lb">${titulo}</span><span class="sub">${dica} Até ${ARQ_EV_MAX} arquivos de até ${kb(ARQ_EV_BYTES)}.</span>
       <div class="ev-links" id="${p}arqs"></div><button type="button" class="add-disc add-largo" id="${p}arqadd">+ Arquivo</button><input type="file" id="${p}arq" accept="application/pdf,.pdf" hidden><div class="err" id="${p}arqerr" role="alert"></div></div>`;
@@ -2392,7 +2394,7 @@ function avisoRateioFam() {
   return Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.rateio && !C.rateioFechado(x)).map(([xid, x]) => {
     const meus = (x.convidados || []).filter(id => S.alunas[id]); if (!meus.length) return '';
     const n = C.rateioParticipantes(x).length;
-    return `<div class="rt-card"><b class="rt-tit">${esc(x.nome)}</b>${arquivosEvHTML(x)}
+    return `<div class="rt-card"><b class="rt-tit">${esc(x.nome)}</b>
       <span class="s">${x.rateio.porAluno ? `Custa <b>${brl(x.rateio.porAluno)}</b> por aluno. Só paga quem participar.` : `A escola vai dividir <b>${brl(x.rateio.total)}</b> entre os alunos que participarem. ${n ? `Até agora, <b>${n} ${n === 1 ? 'vai' : 'vão'} participar</b>: cerca de <b>${brl(C.rateioCada(x.rateio.total, n))}</b> para cada um. ` : ''}Quanto mais gente, menor o valor.`}</span>
       ${meus.map(id => { const st = rtSt(x, id);
         return `<div class="rt-fil"><div class="ev-ja-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span>${st ? `<span class="s">${st === 'interesse' ? 'Vai participar' : 'Não vai'}</span>` : '<span class="ev-pend">Resposta pendente</span>'}</div>
@@ -4169,7 +4171,7 @@ function tPagar(v) {
     ${porAl.filter(x => x.it.some(i => !i.pago)).map(({ id, a, it }) => { const ab = it.filter(i => !i.pago), todos = ab.every(i => S.sel.has(i.k)), sub = C.r2(ab.filter(i => S.sel.has(i.k)).reduce((s, i) => s + i.v, 0));
       return `<div class="month-card ${ab.some(i => i.venc < h) ? 'late' : ''}">
       <div class="headrow"><div><h2>${esc(a.nome)}</h2><div class="s">${esc(turmasTxt(a))}</div></div><button class="chip" data-tudo="${esc(id)}">${todos ? 'Desmarcar' : 'Marcar tudo'}</button></div>
-      <div class="checks" style="max-height:none">${ab.map(i => `<label><input type="checkbox" data-k="${esc(i.k)}" ${S.sel.has(i.k) ? 'checked' : ''}><span class="grow"><span class="t" style="display:block">${esc(i.desc)}</span><span class="s">${esc(tipoItem(i))}</span><span class="s num">Vence ${dataBR(i.venc)}</span>${linhaEnc(i)}<span class="s">Para ${esc(Object.keys(i.partes || { escola: 1 }).map(nomeRec).join(' e '))}</span>${i.xid && ((S.extras[i.xid] || {}).arquivos || []).length ? S.extras[i.xid].arquivos.map(a => `<button type="button" class="arq-lnk" data-verarq="${esc(a.id)}">📄 <u>${esc(a.nome)}</u></button>`).join('') : ''}</span><span class="valor-col"><b class="num">${brl(i.v)}</b>${i.venc < h ? '<span class="chip vencido">Vencida</span>' : ''}</span></label>`).join('')}</div>
+      <div class="checks" style="max-height:none">${ab.map(i => `<label><input type="checkbox" data-k="${esc(i.k)}" ${S.sel.has(i.k) ? 'checked' : ''}><span class="grow"><span class="t" style="display:block">${esc(i.desc)}</span><span class="s">${esc(tipoItem(i))}</span><span class="s num">Vence ${dataBR(i.venc)}</span>${linhaEnc(i)}<span class="s">Para ${esc(Object.keys(i.partes || { escola: 1 }).map(nomeRec).join(' e '))}</span></span><span class="valor-col"><b class="num">${brl(i.v)}</b>${i.venc < h ? '<span class="chip vencido">Vencida</span>' : ''}</span></label>`).join('')}</div>
       <div class="item sub"><span>Marcado de ${esc(primeiro(a.nome))}</span><b class="num" style="color:var(--ink)">${brl(sub)}</b></div>
     </div>`; }).join('')}
     ${!abertos.length && !pagos.length ? `<div class="empty"><b>Nenhuma cobrança ainda.</b><span>Quando a escola cadastrar as turmas dos seus filhos, as cobranças aparecem aqui.</span></div>` : ''}
