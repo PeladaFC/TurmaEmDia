@@ -177,7 +177,7 @@ const ICO = {
   evento: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M12 13.2l1 2 2.2.3-1.6 1.5.4 2.2-2-1.1-2 1.1.4-2.2-1.6-1.5 2.2-.3z"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   painel: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
-  pend: '<svg viewBox="0 0 24 24"><path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17.2v.01"/></svg>',
+  pend: '<svg viewBox="0 0 24 24"><path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 8.6v5.2" stroke-width="2.6"/><circle cx="12" cy="17" r="1.45" fill="currentColor" stroke="none"/></svg>',
   cobr: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>',
   alunas: '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><path d="M12 7v7l-4 7M12 14l4 7M5 10c4 2 10 2 14 0"/></svg>',
   escola: '<svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6"/></svg>',
@@ -1180,6 +1180,22 @@ function contaMensalidade(m, a, titulo) {
     ${m.dAjuste > 0 ? contaL((a && a.desc && a.desc.isenta ? 'Bolsa' : a && a.desc && a.desc.pct ? `Desconto (${Math.round(a.desc.pct * 100)}%)` : a && a.desc && a.desc.menos ? 'Desconto em R$' : 'Desconto combinado com a escola') + (a && a.desc && a.desc.motivo ? `<span class="s" style="display:block">${esc(a.desc.motivo)}</span>` : ''), '− ' + brl(m.dAjuste), 'desc') : m.dAjuste < 0 ? contaL('Valor combinado com a escola' + (a && a.desc && a.desc.motivo ? `<span class="s" style="display:block">${esc(a.desc.motivo)}</span>` : ''), '+ ' + brl(-m.dAjuste)) : ''}
     ${contaL('<b>Total por mês</b>', `<b>${brl(m.v)}</b>`, 'total')}</div>`;
 }
+// cobrança feita pela escola (WhatsApp ou mensagem copiada): guarda o dia, para não cobrar a mesma coisa toda hora
+// alunas/{alid}.cobrado = { pend: ms (cadastro: termo, documentos, atestado), pag: ms (pagamentos) }
+function marcarCobrado(alids, tipo) {
+  if (!S.admin) return; const agora = Date.now();
+  const ops = [...new Set(alids)].filter(id => S.alunas[id]).map(id => { const a = S.alunas[id]; a.cobrado = { ...(a.cobrado || {}), [tipo]: agora }; return { op: 'merge', p: `escolas/${S.eid}/alunas/${id}`, d: { cobrado: a.cobrado } }; });
+  if (ops.length) B.lote(ops).catch(() => { });
+}
+const cobradoEm = (alid, tipo) => (((S.alunas[alid] || {}).cobrado) || {})[tipo] || 0;
+// "Cobrado hoje", "Cobrado ontem", "Cobrado em 05/11"
+function cobradoTxt(alid, tipo) {
+  const ms = cobradoEm(alid, tipo); if (!ms) return '';
+  const dia = new Date(ms - 3 * 36e5).toISOString().slice(0, 10), h = hoje(), ontem = new Date(Date.parse(h + 'T12:00') - 864e5).toISOString().slice(0, 10);
+  return dia === h ? 'Cobrado hoje' : dia === ontem ? 'Cobrado ontem' : `Cobrado em ${dataBR(dia)}`;
+}
+const cobradoHTML = (alid, tipo) => { const t = cobradoTxt(alid, tipo); return t ? `<span class="cobrado">${t}</span>` : ''; };
+document.addEventListener('click', e => { const el = e.target.closest && e.target.closest('[data-cobr]'); if (!el) return; const [ids, tipo] = el.dataset.cobr.split(':'); marcarCobrado(ids.split(','), tipo); }, true);
 function linhaAluna(alid, valor, status, subs, depois) {
   const a = S.alunas[alid] || {};
   return `<li class="tap" data-aluna="${esc(alid)}">${avatarAluno(alid, a.nome)}<div class="grow"><div class="t">${esc(a.nome || 'Aluno(a)')}</div>${linhas(subs || [esc(respDe(alid).nome || 'Sem responsável')])}</div>${valorCol(brl(valor), status ? `<span class="chip ${status}">${ROT[status]}</span>` : '')}${depois || ''}</li>`;
@@ -1209,7 +1225,7 @@ function tCobrancas(v) {
   const cont = { aberto: todos.filter(r => r.aberto > 0).length, vencido: todos.filter(r => r.status === 'vencido').length, antigos: antigos.length, pago: todos.filter(r => r.status === 'pago').length, todas: todos.length };
   const busca = alid => !q || String(S.alunas[alid].nome).toLowerCase().includes(q) || String(respDe(alid).nome || '').toLowerCase().includes(q);
   const WA_VAZIO = '<span class="wa wa-vazio" aria-hidden="true"></span>';
-  const waDe = (alid, itens) => { const r = respDe(alid), wa = waLink(r.telefone, textoMsg('atraso', alid, itens)); return wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome || '')}">${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'; };
+  const waDe = (alid, itens) => { const r = respDe(alid), wa = waLink(r.telefone, textoMsg('atraso', alid, itens)); return wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" data-cobr="${esc(alid)}:pag" aria-label="WhatsApp de ${esc(r.nome || '')}">${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'; };
   let lista;
   if (filtro === 'antigos') {
     const l = antigos.filter(x => busca(x.alid)), meses = {};
@@ -1227,7 +1243,7 @@ function tCobrancas(v) {
   } else {
     let rows = todos.filter(r => filtro === 'todas' || (filtro === 'aberto' ? r.aberto > 0 : r.status === filtro)).filter(r => busca(r.alid));
     rows.sort((a, b) => b.vencido - a.vencido || b.aberto - a.aberto || String(S.alunas[a.alid].nome).localeCompare(String(S.alunas[b.alid].nome), 'pt-BR'));
-    lista = rows.length ? `<ul class="list">${rows.map(r => linhaAluna(r.alid, r.status === 'pago' ? 0 : r.aberto, r.status, [esc(respDe(r.alid).nome || 'Sem responsável'), r.vencido && r.vencido < r.aberto ? `<span class="num">${cur(r.vencido)} já vencido</span>` : ''], r.vencido ? waDe(r.alid, r.it.filter(i => !i.pago && st(i) === 'vencido')) : WA_VAZIO)).join('')}</ul>`
+    lista = rows.length ? `<ul class="list">${rows.map(r => linhaAluna(r.alid, r.status === 'pago' ? 0 : r.aberto, r.status, [esc(respDe(r.alid).nome || 'Sem responsável'), r.vencido && r.vencido < r.aberto ? `<span class="num">${cur(r.vencido)} já vencido</span>` : '', r.status !== 'pago' ? cobradoHTML(r.alid, 'pag') : ''], r.vencido ? waDe(r.alid, r.it.filter(i => !i.pago && st(i) === 'vencido')) : WA_VAZIO)).join('')}</ul>`
       : `<div class="empty">${Object.keys(S.alunas).length ? 'Nenhum aluno neste filtro.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre os alunos na aba Alunos.</span>'}</div>`;
   }
   const ext = Object.entries(S.extras).filter(([, x]) => !eventoNovo(x) || pelaEscola(x)).sort((a, b) => String(b[1].venc).localeCompare(String(a[1].venc)));
@@ -1307,7 +1323,7 @@ const WA_MINI_VAZIO = '<span class="wa wa-mini wa-vazio" aria-hidden="true"></sp
 // botão do WhatsApp (no cabeçalho do responsável e na lista de pendências); sem pendência ou sem telefone, o espaço vazio
 function waPendencias(alids) {
   const m = msgPendencias(alids);
-  return m && m.wa ? `<a class="wa wa-mini" href="${esc(m.wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Cobrar pelo WhatsApp o que falta no cadastro">${ICO_WA}</a>` : WA_MINI_VAZIO;
+  return m && m.wa ? `<a class="wa wa-mini" href="${esc(m.wa)}" target="_blank" rel="noopener" data-cobr="${esc(alids.join(','))}:pend" data-nao-abre aria-label="Cobrar pelo WhatsApp o que falta no cadastro">${ICO_WA}</a>` : WA_MINI_VAZIO;
 }
 // família: documentos que a escola pede e ainda faltam (ou venceram), com o botão para enviar
 function avisoDocsFam() {
@@ -1328,7 +1344,7 @@ function sheetPendencias(filtro = 'todos') {
   const L = porNome(S.alunas).map(([id, a]) => [id, a, faltaCadastro(id)]).filter(([, , f]) => f.some(casa));
   sheet(`<h3>Pendências dos alunos</h3><div class="sub">O que falta no cadastro de cada aluno. A família também vê esses avisos quando abre o app. Toque no WhatsApp para mandar a mensagem pronta com tudo o que falta.</div>
     <div class="seg" style="margin:10px 0;flex-wrap:wrap">${FILTROS_PEND.map(([v, t]) => `<button type="button" data-pf="${v}" aria-pressed="${filtro === v}">${t}</button>`).join('')}</div>
-    ${L.length ? `<ul class="list">${L.map(([id, a, f]) => `<li class="tap pend-lin" data-pal="${esc(id)}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(respDe(id).nome || 'Sem responsável')}</span>
+    ${L.length ? `<ul class="list">${L.map(([id, a, f]) => `<li class="tap pend-lin" data-pal="${esc(id)}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(respDe(id).nome || 'Sem responsável')}</span>${cobradoHTML(id, 'pend')}
       <ul class="pend-itens">${f.map(x => `<li>${esc(x.charAt(0).toUpperCase() + x.slice(1))}</li>`).join('')}</ul></div>${waPendencias([id])}</li>`).join('')}</ul>`
       : '<div class="empty"><b>Nada pendente aqui.</b></div>'}
     <button class="btn ghost" data-fechar>Fechar</button>`, sh => {
@@ -1345,8 +1361,8 @@ function blocoPendPerfil(alid) {
   const lin = x => { const t = esc(x.charAt(0).toUpperCase() + x.slice(1)), k = acao(x);
     return k ? `<button type="button" class="plinha" data-ppa="${esc(k)}"><span class="grow">${t}</span><span class="chip aberto">Falta</span></button>`
       : `<div class="plinha"><span class="grow">${t}</span><span class="chip aberto">Falta</span></div>`; };
-  return `<section class="psec"><div class="psec-cab"><h2>Pendências</h2></div><div class="plista">${f.map(lin).join('')}</div>
-    <div class="actions" style="margin-top:10px">${m && m.wa ? `<a class="btn wa-btn" href="${esc(m.wa)}" target="_blank" rel="noopener">${ICO_WA} Cobrar pelo WhatsApp</a>` : ''}<button type="button" class="btn ghost" id="ppcop">Copiar mensagem</button></div>
+  return `<section class="psec"><div class="psec-cab"><h2>Pendências</h2>${cobradoHTML(alid, 'pend')}</div><div class="plista">${f.map(lin).join('')}</div>
+    <div class="actions" style="margin-top:10px">${m && m.wa ? `<a class="btn wa-btn" href="${esc(m.wa)}" target="_blank" rel="noopener" data-cobr="${esc(alid)}:pend">${ICO_WA} Cobrar pelo WhatsApp</a>` : ''}<button type="button" class="btn ghost" id="ppcop" data-cobr="${esc(alid)}:pend">Copiar mensagem</button></div>
     <span class="s" style="display:block;margin-top:6px">A família também vê esses avisos no app, na tela de pagar.</span></section>`;
 }
 function textoMsg(tipo, alid, itens) {
@@ -1400,12 +1416,12 @@ function sheetCobrancaAluna(alid) {
         ${nfFamLigada() ? `<label class="check" style="font-weight:500;font-size:.9rem"><input type="checkbox" id="fnf" checked> Emitir nota fiscal do que foi recebido em dinheiro</label>` : ''}
         ${S.cfg.mpConectadoEm ? '' : '<div class="note">Ligue o Pix automático em Ajustes para gerar o QR Code.</div>'}
         ${abertos.some(i => st(i) === 'vencido' && i.tipo !== 'a') ? `<button class="btn ghost" id="facordo">Fazer acordo dos atrasados</button>` : ''}
-        <div class="hero" style="padding:14px;gap:10px"><div class="label">Mensagem para ${esc(primeiro(r.nome) || 'o responsável')}</div>
+        <div class="hero" style="padding:14px;gap:10px"><div class="label">Mensagem para ${esc(primeiro(r.nome) || 'o responsável')}</div>${cobradoTxt(alid, 'pag') ? `<div class="aviso-cobr">${cobradoTxt(alid, 'pag')} pelo WhatsApp. Confira antes de mandar de novo.</div>` : ''}
           <div class="seg"><button data-mt="lembrete">Lembrete</button><button data-mt="atraso">Atraso</button>${temAcordo ? '<button data-mt="acordo">Acordo</button>' : ''}</div>
           <textarea id="fmtxt" class="msg-edit" rows="8" aria-label="Mensagem"></textarea>
           <div class="note">Pode mexer no texto antes de enviar. Para mudar o texto de todas as próximas vezes, <button type="button" class="link" id="fmod">edite o modelo</button>.</div>
           ${S.cfg.mpConectadoEm ? `<label class="liga"><span class="grow"><b>Incluir código Pix</b><span class="s" id="fpixs">Coloca o Pix copia e cola no fim da mensagem. Vale por 24 horas e a baixa é automática.</span></span><input type="checkbox" role="switch" id="fpix"><span class="trilho" aria-hidden="true"></span></label>` : ''}
-          <div class="actions">${numeroWa(r.telefone) ? `<a class="btn wa-btn" id="fwa" target="_blank" rel="noopener">${ICO_WA} Abrir no WhatsApp</span></a>` : ''}<button class="btn ghost" id="fmsg">Copiar</button></div>
+          <div class="actions">${numeroWa(r.telefone) ? `<a class="btn wa-btn" id="fwa" target="_blank" rel="noopener" data-cobr="${esc(alid)}:pag">${ICO_WA} Abrir no WhatsApp</span></a>` : ''}<button class="btn ghost" id="fmsg" data-cobr="${esc(alid)}:pag">Copiar</button></div>
           ${numeroWa(r.telefone) ? `<div class="note">Abre a conversa com ${esc(r.telefone)} e a mensagem já escrita. Você confere e toca em enviar.</div>` : '<div class="note">Cadastre o WhatsApp do responsável para enviar direto.</div>'}
           <div id="fpixc" class="actions" style="flex-direction:column"></div></div>`
         : `<div class="empty"><b>${it.length ? 'Nada em aberto. Tudo pago!' : 'Nenhuma cobrança.'}</b></div>`}
@@ -5790,7 +5806,7 @@ function sheetDocsEscola() {
   const volta = () => sheetDocsEscola(), mes = mesHoje();
   const ativos = porNome(S.alunas).filter(([, a]) => C.ativaNoMes(a, mes) && !a.anonimizadoEm);
   const linha = (alid, tid) => { const a = S.alunas[alid], wa = situacaoDoc(docDe(alid, tid)).st !== 'ok' ? waDoc(alid, tid) : '';
-    return `<li class="tap" data-dal="${esc(alid)}" data-dt="${esc(tid)}"><div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(tipoDoc(tid).nome)}</span></div>${chipDoc(docDe(alid, tid))}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" data-nao-abre aria-label="Pedir pelo WhatsApp">${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'}</li>`; };
+    return `<li class="tap" data-dal="${esc(alid)}" data-dt="${esc(tid)}"><div class="grow"><div class="t">${esc(a.nome)}</div><span class="s">${esc(tipoDoc(tid).nome)}</span></div>${chipDoc(docDe(alid, tid))}${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" data-nao-abre data-cobr="${esc(alid)}:pend" aria-label="Pedir pelo WhatsApp">${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'}</li>`; };
   const alertas = [];
   for (const [alid] of ativos) for (const t of docsDoAluno(alid)) { const st = situacaoDoc(docDe(alid, t)).st; if (st === 'vencido' || st === 'vence') alertas.push([alid, t, st]); }
   alertas.sort((x, y) => (x[2] === 'vencido' ? 0 : 1) - (y[2] === 'vencido' ? 0 : 1));
@@ -6114,7 +6130,7 @@ function avisoAtestadosAdm() {
 }
 function sheetAtestadosEscola() {
   const g = atestadosEscola(), volta = () => sheetAtestadosEscola();
-  const linha = (r, dir) => `<li class="tap" data-va="${esc(r.id)}"><div class="dot">${esc(iniciais(r.a.nome))}</div><div class="grow"><div class="t">${esc(r.a.nome)}</div>${linhas(esc(respDe(r.id).nome || 'Sem responsável'), dir)}</div>${r.x.as === 'falta' || r.x.as === 'recusado' ? (() => { const wa = waAtestado(r.id); return wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Pedir pelo WhatsApp" data-nao-abre>${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'; })() : '<span class="wa wa-vazio" aria-hidden="true"></span>'}</li>`;
+  const linha = (r, dir) => `<li class="tap" data-va="${esc(r.id)}"><div class="dot">${esc(iniciais(r.a.nome))}</div><div class="grow"><div class="t">${esc(r.a.nome)}</div>${linhas(esc(respDe(r.id).nome || 'Sem responsável'), dir)}</div>${r.x.as === 'falta' || r.x.as === 'recusado' ? (() => { const wa = waAtestado(r.id); return wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="Pedir pelo WhatsApp" data-nao-abre data-cobr="${esc(r.id)}:pend">${ICO_WA}</a>` : '<span class="wa wa-vazio" aria-hidden="true"></span>'; })() : '<span class="wa wa-vazio" aria-hidden="true"></span>'}</li>`;
   const at = r => (r.x.t.atestado || {});
   sheet(`<h3>Atestados médicos</h3>
     <div class="sub">Dos alunos que marcaram "sim" no questionário de saúde, ou que você anexou. O atestado vale por 1 ano.</div>
