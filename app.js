@@ -6078,12 +6078,12 @@ function sheetEnviarAtestado(alid, op = {}) {
   sheet(`<h3>Atestado médico de ${esc(primeiro(a.nome))}</h3>
     ${op.depoisTermo ? `<div class="aviso-lei"><b>${t_.alteracoes && t_.alteracoes.length ? 'Termo enviado!' : 'Termo assinado!'}</b><span>Como tem resposta "sim" no questionário, a escola precisa de um atestado médico dizendo que ${esc(primeiro(a.nome))} pode fazer a atividade. Pode enviar agora ou depois, em Meus filhos.</span></div>` : ''}
     ${!adm && x.as === 'recusado' ? `<div class="aviso-lei"><b>A escola pediu outro atestado</b><span>${esc(at.recusa.motivo)}</span></div>` : ''}
-    ${adm ? '<div class="sub">Escolha uma foto da galeria, um arquivo (PDF) ou tire uma foto do atestado agora. Ele fica guardado aqui, e você não precisa guardar a folha.</div>'
+    ${adm ? ''
       : '<div class="sub">Tire uma foto do atestado inteiro, com o nome, a assinatura e o carimbo do médico bem legíveis.</div>'}
     ${jaTem ? `<div class="field"><span class="lb">${x.as === 'ok' ? `Conferido pela escola em ${dataCurta(at.recebidoEm)}` : `Enviado em ${dataCurta(at.enviadoEm)} · a escola vai conferir`}</span><div id="atatual" class="atest-box"><div class="sub">Carregando…</div></div></div>` : ''}
     <div class="field" id="atnovo" hidden><span class="lb">Novo atestado</span><div class="atest-box" id="atprev"></div><div class="sub" id="attam"></div></div>
-    <span class="btn ${jaTem ? 'ghost' : ''} toque-arquivo" id="atbtn">${jaTem ? 'Trocar o atestado' : 'Tirar foto ou escolher arquivo'}<input type="file" id="atarq" accept="image/*,application/pdf" aria-label="Escolher o atestado"></span>
-    <div class="note">Foto ou PDF. O app reduz a foto antes de guardar, para não ocupar espaço. Só a administração e o(a) professor(a) da turma veem.</div>
+    <span class="btn ${jaTem ? 'ghost' : ''} toque-arquivo" id="atbtn">${jaTem ? 'Trocar o atestado' : adm ? 'Anexar atestado' : 'Tirar foto ou escolher arquivo'}<input type="file" id="atarq" accept="image/*,application/pdf" aria-label="Escolher o atestado"></span>
+    <div class="note">${adm ? 'Foto ou PDF. Só a escola e o(a) professor(a) da turma veem.' : 'Foto ou PDF. O app reduz a foto antes de guardar, para não ocupar espaço. Só a administração e o(a) professor(a) da turma veem.'}</div>
     <div class="err" id="aterr" role="alert"></div>
     <div class="actions"><button type="button" class="btn ghost" data-fechar>${op.depoisTermo ? 'Enviar depois' : 'Fechar'}</button><button type="button" class="btn" id="atok" hidden>${adm ? 'Guardar atestado' : 'Enviar atestado'}</button></div>`, sh => {
     if (jaTem) carregarAtestado(alid).then(f => { const box = $('atatual'); if (!box) return; box.innerHTML = previaAtestado(f); if (f) ligarPrevia(box, f, alid); });
@@ -6092,7 +6092,7 @@ function sheetEnviarAtestado(alid, op = {}) {
       arq = await ajustarFoto(arq); if (!arq) return;
       $('aterr').textContent = ''; $('atbtn').firstChild.textContent = 'Preparando…';
       try { novo = await prepararAtestado(arq); } catch (er) { novo = null; $('aterr').textContent = er.message; }
-      $('atbtn').firstChild.textContent = novo ? 'Escolher outro' : (jaTem ? 'Trocar o atestado' : 'Tirar foto ou escolher arquivo');
+      $('atbtn').firstChild.textContent = novo ? 'Escolher outro' : (jaTem ? 'Trocar o atestado' : adm ? 'Anexar atestado' : 'Tirar foto ou escolher arquivo');
       $('atbtn').classList.toggle('ghost', !!novo || jaTem);
       $('atnovo').hidden = !novo; $('atok').hidden = !novo; if (!novo) return;
       $('atprev').innerHTML = previaAtestado(novo); ligarPrevia($('atprev'), novo, alid);
