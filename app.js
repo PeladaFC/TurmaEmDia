@@ -3345,27 +3345,43 @@ function abrirChamadaPendente() {
   if (!S.turmas[PEND_CH.tid] || $('overlay').innerHTML) return;
   const tid = PEND_CH.tid; PEND_CH = null; setTimeout(() => sheetChamada(tid, hoje()), 50);
 }
+// professor: aviso da chamada; família: avisos de vencimento, pendências e eventos (o servidor guarda o aparelho)
+const pushGuardar = token => S.papel === 'f' ? servidor('familiaPush', { eid: S.eid, token }) : profServidor('push', { token });
+const pushPronto = () => aviso(S.papel === 'f' ? 'Pronto! Você recebe os avisos da escola no celular.' : 'Pronto! Você recebe o aviso na hora da aula.');
 async function ativarPush(silencioso) {
-  if (MOCK) { if (!silencioso) aviso('No app publicado, este celular passa a receber o aviso na hora da aula.'); return; }
+  if (MOCK) { if (!silencioso) aviso(S.papel === 'f' ? 'No app publicado, este celular passa a receber os avisos da escola.' : 'No app publicado, este celular passa a receber o aviso na hora da aula.'); return; }
   if (!PUSH_OK()) throw new Error('Este celular não recebe avisos do app.');
   if (FMN()) { // app das lojas: permissão e código do aparelho pelo sistema (Apple ou Android)
     const p = silencioso ? await FMN().checkPermissions() : await FMN().requestPermissions();
     if (p.receive !== 'granted') { if (silencioso) return; throw new Error('Os avisos ficaram bloqueados. Libere as notificações do Turma em Dia nas configurações do celular.'); }
     const { token } = await FMN().getToken(); const k = `escolinha.push.${S.eid}`; if (silencioso && ls.get(k) === token) return;
-    await profServidor('push', { token }); ls.set(k, token); if (!silencioso) { aviso('Pronto! Você recebe o aviso na hora da aula.'); render(); } return;
+    await pushGuardar(token); ls.set(k, token); if (!silencioso) { pushPronto(); render(); } return;
   }
   if (silencioso && Notification.permission !== 'granted') return;
   if (!silencioso && (await Notification.requestPermission()) !== 'granted') throw new Error('Os avisos ficaram bloqueados. Libere as notificações do Turma em Dia nas configurações do celular.');
   const reg = SW_REG || await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready;
   const tk = await B.pushToken(reg); if (!tk) throw new Error('Este celular não recebe avisos do app.');
   const k = `escolinha.push.${S.eid}`; if (silencioso && ls.get(k) === tk) return;
-  await profServidor('push', { token: tk }); ls.set(k, tk);
-  if (!silencioso) { aviso('Pronto! Você recebe o aviso na hora da aula.'); render(); }
+  await pushGuardar(tk); ls.set(k, tk);
+  if (!silencioso) { pushPronto(); render(); }
 }
 const agoraHM = () => new Date(Date.now() - 3 * 36e5).toISOString().slice(11, 16);
 const horaTxt = h => h ? (h.endsWith(':00') ? String(Number(h.slice(0, 2))) + 'h' : h.replace(':', 'h')) : '';
 const chObrig = t => !!t && t.chamada !== false && !!t.chamadaObrig;
 // professor: a chamada obrigatória de hoje que ainda não foi feita (depois que a aula começa; some quando um dos dois faz)
+// família: convite para receber no celular os avisos de vencimento, pendências e eventos (se a escola não desligou)
+let PUSH_FAM_VISTO = null;
+function avisoPushFam() {
+  if (S.cfg.pushFamilias === false || !Object.keys(S.alunas).length) return '';
+  if (!MOCK && PUSH_FAM_VISTO !== S.eid) { PUSH_FAM_VISTO = S.eid; ativarPush(true).catch(() => { }); } // aparelho já liberado: renova o código em silêncio
+  if (ls.get(`escolinha.pushfam.nao.${S.eid}`)) return '';
+  const perm = FMN() ? (ls.get(`escolinha.push.${S.eid}`) ? 'granted' : 'default') : 'Notification' in window ? Notification.permission : 'x';
+  const fechar = '<button type="button" class="link" id="pushfamx">Agora não</button>';
+  if (!MOCK && !NATIVO() && ehIOS() && !instalado()) return `<div class="banner"><span><b>Avisos da escola no celular:</b> no iPhone, primeiro adicione o app à Tela de Início (botão Compartilhar → "Adicionar à Tela de Início"), abra por lá e ative.</span>${fechar}</div>`;
+  if (!MOCK && perm === 'denied') return '';
+  if (MOCK ? !ls.get('escolinha.push.mock') : (PUSH_OK() && perm !== 'granted')) return `<div class="banner"><span><b>Receba os avisos da escola no celular</b>: vencimentos, documentos que faltam e eventos.</span><span class="banner-bts"><button id="pushfam">Ativar</button>${fechar}</span></div>`;
+  return '';
+}
 function avisosChamadaProf(tids) {
   const h = hoje(), ag = agoraHM(), feitas = (S.pp && S.pp.chamadas) || {};
   const pend = tids.map(tid => [tid, S.turmas[tid]]).filter(([tid, t]) => chObrig(t) && t.hora && ehAula(t, h) && ag >= t.hora && !(feitas[tid] || []).includes(h));
@@ -4260,7 +4276,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoRateioFam()}${avisoTamanhoFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
+    ${avisoPushFam()}${avisoRateioFam()}${avisoTamanhoFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
     ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
@@ -4287,6 +4303,8 @@ function tPagar(v) {
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-ctass]').forEach(b => b.onclick = () => sheetAssinarContrato(b.dataset.ctass));
   v.querySelectorAll('[data-irfilhos]').forEach(b => b.onclick = () => irPara('feventos'));
+  if ($('pushfam')) $('pushfam').onclick = async () => { $('pushfam').disabled = true; try { await ativarPush(false); if (MOCK) ls.set('escolinha.push.mock', '1'); render(); } catch (e) { aviso(msgErro(e)); $('pushfam').disabled = false; } };
+  if ($('pushfamx')) $('pushfamx').onclick = () => { ls.set(`escolinha.pushfam.nao.${S.eid}`, '1'); render(); };
   v.querySelectorAll('[data-insc]').forEach(b => b.onclick = () => sheetEventoFam(b.dataset.insc));
   if ($('ppagar')) $('ppagar').onclick = () => (outrasFormas() ? sheetFormas : sheetPix)(marcados.map(i => i.k));
   if ($('pvenc')) $('pvenc').onclick = () => { abertos.filter(i => i.venc < h).forEach(i => S.sel.add(i.k)); render(); };
@@ -6714,6 +6732,10 @@ function sheetAjustes() {
     ${true ? `<section><h2>Formas de pagamento</h2>
       <button type="button" class="linha-botao" id="jformas"><span class="grow"><b>Pix${formasCfg().boleto ? ', boleto' : ''}${formasCfg().cartao ? ', cartão' : ''}${formasCfg().cartao && formasCfg().parcelado ? ` (até ${formasCfg().maxParcelas}x)` : ''}</b><span class="s">Escolha o que a família pode usar e confira as taxas da sua conta</span></span><span aria-hidden="true">›</span></button>
     </section>` : ''}
+    <section><h2>Avisos no celular das famílias</h2>
+      <label class="check"><input type="checkbox" id="jpushf" ${c.pushFamilias === false ? '' : 'checked'}> Avisar as famílias automaticamente</label>
+      <div class="note">Às 10h, no máximo 1 aviso por dia. Mensalidades e taxas: 3 dias antes, no dia e depois de vencidas (no dia seguinte e mais 3 vezes, de 7 em 7 dias). Documentos e termo que faltam: 1 vez por semana, por até 4 semanas. Eventos: no dia seguinte ao que você cria e 1 dia antes do prazo, para quem não respondeu. Só recebe quem ativou os avisos no app.</div>
+    </section>
     <section><h2>Multa e juros por atraso</h2>
       <label class="check"><input type="checkbox" id="jatr" ${(c.atraso || {}).ativo ? 'checked' : ''}> Cobrar multa e juros nas cobranças vencidas</label>
       <div class="two"><div class="field"><label for="jamul">Multa (%)</label><input id="jamul" inputmode="decimal" value="${esc(String((c.atraso || {}).multa ?? 2).replace('.', ','))}"></div>
@@ -6767,7 +6789,7 @@ function sheetAjustes() {
       if (!(aMul >= 0) || aMul > MULTA_MAX) return err('A multa por atraso pode ser de no máximo 2%, pela lei.');
       if (!(aJur >= 0) || aJur > JUROS_MAX) return err('Os juros por atraso podem ser de no máximo 1% ao mês, pela lei.');
       $('jok').disabled = true;
-      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, matricula: { valor: C.r2(matV) }, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
+      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, pushFamilias: $('jpushf').checked, matricula: { valor: C.r2(matV) }, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
       catch (e) { err(msgErro(e)); $('jok').disabled = false; }
     };
   });

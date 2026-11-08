@@ -23,7 +23,7 @@ function bancoFalso() {
     where: (f, op, v) => col(c, [...filtros, [f, v, op]]),
     doc: id => doc(c + '/' + id),
     add: async d => { const id = 'n' + Math.random().toString(36).slice(2, 10); store.set(c + '/' + id, JSON.parse(JSON.stringify(d))); return { id }; },
-    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : op === 'array-contains' ? ((store.get(k) || {})[f] || []).includes(v) : op === '>=' ? (store.get(k) || {})[f] >= v : op === 'in' ? v.includes((store.get(k) || {})[f]) : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
+    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : op === 'array-contains' ? ((store.get(k) || {})[f] || []).includes(v) : op === '>=' ? (store.get(k) || {})[f] >= v : op === 'in' ? v.includes((store.get(k) || {})[f]) : op === '!=' ? (store.get(k) || {})[f] != null && (store.get(k) || {})[f] !== v : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
   const runTransaction = async fn => fn({ get: r => r.get(), set: (r, d, o) => r.set(d, o), update: (r, d) => r.update(d) });
   return { store, doc, collection: col, runTransaction, getAll: async (...refs) => Promise.all(refs.map(r => r.get())) };
 }
@@ -469,6 +469,45 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     await AV.interno.avisar(ms); assert.strictEqual(ENV.length, 1); // chamada já feita: não avisa
     await AV.interno.avisar(Date.parse('2026-11-03T20:00:00Z')); assert.strictEqual(ENV.length, 1); // terça não tem aula
     await AV.interno.espelhar('e9', 't1', { nome: 'Iniciação', chamadaObrig: true, hora: '17:00', dias: [1], chamada: false }); assert.ok(!S.has('agendaChamada/e9_t1'));
+  });
+  await t('avisos no celular das famílias: vencimentos (3 dias antes, no dia, depois 1, 8, 15, 22), pendências semanais até 4, eventos; 1 por dia', async () => {
+    const B = bancoFalso(), ENV = [], AF = require('./avisosFamilia')(B, async (tokens, msg) => { ENV.push({ tokens, msg }); return tokens.map(tk => ({ ok: tk !== 'velho', codigo: tk === 'velho' ? 'messaging/registration-token-not-registered' : null })); });
+    const S = B.store, agora = h => Date.parse(h + 'T13:00:00Z');
+    S.set('escolas/f1', { nome: 'GR e Cia' });
+    S.set('escolas/f1/config/geral', { vencDia: 10, tiposDoc: [{ id: 'ident', nome: 'Documento de identidade' }] });
+    S.set('escolas/f1/turmas/t1', { nome: 'Balé', preco: 150 });
+    S.set('escolas/f1/alunas/a1', { nome: 'Alice Souza', responsavelId: 'r1', turmas: ['t1'], inicio: '2026-01' });
+    S.set('escolas/f1/membros/u1', { push: ['tk1', 'velho'] }); S.set('escolas/f1/membros/u1/vinculos/r1', { em: 1 });
+    S.set('escolas/f1/membros/u2', { nome: 'sem aparelho' }); S.set('escolas/f1/membros/u2/vinculos/r1', { em: 1 });
+    S.set('escolas/f1/saude/a1', { em: agora('2026-10-01') }); S.set('escolas/f1/docsAlunos/a1', { docs: { ident: { em: 1 } } });
+    S.set('escolas/f1/pagamentos/a1', { mens: { '2026-10': { s: 'pago', v: 150 } } });
+    const vai = async h => { const n = ENV.length; await AF.interno.diario(h, agora(h)); return ENV.length > n ? ENV.at(-1).msg.notification.body : null; };
+    assert.strictEqual(await vai('2026-11-06'), null);                           // 4 dias antes: nada
+    assert.match(await vai('2026-11-07'), /Mensalidade de novembro de Alice vence em 3 dias \(R\$ 150,00\)/);
+    assert.deepStrictEqual(S.get('escolas/f1/membros/u1').push, ['tk1']);     // aparelho que não recebe mais sai
+    assert.strictEqual(await vai('2026-11-07'), null);                           // 1 por dia
+    assert.match(await vai('2026-11-10'), /vence hoje/);
+    assert.match(await vai('2026-11-11'), /vencida desde 10\/11/);
+    assert.strictEqual(await vai('2026-11-12'), null);
+    assert.match(await vai('2026-11-18'), /vencida/); assert.match(await vai('2026-11-25'), /vencida/); assert.match(await vai('2026-12-02'), /vencida desde 10\/11/);
+    S.set('escolas/f1/pagamentos/a1', { mens: { '2026-10': { s: 'pago', v: 150 }, '2026-11': { s: 'pago', v: 150 } } });
+    assert.strictEqual(await vai('2026-12-09'), null);                           // depois do 4º aviso de atraso: para (e novembro já foi pago)
+    // pendências: 1 vez por semana, até 4
+    S.set('escolas/f1/pagamentos/a1', { mens: { '2026-10': { s: 'pago', v: 150 }, '2026-11': { s: 'pago', v: 150 }, '2026-12': { s: 'pago', v: 150 } } });
+    S.delete('escolas/f1/docsAlunos/a1');
+    assert.match(await vai('2026-12-14'), /Falta no cadastro de Alice: documento de identidade/);
+    assert.strictEqual(await vai('2026-12-15'), null);
+    assert.match(await vai('2026-12-21'), /Falta no cadastro/); assert.match(await vai('2026-12-28'), /Falta/); assert.match(await vai('2027-01-04'), /Falta/);
+    assert.ok(!/Falta/.test(await vai('2027-01-11') || ''));                     // 4 semanas: para
+    // evento: 1 dia antes do prazo, só para quem não respondeu
+    S.set('escolas/f1/extras/x1', { tipo: 'evento', nome: 'Festival', data: '2027-02-20', prazo: '2027-02-10', convidados: ['a1'] });
+    S.set('escolas/f1/pagamentos/a1', { mens: Object.fromEntries(['2026-10', '2026-11', '2026-12', '2027-01', '2027-02'].map(m => [m, { s: 'pago', v: 150 }])) });
+    assert.match(await vai('2027-02-09'), /Responda até amanhã: Festival\. Alice vai\?/);
+    S.set('escolas/f1/extras/x1', { tipo: 'evento', nome: 'Festival', data: '2027-02-20', prazo: '2027-02-11', convidados: ['a1'], part: { a1: { st: 'nao' } } });
+    assert.strictEqual(await vai('2027-02-10'), null);
+    // a escola desliga
+    S.set('escolas/f1/config/geral', { vencDia: 10, pushFamilias: false });
+    assert.strictEqual(await vai('2027-03-07'), null);
   });
   /* ---------- nota fiscal da escola e dos professores para as famílias ---------- */
   const EMITIDAS = [];

@@ -109,5 +109,15 @@ module.exports = db => {
     return { ok: true };
   });
 
-  return { adminConvite, eventoResposta };
+  // família: guarda o aparelho para os avisos automáticos (vencimentos, pendências, eventos); até 5 aparelhos
+  const familiaPush = responder(async (u, { eid, token }) => {
+    if (!idOk(eid) || typeof token !== 'string' || token.length < 20 || token.length > 4096) throw erro('Pedido inválido.', 400);
+    const ref = db.doc(`escolas/${eid}/membros/${u.uid}`), m = await ref.get();
+    if (!m.exists) throw erro('Você não está nesta escola.', 403);
+    const atual = (m.data().push || []).filter(t => t !== token);
+    await ref.update({ push: [...atual.slice(-4), token] });
+    return { ok: true };
+  });
+
+  return { adminConvite, eventoResposta, familiaPush };
 };

@@ -31,6 +31,7 @@ exports.planoWebhook = AS.planoWebhook;
 const A = require('./acoes')(db);
 exports.adminConvite = A.adminConvite;
 exports.eventoResposta = A.eventoResposta;
+exports.familiaPush = A.familiaPush;
 
 const E = require('./espelho')(db);
 exports.espelharProf = E.espelharProf;
@@ -42,6 +43,8 @@ exports.professor = PR.professor;
 const AV = require('./avisos')(db);
 exports.espelharTurma = AV.espelharTurma;
 exports.avisoChamada = AV.avisoChamada;
+// avisos automáticos no celular das famílias (rodam na rotina diária)
+const AF = require('./avisosFamilia')(db);
 
 /* Nota fiscal da escola e dos professores para as famílias (cada um com o próprio CNPJ e certificado) */
 const NF = require('./notaFamilia')(db, P.interno);
@@ -60,6 +63,8 @@ exports.rotinaDiaria = onSchedule({ schedule: '0 10 * * *', timeZone: 'America/R
   try { await N.interno.tarefaDiaria(hoje); } catch (e) { logger.error('nota fiscal', e.message); }
   // plano das escolas: cartões, Pix e bloqueio por atraso
   try { await AS.interno.diario(); } catch (e) { logger.error('plano', e.message); }
+  // avisos no celular das famílias: vencimentos, pendências do cadastro e eventos (1 por dia, no máximo)
+  try { await AF.interno.diario(hoje); } catch (e) { logger.error('avisos famílias', e.message); }
   // cobrança automática no cartão salvo das famílias (só quando o Mercado Pago liberar: servidor/mp.automatico)
   try { await CA.interno.cobrarAutomatico(hoje); } catch (e) { logger.error('cobrança automática', e.message); }
   // registro técnico de erros do app: apaga o que tem mais de 90 dias (como diz a Política de Privacidade)
