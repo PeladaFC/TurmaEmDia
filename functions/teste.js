@@ -525,6 +525,32 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     S.set('escolas/f1/config/geral', { vencDia: 10, pushFamilias: false });
     assert.deepStrictEqual(await vai('2027-03-07'), []);
   });
+  await t('responsável sem código: entra sozinho pelo e-mail confirmado; pelo CPF/WhatsApp vira pedido que a escola libera; cada escola separada', async () => {
+    const B = bancoFalso(), S = B.store, ID = require('./identificar')(B);
+    S.set('escolas/e1', { nome: 'GR e Cia', admins: ['adm'] }); S.set('escolas/e2', { nome: 'Outra', admins: ['adm2'] });
+    S.set('escolas/e1/responsaveis/r1', { nome: 'Felipe', email: 'Fe@x.com', telefone: '(81) 99999-0000' });
+    S.set('escolas/e2/responsaveis/r9', { nome: 'Felipe L', cpf: '529.982.247-25' });
+    S.set('escolas/e1/responsaveis/r2', { nome: 'Outro', email: 'outro@x.com' });
+    let r = resp(); await ID.familiaIdentificar(req({ nome: 'Felipe Luiz', telefone: '81999990000', cpf: '52998224725' }, 'ok:fe:v'), r);
+    assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.deepStrictEqual(r.body.escolas.map(e => e.eid), ['e1']);              // e-mail confirmado: entra direto
+    assert.ok(S.get('escolas/e1/membros/fe/vinculos/r1')); assert.ok(!S.get('escolas/e1/membros/fe/vinculos/r2'));
+    assert.strictEqual(S.get('users/fe').escolas.e1.papel, 'familia');
+    assert.strictEqual(r.body.pedidos, 1);                                        // CPF na outra escola: pedido
+    assert.deepStrictEqual(S.get('escolas/e2/pedidosFamilia/fe').rids, ['r9']); assert.ok(!S.get('escolas/e2/membros/fe'));
+    // e-mail sem confirmar não entra sozinho: vira pedido
+    S.set('escolas/e1/responsaveis/r3', { nome: 'Zé', email: 'ze@x.com' });
+    await ID.indexarResp({ params: { eid: 'e1', rid: 'r3' }, data: { before: { exists: false }, after: { exists: true, data: () => S.get('escolas/e1/responsaveis/r3') } } });
+    r = resp(); await ID.familiaIdentificar(req({ nome: 'Zé' }, 'ok:ze:n'), r);
+    assert.deepStrictEqual(r.body.escolas, []); assert.deepStrictEqual(S.get('escolas/e1/pedidosFamilia/ze').rids, ['r3']);
+    // só a administração libera
+    r = resp(); await ID.familiaAprovar(req({ eid: 'e2', uid: 'fe', ok: true }, 'ok:adm:v'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await ID.familiaAprovar(req({ eid: 'e2', uid: 'fe', ok: true }, 'ok:adm2:v'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.ok(S.get('escolas/e2/membros/fe/vinculos/r9')); assert.ok(!S.get('escolas/e2/pedidosFamilia/fe')); assert.strictEqual(S.get('users/fe').escolas.e2.nome, 'Outra');
+    // recusado não volta a pedir
+    r = resp(); await ID.familiaAprovar(req({ eid: 'e1', uid: 'ze', ok: false }, 'ok:adm:v'), r); assert.strictEqual(r.code, 200);
+    r = resp(); await ID.familiaIdentificar(req({}, 'ok:ze:n'), r); assert.strictEqual(r.body.pedidos, 0);
+  });
   /* ---------- nota fiscal da escola e dos professores para as famílias ---------- */
   const EMITIDAS = [];
   const libFalsa = async () => ({

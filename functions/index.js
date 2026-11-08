@@ -33,6 +33,11 @@ exports.adminConvite = A.adminConvite;
 exports.eventoResposta = A.eventoResposta;
 exports.familiaPush = A.familiaPush;
 exports.respostaPush = A.respostaPush;
+// responsável que chega sem código: acha pelo e-mail (ou pede à escola, pelo CPF/WhatsApp)
+const ID = require('./identificar')(db);
+exports.indexarResp = ID.indexarResp;
+exports.familiaIdentificar = ID.familiaIdentificar;
+exports.familiaAprovar = ID.familiaAprovar;
 
 const E = require('./espelho')(db);
 exports.espelharProf = E.espelharProf;

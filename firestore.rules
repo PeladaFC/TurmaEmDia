@@ -100,6 +100,8 @@ service cloud.firestore {
         }
       }
 
+      // responsável que chegou sem código e só bate pelo CPF/WhatsApp: a escola vê e libera (pelo servidor)
+      match /pedidosFamilia/{uid} { allow read: if admin(eid); allow write: if false; }
       match /responsaveis/{rid} {
         allow read: if admin(eid) || meu(eid, rid);
         allow write: if adminW(eid);
