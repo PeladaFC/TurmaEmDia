@@ -6078,7 +6078,7 @@ function sheetEnviarAtestado(alid, op = {}) {
   sheet(`<h3>Atestado médico de ${esc(primeiro(a.nome))}</h3>
     ${op.depoisTermo ? `<div class="aviso-lei"><b>${t_.alteracoes && t_.alteracoes.length ? 'Termo enviado!' : 'Termo assinado!'}</b><span>Como tem resposta "sim" no questionário, a escola precisa de um atestado médico dizendo que ${esc(primeiro(a.nome))} pode fazer a atividade. Pode enviar agora ou depois, em Meus filhos.</span></div>` : ''}
     ${!adm && x.as === 'recusado' ? `<div class="aviso-lei"><b>A escola pediu outro atestado</b><span>${esc(at.recusa.motivo)}</span></div>` : ''}
-    ${adm ? '<div class="sub">Tire uma foto do atestado que você recebeu em papel. Ele fica guardado aqui, e você não precisa guardar a folha.</div>'
+    ${adm ? '<div class="sub">Escolha uma foto da galeria, um arquivo (PDF) ou tire uma foto do atestado agora. Ele fica guardado aqui, e você não precisa guardar a folha.</div>'
       : '<div class="sub">Tire uma foto do atestado inteiro, com o nome, a assinatura e o carimbo do médico bem legíveis.</div>'}
     ${jaTem ? `<div class="field"><span class="lb">${x.as === 'ok' ? `Conferido pela escola em ${dataCurta(at.recebidoEm)}` : `Enviado em ${dataCurta(at.enviadoEm)} · a escola vai conferir`}</span><div id="atatual" class="atest-box"><div class="sub">Carregando…</div></div></div>` : ''}
     <div class="field" id="atnovo" hidden><span class="lb">Novo atestado</span><div class="atest-box" id="atprev"></div><div class="sub" id="attam"></div></div>
@@ -6121,7 +6121,7 @@ function waAtestado(alid) {
 // bloco do atestado na leitura do termo (administração)
 function blocoAtestadoAdm(alid, x) {
   const at = (x.t && x.t.atestado) || {}, wa = waAtestado(alid);
-  const anexar = `<button type="button" class="btn ghost btn-mini" id="vanexar">${x.as === 'ok' || x.as === 'conferir' ? 'Trocar o atestado' : 'Anexar atestado recebido em papel'}</button>`;
+  const anexar = `<button type="button" class="btn ghost btn-mini" id="vanexar">${x.as === 'ok' || x.as === 'conferir' ? 'Trocar o atestado' : 'Anexar atestado'}</button>`;
   const pedir = wa ? `<a class="btn btn-mini" href="${esc(wa)}" target="_blank" rel="noopener">Pedir pelo WhatsApp</a>` : '';
   const caixa = (titulo, texto, botoes, prev) => `<section><h2>Atestado médico</h2><div class="aviso-lei ${x.as === 'ok' ? 'ok' : ''}"><b>${titulo}</b><span>${texto}</span></div>${prev ? '<div class="atest-box" id="vatprev"><div class="sub">Carregando…</div></div>' : ''}<div class="at-botoes">${botoes}</div></section>`;
   if (!x.as) return `<section><h2>Atestado médico</h2><div class="sub">Não foi pedido: nenhuma resposta "sim" no questionário.</div><div class="at-botoes">${anexar}</div></section>`;
