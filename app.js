@@ -3665,8 +3665,10 @@ function sheetProf(pid) {
   sheetSimples({ titulo: P ? 'Editar professor(a)' : 'Novo(a) professor(a)',
     campos: `<div class="field"><label for="pnome">Nome</label><input id="pnome" maxlength="60" value="${esc(P ? P.nome : '')}"></div>
       <div class="field"><label for="ptel">WhatsApp</label><input id="ptel" inputmode="tel" maxlength="20" value="${esc(P ? P.telefone || '' : '')}" placeholder="(81) 99999-9999"></div>
-      <div class="field"><span class="lb">Pagamento ao professor (opcional)</span>
-        <label class="liga liga-mini"><span class="grow"><b>Salário fixo</b><span class="s" id="psfixs"></span></span><input type="checkbox" role="switch" id="psfixo" ${P && P.salVaria ? '' : 'checked'}><span class="trilho" aria-hidden="true"></span></label>
+      <label class="liga"><span class="grow"><b>Pagamento ao professor</b><span class="s">A escola paga um salário a ele(a)</span></span><input type="checkbox" role="switch" id="psal" ${P && (P.salVaria || P.fixoEscola) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+      <div class="field" id="psalw">
+        <div class="opcoes c2" style="margin-bottom:8px"><label class="check"><input type="radio" name="pstipo" id="psfixo" value="fixo" ${P && P.salVaria ? '' : 'checked'}><span>Salário fixo</span></label><label class="check"><input type="radio" name="pstipo" value="varia" ${P && P.salVaria ? 'checked' : ''}><span>Salário variável</span></label></div>
+        <span class="sub" id="psfixs"></span>
         <div id="psfixw"><div class="two"><div class="field"><label for="pfixo">Salário líquido (R$)</label><input id="pfixo" inputmode="decimal" value="${esc(P && P.fixoEscola ? fmtValor(P.fixoEscola) : '')}" placeholder="0,00"></div>
         <div class="field"><label for="psimp">Impostos e encargos (R$)</label><input id="psimp" inputmode="decimal" value="${esc(P && P.salImpostos ? fmtValor(P.salImpostos) : '')}" placeholder="0,00"></div></div>
         <div class="field"><label for="psben">Benefícios (R$)</label><input id="psben" inputmode="decimal" value="${esc(P && P.salBeneficios ? fmtValor(P.salBeneficios) : '')}" placeholder="Vale-transporte, alimentação…"></div>
@@ -3680,15 +3682,16 @@ function sheetProf(pid) {
     montar: () => { const calc = () => { const v = k => parseValor($(k).value) || 0, liq = v('pfixo'), imp = v('psimp'), ben = v('psben');
         $('pscalc').innerHTML = liq || imp || ben ? `Bruto (salário + impostos): <b>${brl(C.r2(liq + imp))}</b> · Custo total: <b>${brl(C.r2(liq + imp + ben))}</b>` : ''; };
       ['pfixo', 'psimp', 'psben'].forEach(k => $(k).addEventListener('input', calc)); calc();
-      const verFixo = () => { const f = $('psfixo').checked; $('psfixw').hidden = !f; $('psfixs').textContent = f ? 'O mesmo valor todo mês.' : 'Varia (comissão, dias trabalhados): a escola põe o valor de cada mês em Financeiro → Professores.'; };
-      $('psfixo').onchange = verFixo; verFixo();
+      const verFixo = () => { const lig = $('psal').checked, f = $('psfixo').checked; $('psalw').hidden = !lig; $('psfixw').hidden = !f;
+        $('psfixs').textContent = f ? 'O mesmo valor todo mês.' : 'Varia (comissão, dias trabalhados): a escola põe o valor de cada mês em Financeiro → Professores.'; };
+      $('psal').onchange = verFixo; document.querySelectorAll('.sheet [name=pstipo]').forEach(r => r.onchange = verFixo); verFixo();
       document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid))); },
     salvar: async () => { const nome = $('pnome').value.trim(); if (!nome) return 'Digite o nome do(a) professor(a).';
       const email = $('pemail').value.trim().toLowerCase(); if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return 'Confira o e-mail.';
       const outro = Object.entries(S.profs).find(([id, x]) => id !== pid && email && String(x.emailApp || '').toLowerCase() === email); if (outro) return `Este e-mail já está com ${outro[1].nome}.`;
       const id = pid || novoId(), antes = String((P && P.emailApp) || '').toLowerCase();
       const vv = k => parseValor($(k).value) > 0 ? C.r2(parseValor($(k).value)) : null;
-      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, salVaria: !$('psfixo').checked, fixoEscola: vv('pfixo'), salImpostos: vv('psimp'), salBeneficios: vv('psben'), telefone: $('ptel').value.trim(), emailApp: email || null, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
+      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, ...($('psal').checked ? { salVaria: !$('psfixo').checked, fixoEscola: $('psfixo').checked ? vv('pfixo') : null, salImpostos: $('psfixo').checked ? vv('psimp') : null, salBeneficios: $('psfixo').checked ? vv('psben') : null } : { salVaria: false, fixoEscola: null, salImpostos: null, salBeneficios: null }), telefone: $('ptel').value.trim(), emailApp: email || null, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
       if (MOCK && email !== antes) await espelhoProfMock(id, antes, email); },
     excluir: pid && (() => B.del(`escolas/${S.eid}/professoras/${pid}`)), bloqueio: n ? 'Este(a) professor(a) tem turmas. Troque o(a) professor(a) dessas turmas antes.' : null });
 }
