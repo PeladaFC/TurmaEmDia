@@ -675,20 +675,22 @@ function telaCriarEscola(passo) {
   if (passo === 1) {
     telaOb({ passo: 1, rotulo: 'Passo 1 de 4', titulo: 'Como se chama sua escola?', sub: 'É o nome que as famílias vão ver no app.',
       corpo: `<div class="field"><label for="wnome">Nome da escola</label><input id="wnome" maxlength="60" placeholder="Ex.: Escolinha Movimento" value="${esc(WZ.nome)}"></div>
-        <div class="two"><div class="field"><label for="wuf">Estado</label><select id="wuf"><option value="">Escolha</option>${Object.entries(UF_NOMES).sort((a, b) => a[1].localeCompare(b[1])).map(([u, n]) => `<option value="${u}" ${u === WZ.uf ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
-        <div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" list="wcids" autocomplete="off" placeholder="${WZ.uf ? 'Digite a cidade' : 'Escolha o estado'}" ${WZ.uf ? '' : 'disabled'} value="${esc(WZ.cidade)}"><datalist id="wcids"></datalist></div></div>
+        <div class="two"><div class="field"><label for="wuf">Estado</label><select id="wuf"><option value="">Escolha</option>${Object.keys(UF_NOMES).sort().map(u => `<option ${u === WZ.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+        <div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" list="wcids" autocomplete="off" placeholder="Digite a cidade" value="${esc(WZ.cidade)}"><datalist id="wcids"></datalist></div></div>
         <label class="check aceite"><input type="checkbox" id="wtermos" ${WZ.termos ? 'checked' : ''}><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>.</span></label>
         <div class="err" id="werr" role="alert"></div>`,
       botao: '<button class="btn" id="wok">Próximo</button>', dois: voltar });
     $('wvolta').onclick = () => { WZ = null; telaInicio(); };
     // estado primeiro; a cidade vira uma lista com as cidades daquele estado
     let cidades = null;
-    const carregar = async () => { const uf = $('wuf').value; $('wcid').disabled = !uf; $('wcid').placeholder = uf ? 'Digite a cidade' : 'Escolha o estado';
+    const carregar = async () => { const uf = $('wuf').value; $('werr').textContent = '';
       cidades = null; $('wcids').innerHTML = ''; if (!uf) return;
       cidades = await cidadesDoEstado(uf); if ($('wuf').value !== uf || !cidades) return;
       $('wcids').innerHTML = cidades.map(c => `<option value="${esc(c)}">`).join('');
       if ($('wcid').value && !acharCidade(cidades, $('wcid').value)) $('wcid').value = ''; };
-    $('wuf').onchange = () => { carregar(); setTimeout(() => $('wcid').focus(), 50); };
+    $('wuf').onchange = () => { carregar(); if (!$('wcid').value) setTimeout(() => $('wcid').focus(), 50); };
+    // cidade antes do estado: avisa (a lista de cidades depende do estado)
+    $('wcid').addEventListener('focus', () => { if (!$('wuf').value) $('werr').textContent = 'Escolha também o estado, ao lado.'; });
     if (WZ.uf) carregar();
     $('wok').onclick = () => {
       const cid = cidades ? acharCidade(cidades, $('wcid').value) : $('wcid').value.trim();
