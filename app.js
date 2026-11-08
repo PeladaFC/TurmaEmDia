@@ -1920,12 +1920,45 @@ const ehTel = v => { const d = String(v || '').replace(/\D/g, ''); return !ehUrl
 function mapaDe(x) { const e = String(x.endereco || '').trim(); if (!e) return ''; return ehUrl(e) ? urlDe(e) : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(e); }
 function localEventoHTML(x) {
   const e = String(x.endereco || '').trim(), m = mapaDe(x), links = x.links || [];
-  if (!e && !links.length) return '';
+  if (!e && !links.length) return arquivosEvHTML(x);
   const item = l => { const v = String(l.v || '').trim();
     if (ehUrl(v)) return `<a class="ev-link" href="${esc(urlDe(v))}" target="_blank" rel="noopener"><span class="grow"><b>${esc(l.d)}</b><span class="s">${esc(v.replace(/^https?:\/\//, '').slice(0, 60))}</span></span><span aria-hidden="true">↗</span></a>`;
     if (ehTel(v)) { const wa = waLink(v, ''); return `<div class="ev-link"><span class="grow"><b>${esc(l.d)}</b><a class="s num" href="tel:${esc(v.replace(/[^\d+]/g, ''))}">${esc(v)}</a></span>${wa ? `<a class="wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(l.d)}">${ICO_WA}</a>` : ''}</div>`; }
     return `<div class="ev-link"><span class="grow"><b>${esc(l.d)}</b><span class="s">${esc(v)}</span></span></div>`; };
-  return `<div class="ev-local">${e ? `<a class="ev-link" href="${esc(m)}" target="_blank" rel="noopener"><span class="grow"><b>Como chegar</b><span class="s">${esc(ehUrl(e) ? 'Abrir no mapa' : e)}</span></span><span aria-hidden="true">📍</span></a>` : ''}${links.map(item).join('')}</div>`;
+  return arquivosEvHTML(x) + `<div class="ev-local">${e ? `<a class="ev-link" href="${esc(m)}" target="_blank" rel="noopener"><span class="grow"><b>Como chegar</b><span class="s">${esc(ehUrl(e) ? 'Abrir no mapa' : e)}</span></span><span aria-hidden="true">📍</span></a>` : ''}${links.map(item).join('')}</div>`;
+}
+// arquivos do evento (PDF): a lista fica no evento (x.arquivos), cada arquivo num documento à parte (arquivosEventos)
+const ARQ_EV_MAX = 3, ARQ_EV_BYTES = 700 * 1024;
+const arquivosEvHTML = x => (x.arquivos || []).length ? `<div class="ev-arqs">${x.arquivos.map(a => `<button type="button" class="ev-link" data-verarq="${esc(a.id)}"><span class="grow"><b>${esc(a.nome)}</b><span class="s">PDF · ${kb(a.tam || 0)} · toque para abrir</span></span><span aria-hidden="true">📄</span></button>`).join('')}</div>` : '';
+// campo "Arquivos (PDF)" dos formulários de evento e de taxa (p = prefixo dos ids)
+const formArqsHTML = (p, titulo, dica) => `<div class="field"><span class="lb">${titulo}</span><span class="sub">${dica} Até ${ARQ_EV_MAX} arquivos de até ${kb(ARQ_EV_BYTES)}.</span>
+      <div class="ev-links" id="${p}arqs"></div><button type="button" class="add-disc add-largo" id="${p}arqadd">+ Arquivo</button><input type="file" id="${p}arq" accept="application/pdf,.pdf" hidden><div class="err" id="${p}arqerr" role="alert"></div></div>`;
+function ligarFormArqs(x, p) {
+  // novos ficam na memória até salvar; os tirados são apagados ao salvar
+  let arqs = ((x && x.arquivos) || []).map(a => ({ ...a })); const tirados = [];
+  const ver = () => { $(p + 'arqs').innerHTML = arqs.map((a, i) => `<div class="ev-link"><span class="grow"><b>${esc(a.nome)}</b><span class="s">PDF · ${kb(a.tam || 0)}${a.dados ? ' · novo' : ''}</span></span><button type="button" class="ev-foto-x" style="position:static" data-ax="${i}" aria-label="Tirar este arquivo">×</button></div>`).join('');
+    $(p + 'arqadd').hidden = arqs.length >= ARQ_EV_MAX;
+    $(p + 'arqs').querySelectorAll('[data-ax]').forEach(b => b.onclick = () => { const [a] = arqs.splice(Number(b.dataset.ax), 1); if (!a.dados) tirados.push(a.id); ver(); }); };
+  ver();
+  $(p + 'arqadd').onclick = () => $(p + 'arq').click();
+  $(p + 'arq').onchange = async () => { const f = $(p + 'arq').files[0]; $(p + 'arq').value = ''; $(p + 'arqerr').textContent = ''; if (!f) return;
+    if (!(f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''))) return $(p + 'arqerr').textContent = 'Escolha um arquivo PDF.';
+    if (f.size > ARQ_EV_BYTES) return $(p + 'arqerr').textContent = `Esse PDF tem ${kb(f.size)}. O limite é ${kb(ARQ_EV_BYTES)}: tente uma versão menor ou mande as páginas como foto.`;
+    arqs.push({ id: novoId(), nome: (f.name || 'arquivo.pdf').slice(0, 80), tam: f.size, dados: await lerDataUrl(f) }); ver(); };
+  return {
+    lista: () => arqs.map(({ id, nome, tam }) => ({ id, nome, tam })),
+    gravar: async xid => { for (const a of arqs.filter(a => a.dados)) await B.set(`escolas/${S.eid}/arquivosEventos/${a.id}`, { xid, nome: a.nome, tipo: 'pdf', tam: a.tam, dados: a.dados, em: Date.now() });
+      if (tirados.length) await B.lote(tirados.map(aid => ({ op: 'del', p: `escolas/${S.eid}/arquivosEventos/${aid}` }))); }
+  };
+}
+const bytesDeDataUrl = u => { const b = atob(String(u).split(',')[1] || ''), r = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) r[i] = b.charCodeAt(i); return r; };
+function ligarArquivosEv(raiz) {
+  raiz.querySelectorAll('[data-verarq]').forEach(b => b.onclick = async () => {
+    // abre a janela já no toque (o iPhone só deixa abrir dentro do toque) e põe o PDF quando chegar
+    const w = window.open('', '_blank'); b.disabled = true;
+    try { const d = await B.get(`escolas/${S.eid}/arquivosEventos/${b.dataset.verarq}`); if (!d || !d.dados) throw new Error('Arquivo não encontrado.');
+      const u = URL.createObjectURL(new Blob([bytesDeDataUrl(d.dados)], { type: 'application/pdf' })); if (w) w.location.href = u; else verPdf(bytesDeDataUrl(d.dados), d.nome); }
+    catch (e) { if (w) w.close(); aviso(msgErro(e)); } finally { b.disabled = false; } });
 }
 // fotos de evento: reduzidas no celular (até 1400 px, ~250 KB cada), no máximo 3 por evento
 const FOTOS_EV_MAX = 3, FOTO_EV_BYTES = 260000, MIDIA_EV = {};
@@ -1944,6 +1977,7 @@ function fotosDoEvento(xid, x, pronto) {
 }
 const fotosHTML = (xid, fotos) => fotos.length ? `<div class="ev-fotos ver">${fotos.map((f, i) => `<button type="button" class="ev-foto" data-verfoto="${esc(xid)}:${i}"><img src="${esc(f.src)}" alt="Foto ${i + 1} do evento"></button>`).join('')}</div>` : '';
 function ligarFotos(raiz) {
+  ligarArquivosEv(raiz);
   raiz.querySelectorAll('[data-verfoto]').forEach(b => b.onclick = () => { const [xid, i] = b.dataset.verfoto.split(':'), f = (MIDIA_EV[xid] || [])[Number(i)]; if (!f) return;
     sheet(`<h3>${esc((S.extras[xid] || {}).nome || 'Evento')}</h3><img src="${esc(f.src)}" alt="" style="width:100%;border-radius:5px;display:block"><button class="btn ghost" data-fechar>Fechar</button>`); });
 }
@@ -2085,6 +2119,7 @@ function sheetExtra(xid, op = {}) {
     ${x && x.tamanhos ? `<button type="button" class="btn ghost" id="xtamver">Ver os tamanhos escolhidos</button>` : ''}</div>
     <div id="xtamev" hidden><label class="liga trava" id="xtamtrava"><span class="grow"><b>Pedir tamanho do uniforme</b><span class="s">Evento com tamanho do uniforme já escolhido. Os tamanhos vêm do evento e não mudam aqui.</span></span><input type="checkbox" role="switch" checked disabled><span class="trilho" aria-hidden="true"></span></label>
       <button type="button" class="btn ghost" id="xtamevver">Ver os tamanhos do evento</button></div>
+    ${formArqsHTML('x', 'Arquivos da taxa (PDF)', 'Orçamento, regulamento, autorização. As famílias abrem junto com a taxa.')}
     ${blocoNota('xnota', !!(x && x.nota === true), 'Ligue se esta cobrança leva nota. Uniforme e taxa repassada à federação, deixe desligado.', x && x.recebedor)}
     <div class="field"><span class="lb" id="xparalb">Para quem? Toque num quadro para escolher os atletas</span><div id="xquadros"></div></div>
     <div class="xresumo" id="xcont"></div>
@@ -2114,7 +2149,7 @@ function sheetExtra(xid, op = {}) {
       else if ($('xevnota')) $('xevnota').textContent = '';
       sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); };
     ligarBlocoNota('xnota', 'xrec');
-    const tamSalvar0 = ligarFormTam(s, x, 'x');
+    const tamSalvar0 = ligarFormTam(s, x, 'x'), arqsX = ligarFormArqs(x, 'x');
     // taxa ligada a um evento que já pede o tamanho: vale o do evento, e aqui fica fechado
     const tamDoEvento = () => { const e = evento && S.extras[evento]; return !!(e && e.tamanhos); };
     const tamSalvar = () => tamDoEvento() ? null : tamSalvar0();
@@ -2150,7 +2185,8 @@ function sheetExtra(xid, op = {}) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(venc)) return err('Escolha a data de vencimento.');
         const ids = [...selA].filter(id => S.alunas[id]); if (!ids.length) return err('Toque num quadro e marque quem paga.');
         $('xok').disabled = true; const agora = Date.now();
-        try { await B.set(`escolas/${S.eid}/extras/${novoId()}`, { tipo: 'taxa', nome, v: C.rateioCada(total, ids.length), venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: ids, valores: {}, grupos: [], turmas: [], part: Object.fromEntries(ids.map(id => [id, { st: 'interesse', quem: 'escola' }])), rateio: { total: C.r2(total), prazoEm: agora, fechadoEm: agora, todos: true }, tamanhos: tamSalvar(), origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: agora });
+        const idT = novoId();
+        try { await B.set(`escolas/${S.eid}/extras/${idT}`, { tipo: 'taxa', arquivos: arqsX.lista(), nome, v: C.rateioCada(total, ids.length), venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: ids, valores: {}, grupos: [], turmas: [], part: Object.fromEntries(ids.map(id => [id, { st: 'interesse', quem: 'escola' }])), rateio: { total: C.r2(total), prazoEm: agora, fechadoEm: agora, todos: true }, tamanhos: tamSalvar(), origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: agora }); await arqsX.gravar(idT).catch(() => aviso('A taxa foi salva, mas algum arquivo não. Tente de novo.'));
           fecharSheet(); aviso(`✓ Taxa salva. ${brl(C.rateioCada(total, ids.length))} para cada um dos ${ids.length}.`); } catch (e) { err(msgErro(e)); $('xok').disabled = false; }
         return;
       }
@@ -2166,7 +2202,8 @@ function sheetExtra(xid, op = {}) {
         if (venc < dia) return err('O vencimento precisa ser no dia em que as respostas fecham ou depois.');
         const ids = [...selA].filter(id => S.alunas[id]); if (!ids.length) return err('Toque num quadro e marque quem pode participar.');
         $('xok').disabled = true;
-        try { await B.set(`escolas/${S.eid}/extras/${novoId()}`, { tipo: 'taxa', nome, v: 0, venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: [], valores: {}, grupos: [], turmas: [], part: {}, rateio: { ...(dividir ? { total: C.r2(total) } : { porAluno: C.r2(v), total: null }), prazoEm, fechadoEm: null }, tamanhos: tamSalvar(), origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: Date.now() });
+        const idT = novoId();
+        try { await B.set(`escolas/${S.eid}/extras/${idT}`, { tipo: 'taxa', arquivos: arqsX.lista(), nome, v: 0, venc, nota: notaSalvar('xnota', 'xrec', false), convidados: ids, alunas: [], valores: {}, grupos: [], turmas: [], part: {}, rateio: { ...(dividir ? { total: C.r2(total) } : { porAluno: C.r2(v), total: null }), prazoEm, fechadoEm: null }, tamanhos: tamSalvar(), origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : 'escola', lancadoPor: S.prof || 'admin', criadoEm: Date.now() }); await arqsX.gravar(idT).catch(() => aviso('A taxa foi salva, mas algum arquivo não. Tente de novo.'));
           fecharSheet(); aviso('✓ Taxa salva. O convite foi enviado às famílias.'); } catch (e) { err(msgErro(e)); $('xok').disabled = false; }
         return;
       }
@@ -2178,7 +2215,8 @@ function sheetExtra(xid, op = {}) {
       const valores = {}; for (const id of ids) if (vals[id] != null && C.r2(vals[id]) !== C.r2(v)) { if (!(vals[id] > 0)) return err(`Confira o valor de ${S.alunas[id].nome}.`); valores[id] = C.r2(vals[id]); }
       $('xok').disabled = true;
       const base = legado ? { tipo: x.tipo, data: x.data || null, dataFim: x.dataFim || null, local: x.local || null } : { tipo: 'taxa' };
-      try { await B.set(`escolas/${S.eid}/extras/${xid || novoId()}`, { ...base, nome, v, venc, tamanhos: tamSalvar(), nota: notaSalvar('xnota', 'xrec', x && x.nota === true), alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
+      const idT = xid || novoId();
+      try { await B.set(`escolas/${S.eid}/extras/${idT}`, { ...base, arquivos: arqsX.lista(), nome, v, venc, tamanhos: tamSalvar(), nota: notaSalvar('xnota', 'xrec', x && x.nota === true), alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); await arqsX.gravar(idT).catch(() => aviso('A taxa foi salva, mas algum arquivo não. Tente de novo.')); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
       catch (e) { err(msgErro(e)); $('xok').disabled = false; }
     };
     if ($('xdel')) $('xdel').onclick = () => temPag ? ($('xerr').textContent = 'Esta cobrança já tem pagamentos e não pode ser excluída. Desmarque os alunos que não vão participar.') : confirmar('Excluir cobrança?', `"${esc(x.nome)}" sai da lista de todos os alunos.`, 'Excluir', () => B.del(`escolas/${S.eid}/extras/${xid}`));
@@ -2222,6 +2260,7 @@ function sheetEvento(xid) {
     ${formTamHTML(x, 'e', 'O evento dá camisa ou uniforme? Quem vai escolhe o tamanho no app.')}
     <div class="field"><span class="lb">Fotos do evento</span><span class="sub">Cartaz, regulamento, horários. Os responsáveis veem junto com o evento. Até ${FOTOS_EV_MAX} fotos.</span>
       <div class="ev-fotos" id="efotos"></div><input type="file" id="efoto" accept="image/*" hidden><div class="err" id="eferr" role="alert"></div></div>
+    ${formArqsHTML('e', 'Arquivos do evento (PDF)', 'Regulamento, programação, ficha de inscrição. Os responsáveis abrem junto com o evento.')}
     <div class="field"><span class="lb">Quem pode ir? Os responsáveis recebem o convite no app</span><div id="equadros"></div></div>
     <div class="err" id="eerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="eok">Salvar</button></div>
@@ -2241,6 +2280,7 @@ function sheetEvento(xid) {
       if ($('efadd')) $('efadd').onclick = () => $('efoto').click(); };
     verFotos();
     if (xid && x.fotos) B.get(`escolas/${S.eid}/midiaEventos/${xid}`).then(d => { if (d && d.fotos && !fotosMudou) { fotos = d.fotos.slice(0, FOTOS_EV_MAX); verFotos(); } }).catch(() => { });
+    const arqsE = ligarFormArqs(x, 'e');
     // links e contatos: descrição curta + link, telefone ou outra informação
     let links = ((x && x.links) || []).map(l => ({ ...l }));
     const verLinks = () => { $('elinks').innerHTML = links.map((l, i) => `<div class="ev-link-ed"><input data-ld="${i}" maxlength="40" value="${esc(l.d || '')}" placeholder="Descrição" aria-label="Descrição curta (ex.: Regulamento)"><input data-lv="${i}" maxlength="300" value="${esc(l.v || '')}" placeholder="Link ou telefone" aria-label="Link, telefone ou informação"><button type="button" class="ev-foto-x" data-lx="${i}" aria-label="Tirar">×</button></div>`).join('');
@@ -2275,13 +2315,14 @@ function sheetEvento(xid) {
       if (linksOk.some(l => !l.v)) { $('eok').disabled = false; return err('Falta o link, telefone ou informação de um dos itens em "Links e contatos".'); }
       if (linksOk.some(l => !l.d)) { $('eok').disabled = false; return err('Dê uma descrição curta para cada item em "Links e contatos".'); }
       const id = xid || novoId();
-      try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', nota: S.admin ? notaSalvar('enota', 'erec', x && x.nota === true) : !!(x && x.nota === true), fotos: fotos.length, endereco: $('eend').value.trim() || null, links: linksOk, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
+      try { await B.set(`escolas/${S.eid}/extras/${id}`, { tipo: 'evento', arquivos: arqsE.lista(), nota: S.admin ? notaSalvar('enota', 'erec', x && x.nota === true) : !!(x && x.nota === true), fotos: fotos.length, endereco: $('eend').value.trim() || null, links: linksOk, cobranca: app ? 'app' : 'familia', semCobranca: !app, pixRepassa: $('erep').checked, nome, data, dataFim: dataFim !== data ? dataFim : null, local: $('elocal').value.trim() || null, organizador: $('eorg').value.trim() || null,
           valorInscricao: !app && insc > 0 ? C.r2(insc) : null, tamanhos: tamSalvarE(), prazo: $('eprazo').value || null, prazoHora: $('eprazo').value ? ($('ephora').value || '18:00') : null, convidados: ids, origem: sel.origem(), part,
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, vencHora: app ? ($('evhora').value || '18:00') : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         if (fotosMudou && (fotos.length || (x && x.fotos))) { // sem foto nenhuma, antes e agora: nada a guardar
           try { await B.set(`escolas/${S.eid}/midiaEventos/${id}`, { fotos }); delete MIDIA_EV[id]; }
           catch (e) { fecharSheet(); aviso('O evento foi salvo, mas as fotos não. Tente pôr as fotos de novo daqui a pouco.'); return; }
         }
+        try { await arqsE.gravar(id); } catch (e) { fecharSheet(); aviso('O evento foi salvo, mas algum arquivo não. Tente pôr o arquivo de novo daqui a pouco.'); return; }
         fecharSheet(); aviso(ed ? '✓ Evento salvo' : '✓ Evento salvo. Os responsáveis já podem responder.'); }
       catch (e) { err(msgErro(e)); $('eok').disabled = false; }
     };
@@ -2333,12 +2374,13 @@ function sheetRateio(xid) {
     <div class="note">${x.rateio.fechadoEm || fechado ? `Respostas fechadas. Cada participante recebeu a cobrança de ${brl(cada)}, com vencimento em ${dataBR(x.venc)}.${!x.rateio.porAluno && part.length && C.r2(cada * part.length) > x.rateio.total ? ` A divisão não é exata: os ${brl(C.r2(cada * part.length - x.rateio.total))} a mais ficam no caixa.` : ''}`
       : `As respostas fecham sozinhas em ${quandoRT(x.rateio.prazoEm)}. Ao fechar, cada participante recebe a cobrança, com vencimento em ${dataBR(x.venc)}. Ninguém é cobrado antes disso.${nSem ? ' O botão verde pergunta pelo WhatsApp a quem ainda não respondeu.' : ''}`}</div>
     <ul class="list rt-lista">${lista || '<li class="empty">Ninguém convidado.</li>'}</ul>
-    ${x.tamanhos ? '<button type="button" class="btn ghost" id="rttam">Tamanhos do uniforme</button>' : ''}
+    ${arquivosEvHTML(x)}${x.tamanhos ? '<button type="button" class="btn ghost" id="rttam">Tamanhos do uniforme</button>' : ''}
     <div class="err" id="rterr" role="alert"></div>
     ${fechado ? '<button class="btn ghost" data-fechar>Fechar</button>' : `<div class="actions"><button class="btn ghost" data-fechar>Voltar</button><button class="btn" id="rtfim">Fechar agora e cobrar</button></div>`}
     ${!nPg ? '<button class="btn ghost" id="rtdel" style="color:var(--out)">Excluir taxa</button>' : ''}`, sh => {
     sh.querySelectorAll('[data-rp]').forEach(b => b.onclick = async () => { const id = b.dataset.rp, st = rtSt(x, id) === b.dataset.rs ? null : b.dataset.rs;
       try { await B.set(`escolas/${S.eid}/extras/${xid}`, { part: { [id]: st ? { st, em: Date.now(), por: EU.uid, quem: 'escola' } : null } }, { merge: true }); setTimeout(() => sheetRateio(xid), 60); } catch (e) { $('rterr').textContent = msgErro(e); } });
+    ligarArquivosEv($('overlay'));
     if ($('rttam')) $('rttam').onclick = () => abrirDe(() => sheetRateio(xid), () => sheetTamanhos(xid));
     if ($('rtfim')) $('rtfim').onclick = () => { if (!part.length) return $('rterr').textContent = 'Ninguém disse que vai participar ainda. Não há com quem dividir.';
       duploToque($('rtfim'), async () => { try { await B.set(`escolas/${S.eid}/extras/${xid}`, { rateio: { ...x.rateio, fechadoEm: Date.now() }, alunas: part, v: cada }, { merge: true }); aviso(`Cobrança de ${brl(cada)} enviada a ${part.length} participante${part.length === 1 ? '' : 's'}`); setTimeout(() => sheetRateio(xid), 60); } catch (e) { $('rterr').textContent = msgErro(e); } }, `Cobrar ${brl(cada)} de ${part.length}?`); };
@@ -2346,11 +2388,16 @@ function sheetRateio(xid) {
   });
 }
 // família: o convite das taxas divididas com as respostas abertas (na tela Pagar)
+// arquivos das taxas dos filhos (as que não estão com o convite aberto, que já mostra os arquivos)
+function avisoArquivosTaxaFam() {
+  const ts = Object.values(S.extras || {}).filter(x => x && x.tipo === 'taxa' && (x.arquivos || []).length && !(x.rateio && !C.rateioFechado(x)) && [...(x.alunas || []), ...(x.convidados || [])].some(id => S.alunas[id]));
+  return ts.length ? `<div class="rt-card tam-card"><b class="rt-tit">Arquivos das taxas</b>${ts.map(x => `<span class="s"><b>${esc(x.nome)}</b></span>${arquivosEvHTML(x)}`).join('')}</div>` : '';
+}
 function avisoRateioFam() {
   return Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.rateio && !C.rateioFechado(x)).map(([xid, x]) => {
     const meus = (x.convidados || []).filter(id => S.alunas[id]); if (!meus.length) return '';
     const n = C.rateioParticipantes(x).length;
-    return `<div class="rt-card"><b class="rt-tit">${esc(x.nome)}</b>
+    return `<div class="rt-card"><b class="rt-tit">${esc(x.nome)}</b>${arquivosEvHTML(x)}
       <span class="s">${x.rateio.porAluno ? `Custa <b>${brl(x.rateio.porAluno)}</b> por aluno. Só paga quem participar.` : `A escola vai dividir <b>${brl(x.rateio.total)}</b> entre os alunos que participarem. ${n ? `Até agora, <b>${n} ${n === 1 ? 'vai' : 'vão'} participar</b>: cerca de <b>${brl(C.rateioCada(x.rateio.total, n))}</b> para cada um. ` : ''}Quanto mais gente, menor o valor.`}</span>
       ${meus.map(id => { const st = rtSt(x, id);
         return `<div class="rt-fil"><div class="ev-ja-lin"><span class="chip">${esc(primeiro(S.alunas[id].nome))}</span>${st ? `<span class="s">${st === 'interesse' ? 'Vai participar' : 'Não vai'}</span>` : '<span class="ev-pend">Resposta pendente</span>'}</div>
@@ -4116,7 +4163,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoRateioFam()}${avisoTamanhoFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
+    ${avisoRateioFam()}${avisoTamanhoFam()}${avisoArquivosTaxaFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
     ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
@@ -4152,7 +4199,7 @@ function tPagar(v) {
   if ($('pfdesl')) $('pfdesl').onclick = () => { const recD = $('pfdesl').dataset.rec; confirmar('Desligar a cobrança automática?', 'As próximas cobranças voltam a ser pagas por você, pelo app. O cartão continua salvo.', 'Desligar', async () => {
     try { if (!MOCK) await servidor('pagar', { acao: 'automatico', eid: S.eid, rec: recD, ligar: false }); (S.cartoes || []).forEach(c => c.auto = false); aviso('Cobrança automática desligada'); render(); } catch (e) { aviso(msgErro(e)); } }); };
   if ($('plimpa')) $('plimpa').onclick = () => { S.sel.clear(); render(); };
-  ligarRateioFam(v); ligarTamanhoFam(v);
+  ligarRateioFam(v); ligarTamanhoFam(v); ligarArquivosEv(v);
 }
 // Meus filhos: termo, atestado, documentos e contrato numa lista só (nome à esquerda, situação à direita; toque para agir)
 function docsFilhaHTML(id) {
