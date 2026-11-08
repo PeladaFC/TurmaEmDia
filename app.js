@@ -3665,18 +3665,27 @@ function sheetProf(pid) {
   sheetSimples({ titulo: P ? 'Editar professor(a)' : 'Novo(a) professor(a)',
     campos: `<div class="field"><label for="pnome">Nome</label><input id="pnome" maxlength="60" value="${esc(P ? P.nome : '')}"></div>
       <div class="field"><label for="ptel">WhatsApp</label><input id="ptel" inputmode="tel" maxlength="20" value="${esc(P ? P.telefone || '' : '')}" placeholder="(81) 99999-9999"></div>
-      <div class="field"><label for="pfixo">Recebe da escola por mês (R$, opcional)</label><input id="pfixo" inputmode="decimal" value="${esc(P && P.fixoEscola ? fmtValor(P.fixoEscola) : '')}" placeholder="0,00"><span class="sub">Valor fixo que a escola paga a ele(a), como um salário. Ele(a) vê no Financeiro do app.</span></div>
+      <div class="field"><span class="lb">Pagamento ao professor (opcional)</span>
+        <div class="two"><div class="field"><label for="pfixo">Salário líquido (R$)</label><input id="pfixo" inputmode="decimal" value="${esc(P && P.fixoEscola ? fmtValor(P.fixoEscola) : '')}" placeholder="0,00"></div>
+        <div class="field"><label for="psimp">Impostos e encargos (R$)</label><input id="psimp" inputmode="decimal" value="${esc(P && P.salImpostos ? fmtValor(P.salImpostos) : '')}" placeholder="0,00"></div></div>
+        <div class="field"><label for="psben">Benefícios (R$)</label><input id="psben" inputmode="decimal" value="${esc(P && P.salBeneficios ? fmtValor(P.salBeneficios) : '')}" placeholder="Vale-transporte, alimentação…"></div>
+        <div class="sal-calc num" id="pscalc"></div>
+        <span class="sub">O professor vê só o salário líquido, no Financeiro do app. Impostos, benefícios e o custo total ficam só com a escola.</span></div>
       <div class="field"><label for="pemail">E-mail para entrar no app</label><input id="pemail" type="email" inputmode="email" autocomplete="off" autocapitalize="none" maxlength="120" value="${esc(P ? P.emailApp || '' : '')}" placeholder="email@exemplo.com">
         ${P && P.emailApp ? `<span class="sub">${P.appEm ? `Já entrou no app em ${esc(dataCurta(P.appEm))}.` : 'Ainda não entrou no app.'}</span>` : ''}
         <span class="sub">Com o e-mail, ele(a) entra no app e vê só as turmas dele(a): escreve notas sobre os alunos e acompanha os pagamentos que cabem a ele(a). Não vê telefone, CPF nem documentos das famílias, e não cobra ninguém. Para tirar o acesso, apague o e-mail.</span>
         ${P && P.emailApp && P.telefone && !P.appEm ? `<a class="btn ghost btn-ico" style="margin-top:8px" target="_blank" rel="noopener" href="${esc(waLink(P.telefone, `Olá, ${primeiro(P.nome)}! Cadastrei você no app Turma em Dia da ${S.escola.nome || 'escola'}. Abra ${LINK_APP} e entre com o e-mail ${P.emailApp}. Lá você vê as suas turmas, escreve notas sobre os alunos e acompanha os pagamentos.`))}">${ICO_WA}<span>Avisar pelo WhatsApp</span></a>` : ''}</div>
       ${P ? `<div class="field"><span class="lb">Conta que recebe o Pix</span>${blocoConta(pid, P)}</div>` : '<div class="note">Depois de salvar, você adiciona a conta que recebe o Pix.</div>'}`,
-    montar: () => { document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid))); },
+    montar: () => { const calc = () => { const v = k => parseValor($(k).value) || 0, liq = v('pfixo'), imp = v('psimp'), ben = v('psben');
+        $('pscalc').innerHTML = liq || imp || ben ? `Bruto (salário + impostos): <b>${brl(C.r2(liq + imp))}</b> · Custo total: <b>${brl(C.r2(liq + imp + ben))}</b>` : ''; };
+      ['pfixo', 'psimp', 'psben'].forEach(k => $(k).addEventListener('input', calc)); calc();
+      document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid))); },
     salvar: async () => { const nome = $('pnome').value.trim(); if (!nome) return 'Digite o nome do(a) professor(a).';
       const email = $('pemail').value.trim().toLowerCase(); if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return 'Confira o e-mail.';
       const outro = Object.entries(S.profs).find(([id, x]) => id !== pid && email && String(x.emailApp || '').toLowerCase() === email); if (outro) return `Este e-mail já está com ${outro[1].nome}.`;
       const id = pid || novoId(), antes = String((P && P.emailApp) || '').toLowerCase();
-      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, fixoEscola: parseValor($('pfixo').value) > 0 ? C.r2(parseValor($('pfixo').value)) : null, telefone: $('ptel').value.trim(), emailApp: email || null, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
+      const vv = k => parseValor($(k).value) > 0 ? C.r2(parseValor($(k).value)) : null;
+      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, fixoEscola: vv('pfixo'), salImpostos: vv('psimp'), salBeneficios: vv('psben'), telefone: $('ptel').value.trim(), emailApp: email || null, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
       if (MOCK && email !== antes) await espelhoProfMock(id, antes, email); },
     excluir: pid && (() => B.del(`escolas/${S.eid}/professoras/${pid}`)), bloqueio: n ? 'Este(a) professor(a) tem turmas. Troque o(a) professor(a) dessas turmas antes.' : null });
 }
@@ -3953,6 +3962,13 @@ function blocoConta(pid, P) {
     <button class="btn ghost btn-mini" data-conta="${esc(pid)}" style="align-self:flex-start">${ICO_EDIT} Alterar ou tirar conta</button></div>`;
 }
 function contaTxt(P) { return [P.mpContaInfo && 'Mercado Pago: ' + P.mpContaInfo, P.pixChave && 'chave Pix: ' + P.pixChave].filter(Boolean).join(' · '); }
+// pagamento ao professor: o líquido (o que ele recebe, aparece para ele) e quanto a escola gasta (salário + impostos + benefícios)
+function custoProf(P) { const liq = Number(P.fixoEscola) || 0, imp = Number(P.salImpostos) || 0, ben = Number(P.salBeneficios) || 0; return { liq, imp, ben, bruto: C.r2(liq + imp), total: C.r2(liq + imp + ben) }; }
+function blocoSalario(P) {
+  const c = custoProf(P); if (!c.total) return '';
+  return `<div class="sal-box"><div class="label">Pagamento ao professor · por mês</div>
+    ${ddl([['Salário líquido', `<b class="num">${brl(c.liq)}</b> <span class="s">o que ele(a) recebe</span>`], ...(c.imp ? [['Impostos e encargos', `<span class="num">${brl(c.imp)}</span>`]] : []), ['Bruto (salário + impostos)', `<span class="num">${brl(c.bruto)}</span>`], ...(c.ben ? [['Benefícios', `<span class="num">${brl(c.ben)}</span>`]] : []), ['Custo total para a escola', `<b class="num">${brl(c.total)}</b>`]])}</div>`;
+}
 // relatório dos professores: quem recebe o quê, e o PDF de cada uma
 function finProfessoras(v) {
   const mes = S.mes, rs = recebidosNoMes(mes), atr = atrasados(), prev = porRecebedor(mes), profs = porNome(S.profs);
@@ -3971,11 +3987,20 @@ function finProfessoras(v) {
         <div class="headrow"><h2>${esc(P.nome)}</h2><button class="btn ghost btn-mini" data-edp="${esc(pid)}">${ICO_EDIT} Editar</button></div>
         ${ddl([['Turmas', esc(ts.join(', ') || 'Nenhuma direcionada')]])}
         ${blocoConta(pid, P)}
-        <div class="legend">
-          <div><span class="sw s-in"></span><span class="grow">Recebido em ${esc(C.nomeMes(mes))}<span class="s">${D.resumo.nRec} pagamento${D.resumo.nRec === 1 ? '' : 's'}</span></span><b class="num">${brl(D.resumo.recebido)}</b></div>
-          <div><span class="sw s-out"></span><span class="grow">Em atraso<span class="s">${D.atrasados.length ? esc([...new Set(D.atrasados.map(a => primeiro(a.aluna)))].join(', ')) : 'ninguém em atraso'}</span></span><b class="num" style="color:var(--out)">${brl(D.resumo.atraso)}</b></div>
-          <div><span class="sw s-warn"></span><span class="grow">A vencer em ${esc(C.nomeMes(mes))}</span><b class="num">${brl(D.resumo.aVencer)}</b></div>
-        </div>
+        ${(() => { const Rr = D.resumo, tot = C.r2(Rr.recebido + Rr.atraso + Rr.aVencer), pc = v => tot ? Math.round(v / tot * 100) : 0;
+          return `<div class="pizza pz-prof">${pizzaSVG([{ v: Rr.recebido, cor: 'var(--in, #2f7d6d)' }, { v: Rr.aVencer, cor: 'var(--warn, #c9962b)' }, { v: Rr.atraso, cor: 'var(--out, #b0402a)' }], `Recebido ${brl(Rr.recebido)}, a vencer ${brl(Rr.aVencer)}, em atraso ${brl(Rr.atraso)}`)}
+          <ul class="pizza-leg">
+            <li><i class="s-in"></i><span class="grow pz-nome">Recebido<span class="s">${Rr.nRec} pagamento${Rr.nRec === 1 ? '' : 's'}</span></span><span class="pz-val"><b class="num">${brl(Rr.recebido)}</b><span class="s num">${pc(Rr.recebido)}%</span></span></li>
+            <li><i class="s-warn"></i><span class="grow pz-nome">A vencer<span class="s">no mês</span></span><span class="pz-val"><b class="num">${brl(Rr.aVencer)}</b><span class="s num">${pc(Rr.aVencer)}%</span></span></li>
+            <li><i class="s-out"></i><span class="grow pz-nome">Em atraso<span class="s">até hoje</span></span><span class="pz-val"><b class="num" style="color:var(--out)">${brl(Rr.atraso)}</b><span class="s num">${pc(Rr.atraso)}%</span></span></li>
+          </ul></div>`; })()}
+        ${blocoSalario(P)}
+        ${(() => { // alunos com pagamento em atraso com este professor: um por linha, abre os débitos
+          const por = {}; D.atrasados.forEach(a => (por[a.aluna] = por[a.aluna] || []).push(a)); const nomes = Object.keys(por).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+          return nomes.length ? `<details class="pf-atr"><summary><b>Alunos em atraso (${nomes.length})</b><span class="s num">${brl(D.resumo.atraso)} · ver ›</span></summary>
+            <ul class="list">${nomes.map(n => { const l = por[n], t = C.r2(l.reduce((s, x) => s + x.v, 0));
+              return `<li style="display:block"><details><summary class="pf-atr-al"><span class="grow"><b>${esc(n)}</b><span class="s">${l.length} cobrança${l.length === 1 ? '' : 's'}${l[0].resp ? ' · resp. ' + esc(l[0].resp) : ''}</span></span><b class="num" style="color:var(--out)">${brl(t)}</b></summary>
+                <ul class="list pf-div">${l.map(x => `<li><div class="grow"><div class="t">${esc(x.cobranca)}</div>${linhas(`Venceu ${esc(x.venc)} · ${x.dias} dia${x.dias === 1 ? '' : 's'} de atraso`)}</div>${valorCol(brl(x.v), '', 'out')}</li>`).join('')}</ul></details></li>`; }).join('')}</ul></details>` : '<div class="sub">Nenhum aluno em atraso com este professor. 🎉</div>'; })()}
         <button class="btn wa-btn" data-envia="${esc(pid)}">${ICO_WA} Enviar relatório em PDF no WhatsApp</button>
         <div class="actions"><button class="btn ghost" data-pdf="${esc(pid)}">Baixar PDF</button><button class="btn ghost" data-txt="${esc(pid)}">Copiar resumo</button></div>
       </div>`; }).join('') : `<div class="empty"><b>Nenhum(a) professor(a) cadastrado(a).</b><span>Cadastre os professores na aba Turmas e escolha, em cada turma, para quem vai a mensalidade.</span></div>`}`;
@@ -6788,7 +6813,7 @@ async function semearMock() {
   await set(`${p}/equipe/${uP}`, { pid: 'p1', email: 'professor@teste.com', nome: 'Juliana Costa', em: Date.now() - 3 * 864e5 });
   await set('convitesProf/' + chaveEmail('professor@teste.com'), { [`${eid}_p1`]: { eid, pid: 'p1', em: Date.now() } });
   await set('users/' + uP, { escolas: { [eid]: { nome: 'Escolinha Movimento', papel: 'professora', prof: 'Juliana Costa' } } });
-  await set(`${p}/professoras/p1`, { fixoEscola: 1500, emailApp: 'professor@teste.com', appEm: Date.now() - 3 * 864e5, appUid: uP, nome: 'Juliana Costa', telefone: '(81) 95555-1111', mpConectadoEm: Date.now(), mpConta: 'Juliana Costa', mpContaInfo: 'juliana.costa@email.com', pixChave: '(81) 95555-1111' });
+  await set(`${p}/professoras/p1`, { fixoEscola: 1500, salImpostos: 420, salBeneficios: 300, emailApp: 'professor@teste.com', appEm: Date.now() - 3 * 864e5, appUid: uP, nome: 'Juliana Costa', telefone: '(81) 95555-1111', mpConectadoEm: Date.now(), mpConta: 'Juliana Costa', mpContaInfo: 'juliana.costa@email.com', pixChave: '(81) 95555-1111' });
   await set(`${p}/professoras/p2`, { nome: 'Camila Ribeiro', telefone: '(81) 95555-2222', mpConectadoEm: Date.now(), mpConta: 'Camila Ribeiro', mpContaInfo: 'camila.ribeiro@email.com', pixChave: 'camila.ribeiro@email.com' });
   await set(`${p}/professoras/p3`, { nome: 'Rafael Souza', telefone: '(81) 95555-3333' });
   await set(`${p}/professoras/p4`, { nome: 'Beatriz Nunes', telefone: '(81) 95555-4444' });
