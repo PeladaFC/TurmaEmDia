@@ -2816,8 +2816,8 @@ function avisoInscricaoPendente() {
 }
 function avisoEventosFamilia() {
   const h = hoje(), meus = Object.keys(S.alunas);
-  return eventosAtivos().filter(([, x]) => fimDe(x) >= h && !C.prazoPassou(x)).map(([xid, x]) => ({ x, ids: convidadosDe(x).filter(id => meus.includes(id) && !partDe(x, id)) })).filter(e => e.ids.length)
-    .map(({ x, ids }) => `<button class="faixa-resumo" data-irfilhos="1"><span class="grow"><b>${esc(x.nome)}: ${esc(ids.map(id => primeiro(S.alunas[id].nome)).join(' e '))} ${ids.length > 1 ? 'vão' : 'vai'}?</b><span class="s">${esc(periodoTxt(x))}${x.prazo ? ` · responda até ${dataBR(x.prazo)}` : ''}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
+  return eventosAtivos().filter(([, x]) => fimDe(x) >= h && !C.prazoPassou(x)).map(([xid, x]) => ({ xid, x, ids: convidadosDe(x).filter(id => meus.includes(id) && !partDe(x, id)) })).filter(e => e.ids.length)
+    .map(({ xid, x, ids }) => `<button class="faixa-resumo" data-abrev="${esc(xid)}"><span class="grow"><b>${esc(x.nome)}: ${esc(ids.map(id => primeiro(S.alunas[id].nome)).join(' e '))} ${ids.length > 1 ? 'vão' : 'vai'}?</b><span class="s">${esc(periodoTxt(x))}${x.prazo ? ` · responda até ${dataBR(x.prazo)}` : ''}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
 }
 
 /* ================= Alunas e responsáveis (administração) ================= */
@@ -4602,7 +4602,8 @@ function tPagar(v) {
   v.querySelectorAll('[data-termo]').forEach(b => b.onclick = () => sheetTermo(b.dataset.termo));
   v.querySelectorAll('[data-atest]').forEach(b => b.onclick = () => sheetEnviarAtestado(b.dataset.atest));
   v.querySelectorAll('[data-ctass]').forEach(b => b.onclick = () => sheetAssinarContrato(b.dataset.ctass));
-  v.querySelectorAll('[data-irfilhos]').forEach(b => b.onclick = () => irPara('feventos'));
+  // o aviso abre direto aquele evento, com as respostas (vai / não vai) e o pagamento
+  v.querySelectorAll('[data-abrev]').forEach(b => b.onclick = () => sheetEventoFam(b.dataset.abrev));
   if ($('pushfam')) $('pushfam').onclick = async () => { $('pushfam').disabled = true; try { await ativarPush(false); if (MOCK) ls.set('escolinha.push.mock', '1'); render(); } catch (e) { aviso(msgErro(e)); $('pushfam').disabled = false; } };
   if ($('pushfamx')) $('pushfamx').onclick = () => { ls.set(`escolinha.pushfam.nao.${S.eid}`, '1'); render(); };
   v.querySelectorAll('[data-insc]').forEach(b => b.onclick = () => sheetEventoFam(b.dataset.insc));
