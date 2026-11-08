@@ -1348,7 +1348,8 @@ function bolhaAba(k) {
   if (k === 'feventos') { try { const h = hoje(), meus = Object.keys(S.alunas);
     for (const [, x] of eventosAtivos()) { if (fimDe(x) < h) continue; const cv = convidadosDe(x).filter(id => meus.includes(id));
       if (!C.prazoPassou(x)) n += cv.filter(id => !partDe(x, id)).length;
-      if (modoInsc(x) === 'familia') n += cv.filter(id => partDe(x, id) === 'interesse').length; } } catch (e) { return ''; } }
+      if (modoInsc(x) === 'familia') n += cv.filter(id => partDe(x, id) === 'interesse').length;
+      n += faltaTamEv(x, cv).length; } } catch (e) { return ''; } }
   else try { for (const id of Object.keys(S.alunas || {})) n += itensDe(id).filter(i => !i.pago).length;
     for (const x of Object.values(S.extras || {})) if (x && x.tipo === 'taxa' && x.rateio && !C.rateioFechado(x)) n += (x.convidados || []).filter(id => S.alunas[id] && !rtSt(x, id)).length; } catch (e) { return ''; }
   return n ? `<span class="tab-bolha num" aria-label="${n} pendente${n > 1 ? 's' : ''}">${n > 99 ? '99+' : n}</span>` : '';
@@ -2813,6 +2814,13 @@ function avisoInscricaoPendente() {
   const h = hoje(), meus = Object.keys(S.alunas);
   return eventosAtivos().filter(([, x]) => fimDe(x) >= h && modoInsc(x) === 'familia').map(([xid, x]) => ({ xid, x, ids: convidadosDe(x).filter(id => meus.includes(id) && partDe(x, id) === 'interesse') })).filter(e => e.ids.length)
     .map(({ xid, x, ids }) => `<button class="faixa-resumo alerta" data-insc="${esc(xid)}"><span class="grow"><b>Inscrição pendente: ${esc(ids.map(id => primeiro(S.alunas[id].nome)).join(' e '))} no ${esc(x.nome)}</b><span class="s">Faça a inscrição com ${esc(x.organizador || 'quem organiza')} e depois toque em "Já fiz a inscrição".</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
+}
+// evento que pede tamanho do uniforme: quem vai e ainda não escolheu fica pendente até escolher
+const faltaTamEv = (x, ids) => x && x.tamanhos ? ids.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)) && !tamEsc(x, id)) : [];
+function avisoTamEventoFam() {
+  const h = hoje(), meus = Object.keys(S.alunas);
+  return eventosAtivos().filter(([, x]) => fimDe(x) >= h).map(([xid, x]) => ({ xid, x, ids: faltaTamEv(x, convidadosDe(x).filter(id => meus.includes(id))) })).filter(e => e.ids.length)
+    .map(({ xid, x, ids }) => `<button class="faixa-resumo alerta" data-abrev="${esc(xid)}"><span class="grow"><b>${esc(x.nome)}: falta o tamanho do uniforme</b><span class="s">${esc(ids.map(id => primeiro(S.alunas[id].nome)).join(' e '))} vai. Toque para escolher o tamanho.</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
 }
 function avisoEventosFamilia() {
   const h = hoje(), meus = Object.keys(S.alunas);
@@ -4576,7 +4584,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoPushFam()}${avisoRateioFam()}${avisoTamanhoFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
+    ${avisoPushFam()}${avisoRateioFam()}${avisoTamanhoFam()}${avisoEventosFamilia()}${avisoTamEventoFam()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
     ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
@@ -4650,7 +4658,7 @@ function tFEventos(v) {
     return `<li class="cal-ev tap ${c.meu ? 'meu' : 'outro'}" data-fev="${esc(c.xid)}"><div class="cal-dia"><b class="num">${d.getDate()}</b><span>${C.MESES[d.getMonth()].slice(0, 3)}</span></div>
       <div class="grow"><div class="t">${esc(c.x.nome)}</div>${linhas(`<span class="num">${esc(periodoTxt(c.x))}</span>${c.x.local ? ' · ' + esc(c.x.local) : ''}`)}${quem ? `<div class="ev-quem">${quem}</div>` : ''}</div><span class="seta" aria-hidden="true">›</span></li>`; };
   const N = 3, todos = !!S.feTodos, vis = todos ? prox : prox.slice(0, N);
-  v.innerHTML = `${avisoInscricaoPendente()}<section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo mês">›</button></div>
+  v.innerHTML = `${avisoTamEventoFam()}${avisoInscricaoPendente()}<section><div class="cal-topo"><button type="button" class="icon-btn" id="feant" aria-label="Mês anterior">‹</button><h2>${nomeM[0].toUpperCase() + nomeM.slice(1)} de ${ano}</h2><button type="button" class="icon-btn" id="feprox" aria-label="Próximo mês">›</button></div>
       ${gradeMes(ano, mes, doMes)}
       <div class="cal-legenda"><span><i class="lg-meu"></i>Com seus filhos</span><span><i class="lg-outro"></i>Outros eventos da escola</span></div>
       <button type="button" class="btn ghost" id="feano">Ver o ano inteiro</button></section>
@@ -4663,6 +4671,7 @@ function tFEventos(v) {
   $('feant').onclick = () => vai(-1); $('feprox').onclick = () => vai(1);
   $('feano').onclick = () => sheetCalendario(ano);
   v.querySelectorAll('[data-fev], .mg [data-ev]').forEach(li => li.onclick = () => sheetEventoFam(li.dataset.fev || li.dataset.ev));
+  v.querySelectorAll('[data-abrev]').forEach(b => b.onclick = () => sheetEventoFam(b.dataset.abrev));
   let x0 = null; const g = v.querySelector('.mg');
   g.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
   g.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 60) vai(dx < 0 ? 1 : -1); });
