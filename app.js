@@ -177,6 +177,7 @@ const ICO = {
   evento: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M12 13.2l1 2 2.2.3-1.6 1.5.4 2.2-2-1.1-2 1.1.4-2.2-1.6-1.5 2.2-.3z"/></svg>',
   gear: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
   painel: '<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+  pend: '<svg viewBox="0 0 24 24"><path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20.6h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4.5M12 17.2v.01"/></svg>',
   cobr: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>',
   alunas: '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><path d="M12 7v7l-4 7M12 14l4 7M5 10c4 2 10 2 14 0"/></svg>',
   escola: '<svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V10l7-5 7 5v11M9 21v-6h6v6"/></svg>',
@@ -424,7 +425,7 @@ function telaLogin(modo = 'entrar') {
     RAIZ().innerHTML = `<div class="login entrada">
       ${capaApp(true)}
       <section class="entrar-box sobe" style="--d:150ms"><h2>Entrar como</h2>
-        <button class="entrar-op" id="eadm"><span class="vant-ic forte">${ICO.painel || ICO.cobr}</span><span class="grow"><b>Administração</b><span class="s">Cobranças, alunos, turmas e financeiro da escola</span></span><span aria-hidden="true" class="seta">›</span></button>
+        <button class="entrar-op" id="eadm"><span class="vant-ic forte">${ICO.painel || ICO.cobr}</span><span class="grow"><b>Administração</b><span class="s">Pendências, alunos, turmas e financeiro da escola</span></span><span aria-hidden="true" class="seta">›</span></button>
         <button class="entrar-op" id="efam"><span class="vant-ic">${ICO.filhas}</span><span class="grow"><b>Responsável</b><span class="s">Ver e pagar as cobranças dos filhos</span></span><span aria-hidden="true" class="seta">›</span></button>
       </section>
       <div class="note sobe" style="text-align:center;--d:350ms">Modo de teste, com dados de exemplo. O login com senha fica para depois.</div>
@@ -1116,7 +1117,7 @@ function render() {
   if (!S) return;
   setTimeout(abrirChamadaPendente, 0);
   const adm = S.admin, abas = {
-    a: [['cobr', 'Cobranças', 'cobr'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
+    a: [['cobr', 'Pendências', 'pend'], ['alunas', 'Alunos', 'alunas'], ['turmas', 'Turmas', 'escola'], ['eventos', 'Eventos', 'evento'], ['fin', 'Financeiro', 'caixa']],
     p: [['pturmas', 'Turmas', 'escola'], ['palunos', 'Alunos', 'alunas'], ['pfin', 'Financeiro', 'caixa']],
     f: [['filhas', 'Meus filhos', 'filhas'], ['feventos', 'Eventos', 'evento'], ['pagar', 'Pagar', 'cobr']] }[S.papel];
   const comMes = (adm && ['cobr', 'fin'].includes(S.tab)) || (S.papel === 'p' && S.tab === 'pfin');
