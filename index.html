@@ -215,6 +215,9 @@ nav.tabs button[aria-current="page"]{color:var(--accent)}
 .tab-bolha{position:absolute;top:-6px;left:calc(100% - 8px);min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--out);color:#fff;font:700 11px/18px var(--f-body,system-ui);font-style:normal;text-align:center;letter-spacing:0;box-shadow:0 0 0 2px var(--surface)}
 .sheet-bg{position:fixed;inset:0;background:rgba(10,12,20,.48);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet{background:var(--surface);width:100%;max-width:640px;border-radius:8px 8px 0 0;max-height:92%;overflow:auto;padding:18px max(16px,env(safe-area-inset-right,0px)) calc(18px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:14px}
+@media (prefers-reduced-motion:no-preference){.sheet-bg.esc{animation:sbFundo .25s ease-out backwards}.sheet.sobe{animation:sbSobe .36s cubic-bezier(.22,1,.36,1) backwards}}
+@keyframes sbFundo{from{background:rgba(10,12,20,0)}}
+@keyframes sbSobe{from{transform:translateY(100%)}to{transform:none}}
 .field{display:flex;flex-direction:column;gap:5px}
 .field>label,.field>.lb{font-size:.82rem;font-weight:700;color:var(--muted)}
 .field input,.field select,.field textarea{font-size:16px;padding:11px 12px;border-radius:5px;border:1px solid var(--line);background:var(--bg);width:100%}

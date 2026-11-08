@@ -937,12 +937,15 @@ function sheet(html, montar, aoFechar) {
   // a mesma janela desenhada de novo (ex.: tocou numa opção) continua no mesmo ponto da rolagem, sem pular para o topo
   let chave = '';
   try { const l = (new Error().stack || '').split('\n').map(x => (x.match(/(?:at\s+)?([A-Za-z_$][\w$]*)/) || [])[1]).filter(x => x && !['Error', 'sheet', 'at', 'async'].includes(x)); TELA_SHEET = l[0] || 'janela'; chave = l.slice(0, 3).join('>'); } catch (x) { TELA_SHEET = 'janela'; }
-  const antes = $('overlay').querySelector('.sheet'), rolagem = antes && chave && chave === SHEET_CHAVE ? antes.scrollTop : 0; SHEET_CHAVE = chave;
+  const antes = $('overlay').querySelector('.sheet'), rolagem = antes && chave && chave === SHEET_CHAVE ? antes.scrollTop : 0, SHEET_CHAVE_ANT = SHEET_CHAVE; SHEET_CHAVE = chave;
   SHEET_SAIR = null;
   if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); }
   SHEET_VOLTAR = PROX_VOLTAR; PROX_VOLTAR = null; travarFundo(true);
-  $('overlay').innerHTML = `<div class="sheet-bg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">${html}</div></div>`;
+  // janela nova sobe suave de baixo (a mesma janela redesenhada não anima); o fundo escurece só se não havia janela aberta
+  const anima = !(antes && chave && chave === SHEET_CHAVE_ANT);
+  $('overlay').innerHTML = `<div class="sheet-bg${anima && !antes ? ' esc' : ''}" id="sbg"><div class="sheet${anima ? ' sobe' : ''}" role="dialog" aria-modal="true">${html}</div></div>`;
   $('sbg').onclick = e => { if (e.target.id === 'sbg') fecharSheet(); };
+  { const sh = $('overlay').querySelector('.sheet.sobe'); if (sh) sh.addEventListener('animationend', () => sh.classList.remove('sobe'), { once: true }); }
   $('overlay').querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => fecharSheet());
   SHEET_FECHA = aoFechar || null;
   JANELA_TECLADO(); // janela nova aberta com o teclado ainda na tela
