@@ -2322,9 +2322,9 @@ function sheetEvento(xid) {
           v: app ? C.r2(insc) : 0, venc: app ? venc : null, vencHora: app ? ($('evhora').value || '18:00') : null, recebedor: app ? (S.admin && $('erec') ? $('erec').value : (x && x.recebedor) || 'escola') : null, valores: {}, alunas: cobrados, grupos: [], turmas: [], lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() });
         if (fotosMudou && (fotos.length || (x && x.fotos))) { // sem foto nenhuma, antes e agora: nada a guardar
           try { await B.set(`escolas/${S.eid}/midiaEventos/${id}`, { fotos }); delete MIDIA_EV[id]; }
-          catch (e) { fecharSheet(); aviso('O evento foi salvo, mas as fotos não. Tente pôr as fotos de novo daqui a pouco.'); return; }
+          catch (e) { fecharSheet(); aviso('O evento foi salvo, mas as fotos não. Tente adicionar as fotos de novo daqui a pouco.'); return; }
         }
-        try { await arqsE.gravar(id); } catch (e) { fecharSheet(); aviso('O evento foi salvo, mas algum arquivo não. Tente pôr o arquivo de novo daqui a pouco.'); return; }
+        try { await arqsE.gravar(id); } catch (e) { fecharSheet(); aviso('O evento foi salvo, mas algum arquivo não. Tente adicionar o arquivo de novo daqui a pouco.'); return; }
         fecharSheet(); aviso(ed ? '✓ Evento salvo' : '✓ Evento salvo. Os responsáveis já podem responder.'); }
       catch (e) { err(msgErro(e)); $('eok').disabled = false; }
     };
@@ -3685,7 +3685,7 @@ function sheetProf(pid) {
         $('pscalc').innerHTML = liq || imp || ben ? `Bruto (salário + impostos): <b>${brl(C.r2(liq + imp))}</b> · Custo total: <b>${brl(C.r2(liq + imp + ben))}</b>` : ''; };
       ['pfixo', 'psimp', 'psben'].forEach(k => $(k).addEventListener('input', calc)); calc();
       const verFixo = () => { const lig = $('psal').checked, f = $('psfixo').checked; $('psalw').hidden = !lig; $('psfixw').hidden = !f;
-        $('psfixs').textContent = f ? '' : 'O valor de cada mês você põe em Financeiro → Professores.'; $('psfixs').hidden = f; };
+        $('psfixs').textContent = f ? '' : 'O valor de cada mês você adiciona em Financeiro → Professores.'; $('psfixs').hidden = f; };
       $('psal').onchange = verFixo; document.querySelectorAll('.sheet [name=pstipo]').forEach(r => r.onchange = verFixo); verFixo();
       document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid))); },
     salvar: async () => { const nome = $('pnome').value.trim(); if (!nome) return 'Digite o nome do(a) professor(a).';
@@ -3989,7 +3989,7 @@ function sheetSalMes(pid, mes) {
 }
 function blocoSalario(P, pid, mes) {
   const c = custoProf(P, mes);
-  if (P.salVaria && !c.total) return `<div class="sal-box"><div class="headrow"><span class="label">Pagamento ao professor · ${esc(C.nomeMes(mes))}</span><button type="button" class="link" data-salmes="${esc(pid)}">Pôr valores</button></div><span class="s">Salário que varia: ainda sem valor neste mês.</span></div>`;
+  if (P.salVaria && !c.total) return `<div class="sal-box"><div class="headrow"><span class="label">Pagamento ao professor · ${esc(C.nomeMes(mes))}</span><button type="button" class="link" data-salmes="${esc(pid)}">Adicionar valores</button></div><span class="s">Salário que varia: ainda sem valor neste mês.</span></div>`;
   if (!c.total) return '';
   return `<div class="sal-box"><div class="headrow"><span class="label">Pagamento ao professor · ${P.salVaria ? esc(C.nomeMes(mes)) : 'por mês'}</span>${P.salVaria ? `<button type="button" class="link" data-salmes="${esc(pid)}">Editar</button>` : ''}</div>
     ${ddl([['Salário líquido', `<b class="num">${brl(c.liq)}</b> <span class="s">o que ele(a) recebe</span>`], ...(c.imp ? [['Impostos e encargos', `<span class="num">${brl(c.imp)}</span>`]] : []), ['Bruto (salário + impostos)', `<span class="num">${brl(c.bruto)}</span>`], ...(c.ben ? [['Benefícios', `<span class="num">${brl(c.ben)}</span>`]] : []), ['Custo total para a escola', `<b class="num">${brl(c.total)}</b>`]])}</div>`;
