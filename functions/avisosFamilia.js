@@ -47,9 +47,9 @@ module.exports = (db, enviar) => {
       for (const i of C.itensAluna({ ...d, alunas: d.alunas, pag: d.pags[alid] || {} }, alid, ate)) {
         if (i.pago || !(i.v > 0) || !i.venc) continue;
         const n = dias(hoje, i.venc), nome = primeiro(a.nome);
-        if (n === 3) out.push({ ord: 2, t: `${i.desc} de ${nome} vence em 3 dias (${brl(i.v)}).` });
-        else if (n === 0) out.push({ ord: 1, t: `${i.desc} de ${nome} vence hoje (${brl(i.v)}).` });
-        else if (n < 0 && APOS_VENC.includes(-n) && !(acordo && i.tipo !== 'a')) out.push({ ord: 0, t: `${i.desc} de ${nome} está vencida desde ${dm(i.venc)}.` });
+        if (n === 3) out.push({ ord: 2, t: `${i.desc} de ${nome} vence em 3 dias (${brl(i.v)}).`, c: `${i.desc} de ${nome}: vence em 3 dias` });
+        else if (n === 0) out.push({ ord: 1, t: `${i.desc} de ${nome} vence hoje (${brl(i.v)}).`, c: `${i.desc} de ${nome}: vence hoje` });
+        else if (n < 0 && APOS_VENC.includes(-n) && !(acordo && i.tipo !== 'a')) out.push({ ord: 0, t: `${i.desc} de ${nome} está vencida desde ${dm(i.venc)}.`, c: `${i.desc} de ${nome}: venceu ${dm(i.venc)}` });
       }
     }
     return out;
@@ -75,8 +75,8 @@ module.exports = (db, enviar) => {
       const quem = Object.keys(alunas).filter(id => (x.convidados || []).includes(id) && !((x.part || {})[id] || {}).st);
       if (!quem.length) continue;
       const nomes = quem.map(id => primeiro(alunas[id].nome)).join(' e '), criado = d.criados[xid] || 0;
-      if (criado > agora - DIA) out.push({ ord: 3, t: `Novo evento: ${x.nome || 'evento'}. ${nomes} vai? Responda no app.` });
-      else if (x.prazo === amanha) out.push({ ord: 1, t: `Responda até amanhã: ${x.nome || 'evento'}. ${nomes} vai?` });
+      if (criado > agora - DIA) out.push({ ord: 3, t: `Novo evento: ${x.nome || 'evento'}. ${nomes} vai? Responda no app.`, c: `Novo evento: ${x.nome || 'evento'}` });
+      else if (x.prazo === amanha) out.push({ ord: 1, t: `Responda até amanhã: ${x.nome || 'evento'}. ${nomes} vai?`, c: `Responder até amanhã: ${x.nome || 'evento'}` });
     }
     return out;
   }
@@ -105,11 +105,12 @@ module.exports = (db, enviar) => {
       // pendências do cadastro: 1 vez por semana, até 4 semanas (volta a contar quando tudo fica em dia)
       const md = m.data(), pend = await pendencias(eid, d, alunas, hoje, agora), pp = md.pushPend || null, up = {};
       if (!pend.length) { if (pp) up.pushPend = FieldValue.delete(); }
-      else if (!pp || (pp.n < 4 && dias(pp.ult, hoje) >= 7)) { frases.push({ ord: 4, t: `Falta no cadastro de ${pend.join('; ')}. Resolva pelo app.` }); up.pushPend = { n: (pp ? pp.n : 0) + 1, ult: hoje }; }
+      else if (!pp || (pp.n < 4 && dias(pp.ult, hoje) >= 7)) { frases.push({ ord: 4, t: `Falta no cadastro de ${pend.join('; ')}. Resolva pelo app.`, c: `Falta no cadastro de ${pend.join('; ')}` }); up.pushPend = { n: (pp ? pp.n : 0) + 1, ult: hoje }; }
       if (!frases.length) { if (Object.keys(up).length) await m.ref.update(up); continue; }
       frases.sort((x, y) => x.ord - y.ord);
-      const corpo = frases.length === 1 ? frases[0].t : `${frases[0].t} E mais ${frases.length - 1} aviso${frases.length === 2 ? '' : 's'} no app.`;
-      const titulo = e.nome || 'Turma em Dia', tokens = md.push;
+      // vários assuntos: um por linha (o celular mostra as primeiras e o resto ao abrir o aviso)
+      const corpo = frases.length === 1 ? frases[0].t : frases.map(f => '• ' + f.c).join('\n');
+      const titulo = `${e.nome || 'Turma em Dia'}${frases.length > 1 ? ` · ${frases.length} avisos` : ''}`, tokens = md.push;
       const msg = { notification: { title: titulo, body: corpo }, data: { titulo, corpo, url: './' },
         android: { notification: { sound: 'default' } }, apns: { payload: { aps: { sound: 'default' } } }, webpush: { headers: { TTL: '43200' } } };
       const r = await enviar(tokens, msg), mortos = tokens.filter((tk, i) => !r[i].ok && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(r[i].codigo || ''));
