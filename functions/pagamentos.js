@@ -35,7 +35,7 @@ const idOk = x => typeof x === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(x);
 // só volta para o próprio app (GitHub Pages, domínio próprio cadastrado, ou teste local)
 function voltaOk(u, extras) {
   try { const x = new URL(u); if (x.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(x.hostname)) return true;
-    if (x.protocol !== 'https:') return false; if (/\.github\.io$/.test(x.hostname)) return true;
+    if (x.protocol !== 'https:') return false; if (/\.github\.io$/.test(x.hostname) || ['turmaemdia.com.br', 'www.turmaemdia.com.br'].includes(x.hostname)) return true;
     return (extras || []).some(h => x.hostname === h); } catch (e) { return false; }
 }
 
