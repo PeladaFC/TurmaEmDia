@@ -32,7 +32,7 @@ const original = Module._load;
 Module._load = function (req, ...r) {
   if (req === 'firebase-functions/v2/https') return { onRequest: (o, h) => typeof o === 'function' ? o : h };
   if (req === 'firebase-functions/logger') return { info() { }, warn() { }, error() { } };
-  if (req === 'firebase-functions/v2/firestore') return { onDocumentWritten: (p, h) => h };
+  if (req === 'firebase-functions/v2/firestore') return { onDocumentWritten: (p, h) => h, onDocumentCreated: (p, h) => h };
   if (req === 'firebase-functions/v2/scheduler') return { onSchedule: (o, h) => h };
   if (req === 'firebase-admin/firestore') return { FieldValue: { delete: () => ({ __fv: 'del' }), arrayUnion: (...x) => ({ __fv: 'union', x }), arrayRemove: (...x) => ({ __fv: 'remove', x }) } };
   // token "ok:uid" ou "ok:uid:v" (e-mail confirmado)
@@ -526,9 +526,18 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     v = await vai('2027-02-11'); assert.match(v[0].corpo, /Responda até amanhã: Ônibus: Alice vai participar\?/);
     r = resp(); await A.respostaPush(req({ r: v[0].resp, st: 'nao' }), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body)); assert.strictEqual(S.get('escolas/f1/extras/x2').part.a1.st, 'nao');
     Date.now = realNow2;
+    // evento e taxa novos: aviso na hora em que a escola cria (não espera o dia seguinte)
+    const cria = async (xid, x) => { const n = ENV.length; S.set(`escolas/f1/extras/${xid}`, x); await AF.avisoNovoExtra({ params: { eid: 'f1', xid }, data: { data: () => x } }); return ENV.slice(n).map(e => e.msg.data); };
+    v = await cria('x3', { tipo: 'competicao', nome: 'Copa Nordeste', data: '2027-03-13', prazo: '2027-03-01', convidados: ['a1'], semCobranca: true });
+    assert.strictEqual(v.length, 1); assert.match(v[0].corpo, /^Nova competição: Copa Nordeste \(13\/03\)\. Alice vai\?/); assert.ok(v[0].resp);
+    v = await cria('x4', { tipo: 'uniforme', nome: 'Camisa', v: 90, venc: '2027-03-20', alunas: ['a1'] });
+    assert.strictEqual(v.length, 1); assert.match(v[0].corpo, /^Nova cobrança: Camisa de Alice, R\$ 90,00, vence 20\/03\. Toque para pagar\./); assert.match(v[0].url, /pagar=f1~x%3Ax4%3Aa1/);
+    assert.deepStrictEqual(await cria('x5', { tipo: 'taxa', nome: 'Matrícula', matricula: true, v: 50, alunas: ['a1'] }), []);   // matrícula: não avisa
+    assert.deepStrictEqual(await cria('x6', { tipo: 'uniforme', nome: 'Outra', v: 10, alunas: ['zz'] }), []);                    // não é desta família
     // a escola desliga
     S.set('escolas/f1/config/geral', { vencDia: 10, pushFamilias: false });
     assert.deepStrictEqual(await vai('2027-03-07'), []);
+    assert.deepStrictEqual(await cria('x7', { tipo: 'uniforme', nome: 'Meia', v: 20, alunas: ['a1'] }), []);
   });
   await t('responsável sem código: entra sozinho pelo e-mail confirmado; pelo CPF/WhatsApp vira pedido que a escola libera; cada escola separada', async () => {
     const B = bancoFalso(), S = B.store, ID = require('./identificar')(B);

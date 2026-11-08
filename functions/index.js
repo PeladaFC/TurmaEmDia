@@ -52,6 +52,7 @@ exports.espelharTurma = AV.espelharTurma;
 exports.avisoChamada = AV.avisoChamada;
 // avisos automáticos no celular das famílias (rodam na rotina diária)
 const AF = require('./avisosFamilia')(db);
+exports.avisoNovoExtra = AF.avisoNovoExtra;
 
 /* Nota fiscal da escola e dos professores para as famílias (cada um com o próprio CNPJ e certificado) */
 const NF = require('./notaFamilia')(db, P.interno);

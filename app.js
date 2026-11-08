@@ -7034,7 +7034,12 @@ function sheetAjustes() {
     </section>` : ''}
     <section><h2>Avisos no celular das famílias</h2>
       <label class="check"><input type="checkbox" id="jpushf" ${c.pushFamilias === false ? '' : 'checked'}> Avisar as famílias automaticamente</label>
-      <div class="note">Às 10h, no máximo 1 aviso por dia. Mensalidades e taxas: 3 dias antes, no dia e depois de vencidas (no dia seguinte e mais 3 vezes, de 7 em 7 dias). Documentos e termo que faltam: 1 vez por semana, por até 4 semanas. Eventos: no dia seguinte ao que você cria e 1 dia antes do prazo, para quem não respondeu. Só recebe quem ativou os avisos no app.</div>
+      <ul class="note" style="margin:6px 0 0;padding-left:18px;display:grid;gap:4px">
+        <li><b>Evento ou taxa nova:</b> na hora em que você cria.</li>
+        <li><b>Vencimentos:</b> 3 dias antes, no dia e, se atrasar, mais 4 lembretes (1 por semana).</li>
+        <li><b>Prazo de resposta:</b> 1 dia antes, para quem ainda não respondeu.</li>
+        <li><b>Documentos e termo:</b> 1 vez por semana, por até 4 semanas.</li>
+      </ul><div class="note">Cada assunto chega num aviso separado. Só recebe quem ativou os avisos no app.</div>
     </section>
     <section><h2>Multa e juros por atraso</h2>
       <label class="check"><input type="checkbox" id="jatr" ${(c.atraso || {}).ativo ? 'checked' : ''}> Cobrar multa e juros nas cobranças vencidas</label>

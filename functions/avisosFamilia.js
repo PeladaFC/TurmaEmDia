@@ -5,7 +5,8 @@
      no dia seguinte e mais 3 vezes, de 7 em 7 dias (dias 1, 8, 15 e 22 depois do vencimento). Depois disso, para.
      Quem tem acordo ativo não recebe aviso de atraso das cobranças antigas (só das parcelas do acordo).
    - Pendências do cadastro (termo, atestado, documentos, contrato): 1 vez por semana, até 4 semanas.
-   - Eventos e taxas divididas: no dia seguinte ao que a escola criou e 1 dia antes do prazo, para quem ainda não respondeu.
+   - Eventos e taxas divididas: na hora em que a escola cria (novoExtra) e 1 dia antes do prazo, para quem ainda não respondeu.
+   - Taxa nova (uniforme, festa...): na hora em que a escola cria, um aviso que abre o pagamento.
    A escola desliga tudo em Ajustes (config/geral.pushFamilias = false).
    O aparelho da família fica em escolas/{eid}/membros/{uid}.push (o servidor grava, pela ação familiaPush). */
 'use strict';
@@ -73,15 +74,15 @@ module.exports = (db, enviar) => {
     return out;
   }
   // perguntas (evento, competição, taxa dividida): um aviso por aluno, com "Vai" / "Não vai" no próprio aviso
-  async function avisosPerguntas(eid, uid, d, alunas, hoje, agora) {
+  async function avisosPerguntas(eid, uid, d, alunas, hoje, agora, soXid) {
     const out = [], amanha = somaDias(hoje, 1), dataR = ms => new Date(ms - 3 * 36e5).toISOString().slice(0, 10);
     for (const [xid, x] of Object.entries(d.extras)) {
-      if (!x) continue;
+      if (!x || (soXid && xid !== soXid)) continue;
       const ev = x.tipo === 'evento' || x.tipo === 'competicao', rt = x.tipo === 'taxa' && !!x.rateio;
       if (!ev && !rt) continue;
       if (ev) { if (C.prazoPassou(x, agora)) continue; const fim = x.dataFim && x.dataFim >= x.data ? x.dataFim : x.data; if (fim && fim < hoje) continue; }
       if (rt && C.rateioFechado(x, agora)) continue;
-      const novo = (d.criados[xid] || 0) > agora - DIA, vespera = ev ? x.prazo === amanha : !!(x.rateio.prazoEm && dataR(x.rateio.prazoEm) === amanha);
+      const novo = !!soXid, vespera = ev ? x.prazo === amanha : !!(x.rateio.prazoEm && dataR(x.rateio.prazoEm) === amanha);
       if (!novo && !vespera) continue;
       // botões só onde a família responde pelo app (no evento com inscrição feita fora, ela confirma no app)
       const botoes = rt || x.semCobranca || x.cobranca === 'app';
@@ -94,6 +95,50 @@ module.exports = (db, enviar) => {
       }
     }
     return out;
+  }
+
+  // manda cada aviso num push separado; devolve quantos saíram e os aparelhos que não existem mais
+  async function mandar(tokens, titulo, avisos) {
+    const mortos = new Set(); let enviados = 0;
+    for (const v of avisos) {
+      tokens = tokens.filter(tk => !mortos.has(tk)); if (!tokens.length) break;
+      const data = { titulo, corpo: v.corpo, url: v.url, ...(v.acoes ? { acoes: JSON.stringify(v.acoes) } : {}), ...(v.resp ? { resp: v.resp, api: API() } : {}) };
+      const msg = { notification: { title: titulo, body: v.corpo }, data,
+        android: { notification: { sound: 'default' } }, apns: { payload: { aps: { sound: 'default' } } }, webpush: { headers: { TTL: '43200' } } };
+      const r = await enviar(tokens, msg);
+      tokens.forEach((tk, i) => { if (!r[i].ok && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(r[i].codigo || '')) mortos.add(tk); });
+      if (r.some(x => x.ok)) enviados++;
+    }
+    return { enviados, mortos: [...mortos] };
+  }
+
+  // a escola acabou de criar um evento, uma competição ou uma taxa: avisa na hora as famílias de quem participa
+  async function novoExtra(eid, xid, x, agora = Date.now()) {
+    if (!x || x.matricula) return 0;
+    const cfg = (await ler(`escolas/${eid}/config/geral`)) || {};
+    if (cfg.pushFamilias === false) return 0;
+    const ms = (await db.collection(`escolas/${eid}/membros`).where('push', '!=', null).get()).docs.filter(m => (m.data().push || []).length);
+    if (!ms.length) return 0;
+    const e = (await ler(`escolas/${eid}`)) || {}, titulo = e.nome || 'Turma em Dia', hoje = new Date(agora - 3 * 36e5).toISOString().slice(0, 10);
+    const d = { cfg, turmas: await col(`escolas/${eid}/turmas`), grupos: await col(`escolas/${eid}/grupos`), alunas: await col(`escolas/${eid}/alunas`), extras: { [xid]: x } };
+    const ev = x.tipo === 'evento' || x.tipo === 'competicao', rt = x.tipo === 'taxa' && !!x.rateio;
+    const alvo = ev || rt ? new Set((x.convidados || []).filter(id => !((x.part || {})[id] || {}).st)) : C.alvoExtra(x, d.alunas, d.grupos);
+    if (!alvo.size) return 0;
+    let enviados = 0;
+    for (const m of ms) {
+      const rids = new Set((await db.collection(`escolas/${eid}/membros/${m.id}/vinculos`).get()).docs.map(v => v.id));
+      const alunas = Object.fromEntries([...alvo].filter(id => d.alunas[id] && !d.alunas[id].anonimizadoEm && rids.has(d.alunas[id].responsavelId)).map(id => [id, d.alunas[id]]));
+      if (!Object.keys(alunas).length) continue;
+      let avisos = [];
+      if (ev || rt) avisos = await avisosPerguntas(eid, m.id, d, alunas, hoje, agora, xid);
+      else for (const [alid, a] of Object.entries(alunas)) {
+        const v = C.valorExtra(x, alid); if (!(v > 0)) continue;
+        avisos.push({ corpo: `Nova cobrança: ${x.nome || 'taxa'} de ${primeiro(a.nome)}, ${brl(v)}${x.venc ? `, vence ${dm(x.venc)}` : ''}. Toque para pagar.`, url: `./?pagar=${eid}~${encodeURIComponent(`x:${xid}:${alid}`)}`, acoes: [{ a: 'pagar', t: 'Pagar com Pix' }] });
+      }
+      const r = await mandar(m.data().push, titulo, avisos); enviados += r.enviados;
+      if (r.mortos.length) await m.ref.update({ push: FieldValue.arrayRemove(...r.mortos) });
+    }
+    return enviados;
   }
 
   async function escola(eid, e, hoje, agora) {
@@ -121,18 +166,8 @@ module.exports = (db, enviar) => {
       const md = m.data(), pend = await pendencias(eid, d, alunas, hoje, agora), pp = md.pushPend || null, up = {};
       if (!pend.length) { if (pp) up.pushPend = FieldValue.delete(); }
       else if (!pp || (pp.n < 4 && dias(pp.ult, hoje) >= 7)) { avisos.push({ corpo: `Falta no cadastro de ${pend.join('; ')}. Toque para resolver.`, url: './?filhos=1' }); up.pushPend = { n: (pp ? pp.n : 0) + 1, ult: hoje }; }
-      let tokens = md.push;
-      const mortos = new Set();
-      for (const v of avisos) {
-        tokens = tokens.filter(tk => !mortos.has(tk)); if (!tokens.length) break;
-        const data = { titulo, corpo: v.corpo, url: v.url, ...(v.acoes ? { acoes: JSON.stringify(v.acoes) } : {}), ...(v.resp ? { resp: v.resp, api: API() } : {}) };
-        const msg = { notification: { title: titulo, body: v.corpo }, data,
-          android: { notification: { sound: 'default' } }, apns: { payload: { aps: { sound: 'default' } } }, webpush: { headers: { TTL: '43200' } } };
-        const r = await enviar(tokens, msg);
-        tokens.forEach((tk, i) => { if (!r[i].ok && /registration-token-not-registered|invalid-registration-token|invalid-argument/.test(r[i].codigo || '')) mortos.add(tk); });
-        if (r.some(x => x.ok)) enviados++;
-      }
-      await m.ref.update({ ...up, pushDia: hoje, ...(mortos.size ? { push: FieldValue.arrayRemove(...mortos) } : {}) });
+      const r = await mandar(md.push, titulo, avisos); enviados += r.enviados;
+      await m.ref.update({ ...up, pushDia: hoje, ...(r.mortos.length ? { push: FieldValue.arrayRemove(...r.mortos) } : {}) });
     }
     return enviados;
   }
@@ -144,5 +179,8 @@ module.exports = (db, enviar) => {
     }
     return { enviados: total };
   }
-  return { interno: { diario, avisosPagamento, avisosPerguntas, atestadoFalta } };
+  const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+  const avisoNovoExtra = onDocumentCreated('escolas/{eid}/extras/{xid}', ev =>
+    novoExtra(ev.params.eid, ev.params.xid, ev.data && ev.data.data()).catch(e => require('firebase-functions/logger').error('aviso novo extra', e.message)));
+  return { avisoNovoExtra, interno: { diario, novoExtra, avisosPagamento, avisosPerguntas, atestadoFalta } };
 };
