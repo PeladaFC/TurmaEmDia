@@ -1348,8 +1348,7 @@ function bolhaAba(k) {
   if (k === 'feventos') { try { const h = hoje(), meus = Object.keys(S.alunas);
     for (const [, x] of eventosAtivos()) { if (fimDe(x) < h) continue; const cv = convidadosDe(x).filter(id => meus.includes(id));
       if (!C.prazoPassou(x)) n += cv.filter(id => !partDe(x, id)).length;
-      if (modoInsc(x) === 'familia') n += cv.filter(id => partDe(x, id) === 'interesse').length;
-      n += faltaTamEv(x, cv).length; } } catch (e) { return ''; } }
+      n += new Set([...faltaInscEv(x, cv), ...faltaTamEv(x, cv)]).size; } } catch (e) { return ''; } }
   else try { for (const id of Object.keys(S.alunas || {})) n += itensDe(id).filter(i => !i.pago).length;
     for (const x of Object.values(S.extras || {})) if (x && x.tipo === 'taxa' && x.rateio && !C.rateioFechado(x)) n += (x.convidados || []).filter(id => S.alunas[id] && !rtSt(x, id)).length; } catch (e) { return ''; }
   return n ? `<span class="tab-bolha num" aria-label="${n} pendente${n > 1 ? 's' : ''}">${n > 99 ? '99+' : n}</span>` : '';
@@ -2810,18 +2809,21 @@ function respFamilia(xid, x, id) {
   return `<div class="ev-resp"><span class="grow"><b>${nm}</b><span class="s">${sub}</span>${extra}</span>${direita}</div>${tam}`;
 }
 // família: disse que vai, mas a inscrição é com quem organiza e ainda não confirmou que fez
-function avisoInscricaoPendente() {
-  const h = hoje(), meus = Object.keys(S.alunas);
-  return eventosAtivos().filter(([, x]) => fimDe(x) >= h && modoInsc(x) === 'familia').map(([xid, x]) => ({ xid, x, ids: convidadosDe(x).filter(id => meus.includes(id) && partDe(x, id) === 'interesse') })).filter(e => e.ids.length)
-    .map(({ xid, x, ids }) => `<button class="faixa-resumo alerta" data-insc="${esc(xid)}"><span class="grow"><b>Inscrição pendente: ${esc(ids.map(id => primeiro(S.alunas[id].nome)).join(' e '))} no ${esc(x.nome)}</b><span class="s">Faça a inscrição com ${esc(x.organizador || 'quem organiza')} e depois toque em "Já fiz a inscrição".</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
-}
-// evento que pede tamanho do uniforme: quem vai e ainda não escolheu fica pendente até escolher
+// quem disse que vai e ainda tem coisa a fazer no evento: fazer a inscrição com quem organiza e/ou escolher o tamanho.
+// Um aviso só por evento, dizendo o que falta; resolvida uma parte, o aviso passa a falar só da outra.
 const faltaTamEv = (x, ids) => x && x.tamanhos ? ids.filter(id => ['interesse', 'inscrito'].includes(partDe(x, id)) && !tamEsc(x, id)) : [];
-function avisoTamEventoFam() {
-  const h = hoje(), meus = Object.keys(S.alunas);
-  return eventosAtivos().filter(([, x]) => fimDe(x) >= h).map(([xid, x]) => ({ xid, x, ids: faltaTamEv(x, convidadosDe(x).filter(id => meus.includes(id))) })).filter(e => e.ids.length)
-    .map(({ xid, x, ids }) => `<button class="faixa-resumo alerta" data-abrev="${esc(xid)}"><span class="grow"><b>${esc(x.nome)}: falta o tamanho do uniforme</b><span class="s">${esc(ids.map(id => primeiro(S.alunas[id].nome)).join(' e '))} vai. Toque para escolher o tamanho.</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
+const faltaInscEv = (x, ids) => modoInsc(x) === 'familia' ? ids.filter(id => partDe(x, id) === 'interesse') : [];
+function avisoInscricaoPendente() {
+  const h = hoje(), meus = Object.keys(S.alunas), nomes = ids => ids.map(id => primeiro(S.alunas[id].nome)).join(' e ');
+  return eventosAtivos().filter(([, x]) => fimDe(x) >= h).map(([xid, x]) => { const cv = convidadosDe(x).filter(id => meus.includes(id)); return { xid, x, insc: faltaInscEv(x, cv), tam: faltaTamEv(x, cv) }; })
+    .filter(e => e.insc.length || e.tam.length).map(({ xid, x, insc, tam }) => {
+      const quem = nomes([...new Set([...insc, ...tam])]), org = x.organizador || 'quem organiza';
+      const tit = insc.length && tam.length ? `${esc(x.nome)}: falta inscrição e tamanho` : insc.length ? `Confirme a inscrição: ${esc(nomes(insc))} no ${esc(x.nome)}` : `${esc(x.nome)}: falta o tamanho do uniforme`;
+      const sub = insc.length && tam.length ? `${esc(quem)} vai. Falta confirmar a inscrição (com ${esc(org)}) e escolher o tamanho do uniforme.`
+        : insc.length ? `Faça a inscrição com ${esc(org)} e depois toque em "Já fiz a inscrição".` : `${esc(quem)} vai. Toque para escolher o tamanho.`;
+      return `<button class="faixa-resumo alerta" data-insc="${esc(xid)}"><span class="grow"><b>${tit}</b><span class="s">${sub}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`; }).join('');
 }
+function avisoTamEventoFam() { return ''; }
 function avisoEventosFamilia() {
   const h = hoje(), meus = Object.keys(S.alunas);
   return eventosAtivos().filter(([, x]) => fimDe(x) >= h && !C.prazoPassou(x)).map(([xid, x]) => ({ xid, x, ids: convidadosDe(x).filter(id => meus.includes(id) && !partDe(x, id)) })).filter(e => e.ids.length)
