@@ -4969,7 +4969,7 @@ function sheetVerTermo(alid, fila) {
   const a = S.alunas[alid] || {}, x = termoDe(alid), t = x.t, adm = !!S.admin; if (!t) return;
   const alts = t.alteracoes || [], pend = x.pend || [], marcar = new Set(adm ? pend.flatMap(p => itensMudou(p.mudou).map(([k]) => k)) : []);
   const ult = alts.filter(m => (m.mudou || []).length).pop();
-  sheet(`${fila ? `<div class="label">Termos para ver · ${fila.length ? `faltam ${fila.length} depois deste` : 'último'}</div>` : ''}<h3>Termo de ${esc(primeiro(a.nome))}</h3>
+  sheet(`${fila ? `<div class="label">Termos para ver · ${fila.length ? `faltam ${fila.length} depois deste` : 'último'}</div>` : ''}<div class="headrow"><h3 style="margin:0">Termo de ${esc(primeiro(a.nome))}</h3>${adm || S.prof ? '<button type="button" class="btn ghost btn-mini" id="vtperfil">Ver perfil</button>' : ''}</div>
     <div class="sub">${alts.length ? 'Última versão assinada' : 'Assinado'} por ${esc(t.assinatura.nome)} em ${horaCurta(t.em)}${x.st === 'vencido' ? ' · <b style="color:var(--out)">vencido, ' + (adm ? 'pedir renovação' : 'precisa renovar') + '</b>' : ''}</div>
     ${adm && pend.length ? `<div class="mud-alerta"><b>O termo mudou</b>
       ${pend.map(p => `<div class="mud-item"><span class="sub">${p.tipo === 'renovar' ? 'Renovado' : 'Mudado'} por ${esc(p.assinatura.nome)} em ${horaCurta(p.em)}</span>${listaMudou(p.mudou)}</div>`).join('')}
@@ -4986,6 +4986,8 @@ function sheetVerTermo(alid, fila) {
       <span class="s" style="text-align:center;display:block">Fechar não marca como visto. "Visto" guarda que a escola viu${fila && fila.length ? ' e já abre o próximo' : ''}.</span>` : '<button class="btn ghost" data-fechar>Fechar</button>') : `<div class="note">Se algo mudou na saúde de ${esc(primeiro(a.nome))} (alergia, remédio, contato de emergência) ou se quiser mudar a autorização de imagem, informe aqui. A escola é avisada e a versão anterior fica guardada.</div>
       <div class="actions"><button type="button" class="btn ghost" data-fechar>Fechar</button><button type="button" class="btn" id="vtmudar">${x.st === 'vencido' ? 'Renovar termo' : 'Informar mudança'}</button></div>`}`, () => {
     if (adm) ligarAtestadoAdm(alid, () => sheetVerTermo(alid));
+    // ver o perfil do aluno e, ao voltar, cair de novo neste termo
+    if ($('vtperfil')) $('vtperfil').onclick = () => abrirDe(() => sheetVerTermo(alid, fila), () => sheetPerfilAluno(alid, () => sheetVerTermo(alid, fila)));
     if ($('vtmudar')) $('vtmudar').onclick = () => sheetTermo(alid);
     // Visto (dois toques): guarda que a escola viu (e dá ciente nas mudanças); na fila, abre o próximo
     if ($('vtvisto')) $('vtvisto').onclick = () => duploToque($('vtvisto'), async () => {
