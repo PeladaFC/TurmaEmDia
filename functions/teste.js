@@ -469,6 +469,11 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     await AV.interno.avisar(ms); assert.strictEqual(ENV.length, 1); // chamada já feita: não avisa
     await AV.interno.avisar(Date.parse('2026-11-03T20:00:00Z')); assert.strictEqual(ENV.length, 1); // terça não tem aula
     await AV.interno.espelhar('e9', 't1', { nome: 'Iniciação', chamadaObrig: true, hora: '17:00', dias: [1], chamada: false }); assert.ok(!S.has('agendaChamada/e9_t1'));
+    // turma com dois horários: um registro para cada; tirar um horário apaga o registro dele
+    await AV.interno.espelhar('e9', 't1', { nome: 'Iniciação', chamadaObrig: true, horarios: [{ dias: [1, 3], ini: '14:00', fim: '15:00' }, { dias: [2, 4], ini: '18:00', fim: '19:00' }] });
+    assert.strictEqual(S.get('agendaChamada/e9_t1').hora, '14:00'); assert.deepStrictEqual(S.get('agendaChamada/e9_t1_2').dias, [2, 4]);
+    await AV.interno.espelhar('e9', 't1', { nome: 'Iniciação', chamadaObrig: true, horarios: [{ dias: [1], ini: '14:00' }] }); assert.ok(!S.has('agendaChamada/e9_t1_2'));
+    await AV.interno.espelhar('e9', 't1', null);
   });
   await t('avisos no celular das famílias: cada cobrança sozinha (abre o pagamento), perguntas com "Vai"/"Não vai" que respondem sem abrir o app, pendências semanais até 4', async () => {
     const B = bancoFalso(), ENV = [], AF = require('./avisosFamilia')(B, async (tokens, msg) => { ENV.push({ tokens, msg }); return tokens.map(tk => ({ ok: tk !== 'velho', codigo: tk === 'velho' ? 'messaging/registration-token-not-registered' : null })); });

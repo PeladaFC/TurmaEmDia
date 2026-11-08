@@ -427,12 +427,14 @@ function telaLogin(modo = 'entrar') {
       <section class="entrar-box sobe" style="--d:150ms"><h2>Entrar como</h2>
         <button class="entrar-op" id="eadm"><span class="vant-ic forte">${ICO.painel || ICO.cobr}</span><span class="grow"><b>Administração</b><span class="s">Pendências, alunos, turmas e financeiro da escola</span></span><span aria-hidden="true" class="seta">›</span></button>
         <button class="entrar-op" id="efam"><span class="vant-ic">${ICO.filhas}</span><span class="grow"><b>Responsável</b><span class="s">Ver e pagar as cobranças dos filhos</span></span><span aria-hidden="true" class="seta">›</span></button>
+        <button class="entrar-op" id="enovo"><span class="vant-ic">${ICO.escola || ICO.filhas}</span><span class="grow"><b>Pessoa nova</b><span class="s">Ver o primeiro acesso (sem escola)</span></span><span aria-hidden="true" class="seta">›</span></button>
       </section>
       <div class="note sobe" style="text-align:center;--d:350ms">Modo de teste, com dados de exemplo. O login com senha fica para depois.</div>
       ${linksLegais()}
     </div>`;
     $('eadm').onclick = () => B.login('admin@teste.com', '123456');
     $('efam').onclick = () => B.login('familia@teste.com', '123456');
+    $('enovo').onclick = () => B.cadastrar('Felipe Luiz', `novo${Date.now() % 100000}@teste.com`, '123456');
     return;
   }
   RAIZ().innerHTML = `<div class="login entrada">
@@ -501,6 +503,7 @@ let VOLTA_ESCOLA = null; // escola de onde veio para "Minhas escolas": a seta vo
 function telaInicio() {
   if (S && S.eid) VOLTA_ESCOLA = S.eid;
   pararOuvintes(); S = null;
+  if (!Object.keys(MINHAS).length && !CONVITES.length && !PROF_PEND.length) return telaNovo();
   const lista = Object.entries(MINHAS), volta = VOLTA_ESCOLA && MINHAS[VOLTA_ESCOLA] ? VOLTA_ESCOLA : null;
   RAIZ().innerHTML = `<div class="wrap" style="padding-top:20px">
     <div class="brand"><span class="marca-mini">${MARCA_SVG}</span><h1><small>Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}</small>${esc(NOME_APP())}</h1><div class="acts">${volta ? `<button class="icon-btn" id="ivolta" aria-label="Voltar para ${esc(MINHAS[volta].nome || 'a escola')}">${ICO.voltar}</button>` : ''}</div></div>
@@ -534,23 +537,235 @@ function telaInicio() {
     try { await responderConvite(c, !!b.dataset.aceitaConv); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
   if ($('ivolta')) $('ivolta').onclick = () => abrirEscola(volta);
   $('isair').onclick = () => confirmar('Sair da conta?', 'Para entrar de novo, você vai precisar do seu e-mail e senha (ou da conta Google).', 'Sair', () => { VOLTA_ESCOLA = null; B.sair(); });
-  $('icriar').onclick = () => sheetCriarEscola();
+  $('icriar').onclick = () => telaCriarEscola(1);
   $('ientrar').onclick = async () => {
-    const cod = $('icod').value.trim().toUpperCase(), err = m => $('ierr').textContent = m;
-    if (!/^[A-Z0-9]{6}$/.test(cod)) return err('O código tem 6 letras e números. Confira na mensagem da escola.');
+    const err = m => $('ierr').textContent = m;
     $('ientrar').disabled = true;
-    try {
-      const c = await B.get('codigos/' + cod);
-      if (!c || !c.rid) { $('ientrar').disabled = false; return err('Código não encontrado. Confira com a escola.'); }
-      const jaMembro = await B.get(`escolas/${c.eid}/membros/${EU.uid}`).catch(() => null);
-      if (!jaMembro) await B.set(`escolas/${c.eid}/membros/${EU.uid}`, { codigo: cod, nome: EU.nome || '', email: EU.email || '', em: Date.now() });
-      await B.set(`escolas/${c.eid}/membros/${EU.uid}/vinculos/${c.rid}`, { codigo: cod, em: Date.now() });
-      const [esc_, resp] = await Promise.all([B.get('escolas/' + c.eid), B.get(`escolas/${c.eid}/responsaveis/${c.rid}`)]);
-      await B.set('users/' + EU.uid, { escolas: { [c.eid]: { nome: (esc_ || {}).nome || 'Escola', papel: 'familia', familia: (resp || {}).nome || '' } } }, { merge: true });
-      MINHAS[c.eid] = { nome: (esc_ || {}).nome, papel: 'familia', familia: (resp || {}).nome };
-      abrirEscola(c.eid);
+    try { if (!(await entrarComCodigo($('icod').value, err))) $('ientrar').disabled = false;
     } catch (e) { err(msgErro(e)); $('ientrar').disabled = false; }
   };
+}
+// código do responsável (a escola manda): liga a conta aos filhos daquela escola. Filhos em outra escola: outro código.
+async function entrarComCodigo(valor, err) {
+  const cod = String(valor || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(cod)) { err('O código tem 6 letras e números. Confira na mensagem da escola.'); return false; }
+  const c = await B.get('codigos/' + cod);
+  if (!c || !c.rid) { err('Código não encontrado. Confira com a escola.'); return false; }
+  const jaMembro = await B.get(`escolas/${c.eid}/membros/${EU.uid}`).catch(() => null);
+  if (!jaMembro) await B.set(`escolas/${c.eid}/membros/${EU.uid}`, { codigo: cod, nome: EU.nome || '', email: EU.email || '', em: Date.now() });
+  await B.set(`escolas/${c.eid}/membros/${EU.uid}/vinculos/${c.rid}`, { codigo: cod, em: Date.now() });
+  const [esc_, resp] = await Promise.all([B.get('escolas/' + c.eid), B.get(`escolas/${c.eid}/responsaveis/${c.rid}`)]);
+  await B.set('users/' + EU.uid, { escolas: { [c.eid]: { nome: (esc_ || {}).nome || 'Escola', papel: 'familia', familia: (resp || {}).nome || '' } } }, { merge: true });
+  MINHAS[c.eid] = { nome: (esc_ || {}).nome, papel: 'familia', familia: (resp || {}).nome };
+  abrirEscola(c.eid); return true;
+}
+
+/* ================= Quem chega pela primeira vez =================
+   Todas estas telas têm a mesma estrutura (marca ou passos · título · conteúdo · botão · links),
+   para o título, o botão e os links ficarem sempre no mesmo lugar. */
+let USR = {}; // users/{uid}: perfil (responsável), perfilProf (professor)
+function telaOb({ passo, rotulo, titulo, sub, corpo, botao, dois, links }) {
+  const topo = passo ? `<div class="ob-pp" aria-label="Passo ${passo} de 4">${[1, 2, 3, 4].map(i => `<i class="${i <= passo ? 'on' : ''}"></i>`).join('')}</div>`
+    : `<span class="marca-mini">${MARCA_SVG}</span><b>${esc(NOME_APP())}</b>`;
+  RAIZ().innerHTML = `<div class="ob"><div class="ob-topo">${topo}</div>
+    <div class="ob-tit">${rotulo ? `<div class="label">${rotulo}</div>` : ''}<h2>${titulo}</h2>${sub ? `<span class="sub">${sub}</span>` : ''}</div>
+    <div class="ob-corpo">${corpo || ''}</div>
+    <div class="ob-pe">${dois ? `<div class="dois">${dois}${botao}</div>` : botao}<div class="ob-links">${links || ''}</div></div></div>`;
+  window.scrollTo(0, 0);
+}
+const linkSair = '<button type="button" id="obsair">Sair da conta</button>';
+const ligarSair = () => { if ($('obsair')) $('obsair').onclick = () => confirmar('Sair da conta?', 'Para entrar de novo, você vai precisar do seu e-mail e senha (ou da conta Google).', 'Sair', () => { VOLTA_ESCOLA = null; B.sair(); }); };
+// procura os filhos pelo cadastro (e-mail confirmado entra sozinho; CPF/WhatsApp viram pedido para a escola)
+async function identificarFamilia(dados) {
+  if (MOCK) { if (dados) { USR.perfil = { ...dados, email: EU.email, em: Date.now() }; await B.set('users/' + EU.uid, { perfil: USR.perfil }, { merge: true }); } return { escolas: [], pedidos: 0 }; }
+  const r = await servidor('familiaIdentificar', dados || {});
+  if (dados) USR.perfil = { ...dados, email: EU.email };
+  for (const e of r.escolas || []) MINHAS[e.eid] = { nome: e.nome, papel: 'familia', familia: e.familia };
+  return r;
+}
+function telaNovo() {
+  if (USR.perfilProf) return telaProfEnviado();
+  if (USR.perfil) return telaCadastroFeito();
+  const cod = `<div class="field"><label for="ncod">Código do responsável <span class="sub">(a escola envia)</span></label><input id="ncod" class="cod" maxlength="6" autocapitalize="characters" placeholder="K7Q2MX"></div>`;
+  telaOb({ rotulo: `Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}`, titulo: 'Novo aqui?',
+    sub: 'Faça seu cadastro. Use o código que a escola enviou ou aguarde: em breve você será identificado como responsável.',
+    corpo: `<div class="field"><label for="nnome">Nome completo</label><input id="nnome" maxlength="80" autocomplete="name" value="${esc(EU.nome || '')}"></div>
+      <div class="two"><div class="field"><label for="ntel">WhatsApp</label><input id="ntel" inputmode="tel" autocomplete="tel" placeholder="(81) 9 9999-9999"></div>
+      <div class="field"><label for="ncpf">CPF</label><input id="ncpf" inputmode="numeric" placeholder="000.000.000-00"></div></div>
+      <div class="field"><label>E-mail</label><input class="ro" value="${esc(EU.email || '')}" readonly tabindex="-1"></div>
+      ${cod}<div class="err" id="nerr" role="alert"></div>`,
+    botao: '<button class="btn" id="nok">Continuar</button>',
+    links: '<button type="button" id="ncriar">Criar escola</button><button type="button" id="nprof">Professor</button>' });
+  $('ncriar').onclick = () => telaCriarEscola(1);
+  $('nprof').onclick = () => telaProfCadastro();
+  $('nok').onclick = async () => {
+    const err = m => $('nerr').textContent = m, nome = $('nnome').value.trim(), tel = $('ntel').value.trim(), cpf = $('ncpf').value.trim();
+    if (!nome) return err('Digite seu nome completo.');
+    if (C.soDigitos(tel).length < 10) return err('Digite seu WhatsApp com o DDD.');
+    if (cpf && !C.cpfValido(cpf)) return err('Esse CPF não confere. Veja se algum número foi digitado errado.');
+    $('nok').disabled = true;
+    try {
+      const r = await identificarFamilia({ nome, telefone: tel, cpf });
+      if ($('ncod').value.trim()) { if (await entrarComCodigo($('ncod').value, err)) return; $('nok').disabled = false; return; }
+      const ks = Object.keys(MINHAS); if (ks.length) { aviso('Achamos seus filhos!'); return abrirEscola(ks[0]); }
+      telaCadastroFeito(r.pedidos);
+    } catch (e) { err(msgErro(e)); $('nok').disabled = false; }
+  };
+}
+function telaCadastroFeito(pedidos) {
+  telaOb({ rotulo: `Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}`, titulo: 'Cadastro feito!',
+    sub: pedidos ? 'A escola vai confirmar que você é o responsável. Assim que ela liberar, seus filhos aparecem aqui.' : 'Quando a escola cadastrar seu e-mail ou CPF, seus filhos aparecem aqui sozinhos. Filhos em outra escola? Use o código dela.',
+    corpo: `<div class="ob-icone">⏳</div><div class="field"><label for="ncod">Código do responsável <span class="sub">(a escola envia)</span></label><input id="ncod" class="cod" maxlength="6" autocapitalize="characters" placeholder="K7Q2MX"></div><div class="err" id="nerr" role="alert"></div>`,
+    botao: '<button class="btn" id="nok">Entrar com o código</button>', links: linkSair });
+  ligarSair();
+  $('nok').onclick = async () => { $('nok').disabled = true; try { if (!(await entrarComCodigo($('ncod').value, m => $('nerr').textContent = m))) $('nok').disabled = false; } catch (e) { $('nerr').textContent = msgErro(e); $('nok').disabled = false; } };
+}
+// professor(a): cadastro completo; a escola libera o acesso cadastrando o e-mail dele(a)
+function telaProfCadastro() {
+  const p = USR.perfilProf || {};
+  telaOb({ rotulo: 'Professor(a)', titulo: 'Seu cadastro', sub: 'A escola usa estes dados para liberar seu acesso.',
+    corpo: `<div class="field"><label for="qnome">Nome completo</label><input id="qnome" maxlength="80" autocomplete="name" value="${esc(p.nome || EU.nome || '')}"></div>
+      <div class="two"><div class="field"><label for="qtel">WhatsApp</label><input id="qtel" inputmode="tel" autocomplete="tel" placeholder="(81) 9 9999-9999" value="${esc(p.telefone || '')}"></div>
+      <div class="field"><label for="qnasc">Nascimento</label><input id="qnasc" type="date" value="${esc(p.nascimento || '')}"></div></div>
+      <div class="two"><div class="field"><label for="qcpf">CPF</label><input id="qcpf" inputmode="numeric" placeholder="000.000.000-00" value="${esc(p.cpf || '')}"></div>
+      <div class="field"><label for="qcref">CREF <span class="sub">(se tiver)</span></label><input id="qcref" maxlength="20" placeholder="000000-G/PE" value="${esc(p.cref || '')}"></div></div>
+      <div class="field"><label for="qens">O que você ensina</label><input id="qens" maxlength="80" placeholder="Ex.: Balé, Ginástica rítmica" value="${esc(p.ensina || '')}"></div>
+      <div class="ob-quadro"><b>Conta no Mercado Pago</b><span class="sub">Os Pix dos alunos caem direto nela (é grátis) e o app dá baixa sozinho. Você conecta depois que a escola liberar seu acesso.</span>
+        <div class="seg" id="qmp"><button type="button" data-mp="sim" aria-pressed="${p.mp !== 'nao'}">Já tenho</button><button type="button" data-mp="nao" aria-pressed="${p.mp === 'nao'}">Ainda não tenho</button></div>
+        <span class="sub" id="qmpnao" ${p.mp === 'nao' ? '' : 'hidden'}>Crie a sua no app do Mercado Pago ou em <a class="link" href="https://www.mercadopago.com.br" target="_blank" rel="noopener">mercadopago.com.br</a>, com o seu CPF.</span></div>
+      <div class="err" id="qerr" role="alert"></div>`,
+    botao: '<button class="btn" id="qok">Enviar cadastro</button>', links: '<button type="button" id="qvolta">Voltar</button>' });
+  $('qvolta').onclick = () => USR.perfilProf ? telaProfEnviado() : telaNovo();
+  $('qmp').querySelectorAll('[data-mp]').forEach(b => b.onclick = () => { $('qmp').querySelectorAll('[data-mp]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); $('qmpnao').hidden = b.dataset.mp !== 'nao'; });
+  $('qok').onclick = async () => {
+    const err = m => $('qerr').textContent = m, v = id => $(id).value.trim();
+    if (!v('qnome')) return err('Digite seu nome completo.');
+    if (C.soDigitos(v('qtel')).length < 10) return err('Digite seu WhatsApp com o DDD.');
+    if (!C.cpfValido(v('qcpf'))) return err('Esse CPF não confere. Veja se algum número foi digitado errado.');
+    $('qok').disabled = true;
+    const perfilProf = { nome: v('qnome'), telefone: v('qtel'), nascimento: v('qnasc') || null, cpf: C.soDigitos(v('qcpf')), cref: v('qcref') || null, ensina: v('qens') || null,
+      mp: $('qmp').querySelector('[aria-pressed="true"]').dataset.mp, email: EU.email || '', em: Date.now() };
+    try { await B.set('users/' + EU.uid, { perfilProf }, { merge: true }); USR.perfilProf = perfilProf; telaProfEnviado(); }
+    catch (e) { err(msgErro(e)); $('qok').disabled = false; }
+  };
+}
+function telaProfEnviado() {
+  telaOb({ rotulo: 'Professor(a)', titulo: 'Cadastro enviado!', sub: 'Agora é só aguardar, a escola em breve irá liberar seu acesso.',
+    corpo: `<div class="ob-icone">✅</div><div class="ob-dica" style="justify-content:center;text-align:center"><span>Avise a escola que o seu e-mail é <b>${esc(EU.email || '')}</b>.</span></div>`,
+    botao: '<button class="btn" id="qedit">Editar meu cadastro</button>', links: linkSair });
+  ligarSair(); $('qedit').onclick = () => telaProfCadastro();
+}
+// criar escola em 4 passos, como fases de um jogo: nome · vencimento · primeira turma · lista de primeiros passos
+let WZ = null;
+function telaCriarEscola(passo) {
+  if (!WZ || passo === 1 && !WZ.nome) WZ = WZ || { nome: '', cidade: '', uf: '', termos: false, venc: 10, turma: { nome: '', preco: '', hs: [{ dias: [], ini: '', fim: '' }] } };
+  const voltar = '<button class="btn ghost" id="wvolta">Voltar</button>';
+  if (passo === 1) {
+    telaOb({ passo: 1, rotulo: 'Passo 1 de 4', titulo: 'Como se chama sua escola?', sub: 'É o nome que as famílias vão ver no app.',
+      corpo: `<div class="field"><label for="wnome">Nome da escola</label><input id="wnome" maxlength="60" placeholder="Ex.: Escolinha Movimento" value="${esc(WZ.nome)}"></div>
+        <div class="two"><div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" autocomplete="address-level2" value="${esc(WZ.cidade)}"></div>
+        <div class="field"><label for="wuf">Estado</label><select id="wuf"><option value="">Escolha</option>${UFS.map(u => `<option ${u === WZ.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
+        <label class="check aceite"><input type="checkbox" id="wtermos" ${WZ.termos ? 'checked' : ''}><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>.</span></label>
+        <div class="err" id="werr" role="alert"></div>`,
+      botao: '<button class="btn" id="wok">Próximo</button>', dois: voltar });
+    $('wvolta').onclick = () => { WZ = null; telaInicio(); };
+    $('wok').onclick = () => {
+      Object.assign(WZ, { nome: $('wnome').value.trim(), cidade: $('wcid').value.trim(), uf: $('wuf').value, termos: $('wtermos').checked });
+      const err = m => $('werr').textContent = m;
+      if (!WZ.nome) return err('Digite o nome da escola.');
+      if (!WZ.cidade || !WZ.uf) return err('Diga a cidade e o estado da escola.');
+      if (!WZ.termos) return err('Para criar a escola, aceite os Termos de uso e a Política de privacidade.');
+      telaCriarEscola(2);
+    };
+  } else if (passo === 2) {
+    const dias = [5, 10, 15, 20, 25];
+    telaOb({ passo: 2, rotulo: 'Passo 2 de 4', titulo: 'Quando as famílias pagam?', sub: 'O dia do mês em que a mensalidade vence. Dá para mudar depois.',
+      corpo: `<div class="ob-dias" id="wdias">${dias.map(d => `<button type="button" data-v="${d}" aria-pressed="${WZ.venc === d}">${d}</button>`).join('')}</div>
+        <div class="field" style="max-width:200px;margin:0 auto"><label for="woutro">Ou outro dia (1 a 28)</label><input id="woutro" type="number" min="1" max="28" inputmode="numeric" value="${dias.includes(WZ.venc) ? '' : WZ.venc}" style="text-align:center"></div>
+        <div class="ob-dica">💡<span>O app avisa as famílias 3 dias antes e no dia do vencimento.</span></div><div class="err" id="werr" role="alert"></div>`,
+      botao: '<button class="btn" id="wok">Próximo</button>', dois: voltar });
+    $('wdias').querySelectorAll('[data-v]').forEach(b => b.onclick = () => { WZ.venc = Number(b.dataset.v); $('woutro').value = ''; $('wdias').querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
+    $('woutro').oninput = () => { if ($('woutro').value) $('wdias').querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', 'false')); };
+    $('wvolta').onclick = () => telaCriarEscola(1);
+    $('wok').onclick = () => {
+      if ($('woutro').value) { const v = Number($('woutro').value); if (!(v >= 1 && v <= 28)) return $('werr').textContent = 'O vencimento vai do dia 1 ao 28.'; WZ.venc = v; }
+      telaCriarEscola(3);
+    };
+  } else if (passo === 3) {
+    telaOb({ passo: 3, rotulo: 'Passo 3 de 4', titulo: 'Sua primeira turma', sub: 'Um grupo de alunos com a mesma mensalidade.',
+      corpo: `<div class="two"><div class="field"><label for="wtnome">Nome da turma</label><input id="wtnome" maxlength="60" placeholder="Ex.: Balé Baby" value="${esc(WZ.turma.nome)}"></div>
+        <div class="field"><label for="wtpreco">Mensalidade (R$)</label><input id="wtpreco" inputmode="decimal" placeholder="150,00" value="${esc(WZ.turma.preco)}"></div></div>
+        ${camposHorariosHTML()}<div class="err" id="werr" role="alert"></div>`,
+      botao: '<button class="btn" id="wok">Criar escola</button>', dois: voltar });
+    camposTurmaHorarios(WZ.turma.hs);
+    const guardar = () => { WZ.turma.nome = $('wtnome').value.trim(); WZ.turma.preco = $('wtpreco').value.trim(); };
+    $('wvolta').onclick = () => { guardar(); telaCriarEscola(2); };
+    $('wok').onclick = async () => {
+      guardar(); const err = m => $('werr').textContent = m, preco = parseValor(WZ.turma.preco);
+      if (!WZ.turma.nome) return err('Digite o nome da turma.');
+      if (!(preco >= 0)) return err('Digite o valor da mensalidade, como 150,00.');
+      const H = salvarHorarios(WZ.turma.hs, ''); if (H.erro) return err(H.erro);
+      if (!H.dias.length) return err('Marque os dias de aula da turma.');
+      $('wok').disabled = true;
+      const eid = novoId(), tid = novoId();
+      try {
+        await B.lote([
+          { op: 'set', p: 'escolas/' + eid, d: { nome: WZ.nome, dono: EU.uid, admins: [EU.uid], adminsInfo: { [EU.uid]: { nome: EU.nome || '', email: EU.email || '', em: Date.now() } }, criadaEm: Date.now(), termosAceitos: { em: Date.now(), versao: VERSAO_TERMOS, uid: EU.uid } } },
+          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: WZ.venc, pixRepassa: false, descIrmas: 0, descMulti: 0, cidade: WZ.cidade, uf: WZ.uf, primeirosPassos: true } },
+          { op: 'set', p: `escolas/${eid}/turmas/${tid}`, d: { nome: WZ.turma.nome, todasIdades: true, idadeMin: null, idadeMax: null, professoraId: null, professoraIds: [], ...H, chamada: true, chamadaObrig: false, recebedor: 'escola', localId: null, preco, vagas: null, ordem: 1 } }
+        ]);
+        await B.set('users/' + EU.uid, { escolas: { [eid]: { nome: WZ.nome, papel: 'admin' } } }, { merge: true });
+        MINHAS[eid] = { nome: WZ.nome, papel: 'admin' }; WZ.eid = eid; telaCriarEscola(4);
+      } catch (e) { err(msgErro(e)); $('wok').disabled = false; }
+    };
+  } else {
+    const eid = WZ.eid;
+    telaOb({ passo: 4, rotulo: 'Passo 4 de 4', titulo: 'Escola criada! 🎉', sub: 'Agora é só seguir a lista. Ela fica no topo da aba Pendências até tudo ficar pronto.',
+      corpo: `<div class="hero"><div class="passos">${PASSOS_ESCOLA.map(([k, t]) => `<div>${['escola', 'turma'].includes(k) ? '<span class="ok">✓</span>' : '<span class="vazio"></span>'}${t}</div>`).join('')}</div></div>`,
+      botao: '<button class="btn" id="wok">Adicionar alunos</button>', links: '<button type="button" id="wdepois">Fazer depois</button>' });
+    $('wok').onclick = () => { WZ = null; abrirEscola(eid, 'alunas').then(() => setTimeout(() => passoAbrir('alunos'), 300)); };
+    $('wdepois').onclick = () => { WZ = null; abrirEscola(eid); };
+  }
+}
+// primeiros passos da escola nova: aparecem no topo das Pendências até ficarem todos prontos (ou a escola esconder)
+const PASSOS_ESCOLA = [['escola', 'Criar a escola'], ['turma', 'Criar a primeira turma'], ['alunos', 'Adicionar os alunos'], ['codigos', 'Mandar o código para as famílias'], ['mp', 'Conectar o Mercado Pago da escola']];
+function passosFeitos() {
+  const al = Object.values(S.alunas || {}).filter(a => !a.anonimizadoEm);
+  return { escola: true, turma: Object.keys(S.turmas || {}).length > 0, alunos: al.length > 0, codigos: !!S.cfg.passoCodigos || Object.values(S.membros || {}).some(m => m && (m.codigo || m.via)), mp: !!S.cfg.mpConectadoEm };
+}
+function cardPrimeirosPassos() {
+  if (!S.admin || !S.cfg.primeirosPassos) return '';
+  const f = passosFeitos(), n = PASSOS_ESCOLA.filter(([k]) => f[k]).length;
+  if (n === PASSOS_ESCOLA.length) return '';
+  return `<section><div class="hero"><div class="label" style="display:flex;justify-content:space-between"><span>Primeiros passos · ${n} de ${PASSOS_ESCOLA.length}</span><button type="button" class="link" id="ppesc" style="font-size:.78rem">Esconder</button></div>
+    <div class="passos">${PASSOS_ESCOLA.map(([k, t]) => f[k] ? `<div><span class="ok">✓</span>${t}</div>` : `<button type="button" data-passo="${k}"><span class="vazio"></span><span class="grow">${t}</span><span class="seta">›</span></button>`).join('')}</div></div></section>`;
+}
+// responsável que chegou sem código e bate pelo CPF ou WhatsApp: a escola confirma antes de ele ver os filhos
+function cardPedidosFamilia() {
+  const ps = Object.entries(S.pedidosFam || {}).filter(([, p]) => p && (p.rids || []).length);
+  if (!ps.length) return '';
+  return `<section><h2>Pedidos de acesso</h2><ul class="list">${ps.map(([uid, p]) => { const filhos = p.rids.flatMap(rid => Object.values(S.alunas).filter(a => a.responsavelId === rid && !a.anonimizadoEm).map(a => primeiro(a.nome)));
+    const resp = p.rids.map(rid => (S.resps[rid] || {}).nome).filter(Boolean).join(', ');
+    return `<li><div class="grow"><div class="t">${esc(p.nome || 'Alguém')} pediu para ver ${esc(filhos.join(', ') || 'os alunos')}</div><span class="s">Cadastro de ${esc(resp || 'responsável')} · ${esc(p.email || '')}${p.telefone ? ' · ' + esc(foneBR(p.telefone)) : ''}</span>
+      <div class="actions" style="margin-top:8px"><button class="btn ghost btn-mini" data-pfno="${esc(uid)}">Recusar</button><button class="btn btn-mini" data-pfok="${esc(uid)}">Liberar</button></div></div></li>`; }).join('')}</ul>
+    <div class="note">O CPF ou o WhatsApp do cadastro bate com o do responsável. Confira antes de liberar.</div></section>`;
+}
+function ligarPedidosFamilia(v) {
+  v.querySelectorAll('[data-pfok],[data-pfno]').forEach(b => b.onclick = async () => {
+    const uid = b.dataset.pfok || b.dataset.pfno, ok = !!b.dataset.pfok; b.disabled = true;
+    try { if (MOCK) await B.del(`escolas/${S.eid}/pedidosFamilia/${uid}`); else await servidor('familiaAprovar', { eid: S.eid, uid, ok }); aviso(ok ? 'Acesso liberado' : 'Pedido recusado'); }
+    catch (e) { aviso(msgErro(e)); b.disabled = false; }
+  });
+}
+function passoAbrir(k) {
+  if (k === 'turma') return sheetTurma(null);
+  if (k === 'alunos') { irPara('alunas'); return setTimeout(() => { const b = $('ana'); if (b) b.click(); }, 120); }
+  if (k === 'codigos') { B.set(`escolas/${S.eid}/config/geral`, { passoCodigos: true }, { merge: true }).catch(() => { }); return irPara('alunas'); }
+  if (k === 'mp') return sheetAjustes();
+}
+function ligarPrimeirosPassos(v) {
+  v.querySelectorAll('[data-passo]').forEach(b => b.onclick = () => passoAbrir(b.dataset.passo));
+  if ($('ppesc')) $('ppesc').onclick = () => B.set(`escolas/${S.eid}/config/geral`, { primeirosPassos: false }, { merge: true });
 }
 function sheetCriarEscola() {
   sheet(`<h3>Criar escola</h3>
@@ -797,7 +1012,7 @@ async function abrirEscola(eid, tab) {
   } else if (admin) {
     OUV.push(col('acordos', 'acordos')); OUV.push(col('contratos', 'contratos')); OUV.push(col('destratos', 'destratos'));
     OUV.push(col('professoras', 'profs')); OUV.push(col('profsPublico', 'profsPub')); OUV.push(col('responsaveis', 'resps')); OUV.push(col('alunas', 'alunas')); OUV.push(col('pagamentos', 'pags'));
-    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('fixas', 'fixas')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
+    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('fixas', 'fixas')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidosFamilia', 'pedidosFam')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
   } else {
     // a família só vê o nome de cada professor(a) (profsPublico, copiado pelo servidor); telefone e chave Pix ficam com a escola
     OUV.push(col(MOCK ? 'professoras' : 'profsPublico', 'profs'));
@@ -1248,7 +1463,7 @@ function tCobrancas(v) {
   }
   const ext = Object.entries(S.extras).filter(([, x]) => !eventoNovo(x) || pelaEscola(x)).sort((a, b) => String(b[1].venc).localeCompare(String(a[1].venc)));
   const fil = (k, n) => `<button class="pick" data-fl="${k}" aria-pressed="${filtro === k}">${n} <span class="num">${cont[k]}</span></button>`;
-  v.innerHTML = `${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}${avisoPendenciasAdm()}
+  v.innerHTML = `${cardPrimeirosPassos()}${cardPedidosFamilia()}${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}${avisoPendenciasAdm()}
     ${antigos.length && filtro !== 'antigos' ? `<button class="banner" data-fl="antigos" style="border:0;text-align:left;width:100%;background:var(--out-soft)"><span>Além disso, <b>${cur(C.r2(antigos.reduce((s, x) => s + x.vAntes, 0)))}</b> vencidos de meses passados, de ${antigos.length} aluno${antigos.length === 1 ? '' : 's'}.</span><span style="color:var(--out);font-weight:800">Ver ›</span></button>` : ''}
     <section><h2>Quem deve</h2>
       <div class="chips">${fil('aberto', 'Em aberto')}${fil('vencido', 'Vencidas')}${fil('antigos', 'Meses passados')}${fil('pago', 'Em dia')}${fil('todas', 'Todos')}</div>
@@ -1263,6 +1478,7 @@ function tCobrancas(v) {
         : `<div class="empty"><span>Lance aqui taxas, como a da federação, ajuda de custo ou uniforme. Dá para lançar só para os inscritos de um evento. Escolha para quais grupos, turmas ou alunos cada um vale e o vencimento de cada um.</span></div>`}
     </section>`;
   ligarFaixa(v);
+  ligarPrimeirosPassos(v); ligarPedidosFamilia(v);
   if ($('vatlist')) $('vatlist').onclick = () => sheetAtestadosEscola();
   if ($('vpend')) $('vpend').onclick = () => sheetPendencias();
   v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => { const f = termosParaVer(), i = f.indexOf(b.dataset.vmud); sheetVerTermo(b.dataset.vmud, i >= 0 ? f.filter(id => id !== b.dataset.vmud) : []); });
@@ -3404,8 +3620,8 @@ function avisoPushFam() {
 }
 function avisosChamadaProf(tids) {
   const h = hoje(), ag = agoraHM(), feitas = (S.pp && S.pp.chamadas) || {};
-  const pend = tids.map(tid => [tid, S.turmas[tid]]).filter(([tid, t]) => chObrig(t) && t.hora && ehAula(t, h) && ag >= t.hora && !(feitas[tid] || []).includes(h));
-  let out = pend.map(([tid, t]) => `<button class="faixa-resumo alerta" data-cham="${esc(tid)}"><span class="grow"><b>Fazer chamada: ${esc(t.nome)}</b><span class="s">Hoje · a aula começou às ${esc(horaTxt(t.hora))}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
+  const pend = tids.map(tid => [tid, S.turmas[tid]]).filter(([tid, t]) => chObrig(t) && horaNoDia(t, h) && ehAula(t, h) && ag >= horaNoDia(t, h) && !(feitas[tid] || []).includes(h));
+  let out = pend.map(([tid, t]) => `<button class="faixa-resumo alerta" data-cham="${esc(tid)}"><span class="grow"><b>Fazer chamada: ${esc(t.nome)}</b><span class="s">Hoje · a aula começou às ${esc(horaTxt(horaNoDia(t, h)))}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`).join('');
   // convite para receber o aviso no celular (só quem tem turma com chamada obrigatória)
   if (tids.some(tid => chObrig(S.turmas[tid]))) {
     const perm = FMN() ? (ls.get(`escolinha.push.${S.eid}`) ? 'granted' : 'default') : 'Notification' in window ? Notification.permission : 'x';
@@ -3793,6 +4009,41 @@ const ligaNota = (id, on, dica) => `<label class="liga"><span class="grow"><b>Em
 const blocoNota = (id, on, dica, rec) => `<div data-notaw="${id}" ${rec && rec !== 'escola' ? 'hidden' : ''}>${ligaNota(id, on, dica)}</div><div class="note" data-notap="${id}" ${rec && rec !== 'escola' ? '' : 'hidden'} style="margin-bottom:12px">A nota fiscal desta cobrança é de quem recebe: o(a) professor(a) liga ou desliga em <b>Minha nota fiscal</b>, na área dele(a).</div>`;
 const ligarBlocoNota = (id, sel) => { const s = $(sel); if (!s) return; s.addEventListener('change', () => { const p = s.value && s.value !== 'escola'; document.querySelector(`[data-notaw="${id}"]`).hidden = p; document.querySelector(`[data-notap="${id}"]`).hidden = !p; }); };
 const notaSalvar = (id, sel, antes) => { const s = $(sel), rec = s ? s.value : 'escola'; return rec && rec !== 'escola' ? !!antes : $(id).checked; };
+/* Horários da turma: cada horário tem os dias e o "das / até" (ex.: Seg e Qua 14h-15h; Ter e Qui 18h-19h).
+   t.horarios = [{ dias: [1, 3], ini: '14:00', fim: '15:00' }]; continuam junto t.dias (todos os dias), t.hora (início do 1º)
+   e t.horario (o texto que aparece nas telas e no contrato). */
+const hhTxt = h => { const [a, b] = String(h || '').split(':'); return a ? `${Number(a)}h${b && b !== '00' ? b : ''}` : ''; };
+const ORDEM_DIAS = [1, 2, 3, 4, 5, 6, 0];
+const juntarDias = ds => { const n = ORDEM_DIAS.filter(d => ds.includes(d)).map(d => C.DIAS_SEM[d]); return n.length > 1 ? n.slice(0, -1).join(', ') + ' e ' + n.at(-1) : n[0] || ''; };
+const textoHorarios = hs => hs.filter(h => h.dias.length).map(h => `${juntarDias(h.dias)}${h.ini ? `, ${hhTxt(h.ini)}${h.fim ? ` às ${hhTxt(h.fim)}` : ''}` : ''}`).join('; ');
+const horariosDe = t => t && Array.isArray(t.horarios) && t.horarios.length ? t.horarios.map(h => ({ dias: [...(h.dias || [])], ini: h.ini || '', fim: h.fim || '' }))
+  : [{ dias: [...((t && t.dias) || [])], ini: (t && t.hora) || '', fim: '' }];
+// início da aula no dia da semana (para a chamada): o horário que tem esse dia; sem horários, t.hora
+const horaNoDia = (t, iso) => { const d = new Date(iso + 'T12:00:00').getDay(), h = (t.horarios || []).find(x => (x.dias || []).includes(d)); return h ? h.ini : t.hora; };
+function camposTurmaHorarios(hs) {
+  const cont = $('hors');
+  const desenhar = () => {
+    cont.innerHTML = hs.map((h, i) => `<div class="hor" data-h="${i}"><div class="hor-cab"><span>${hs.length > 1 ? `Horário ${i + 1}` : 'Horário'}</span>${hs.length > 1 ? `<button type="button" data-hrem="${i}">Remover</button>` : ''}</div>
+      <div class="seg dias-seg">${ORDEM_DIAS.map(d => `<button type="button" data-hd="${d}" aria-pressed="${h.dias.includes(d)}">${C.DIAS_SEM[d]}</button>`).join('')}</div>
+      <div class="two"><div class="field"><label>Das</label><input type="time" data-hini value="${esc(h.ini)}"></div><div class="field"><label>Até</label><input type="time" data-hfim value="${esc(h.fim)}"></div></div></div>`).join('');
+    cont.querySelectorAll('.hor').forEach(el => { const h = hs[Number(el.dataset.h)];
+      el.querySelectorAll('[data-hd]').forEach(b => b.onclick = () => { hs.mexeu = true; const d = Number(b.dataset.hd); h.dias = h.dias.includes(d) ? h.dias.filter(x => x !== d) : [...h.dias, d]; b.setAttribute('aria-pressed', String(h.dias.includes(d))); });
+      el.querySelector('[data-hini]').onchange = e => { hs.mexeu = true; h.ini = e.target.value; }; el.querySelector('[data-hfim]').onchange = e => { hs.mexeu = true; h.fim = e.target.value; }; });
+    cont.querySelectorAll('[data-hrem]').forEach(b => b.onclick = () => { hs.mexeu = true; hs.splice(Number(b.dataset.hrem), 1); desenhar(); });
+  };
+  desenhar();
+  $('hormais').onclick = () => { hs.mexeu = true; hs.push({ dias: [], ini: '', fim: '' }); desenhar(); };
+  return hs;
+}
+const camposHorariosHTML = () => '<div id="hors" class="ob-corpo" style="padding:0"></div><button type="button" class="hor-mais" id="hormais">+ Acrescentar horário</button>';
+// o que vai para a turma: horários válidos, todos os dias, início do primeiro e o texto
+function salvarHorarios(hs, textoAntigo) {
+  const ok = hs.filter(h => h.dias.length);
+  if (ok.some(h => h.ini && h.fim && h.fim <= h.ini)) return { erro: 'O horário de saída tem que ser depois do de entrada.' };
+  const dias = ORDEM_DIAS.filter(d => ok.some(h => h.dias.includes(d))).sort();
+  return { horarios: ok.map(h => ({ dias: ORDEM_DIAS.filter(d => h.dias.includes(d)), ini: h.ini || null, fim: h.fim || null })), dias, hora: (ok.find(h => h.ini) || {}).ini || null, horario: ok.length && (hs.mexeu || !textoAntigo) ? textoHorarios(ok) : (textoAntigo || '') };
+}
+let HS_TURMA = [];
 function sheetTurma(tid, depois) {
   const novoTid = tid || novoId(), t = tid ? S.turmas[tid] : null, n = tid ? Object.values(S.alunas).filter(a => (a.turmas || []).includes(tid)).length : 0, todas = t ? C.todasIdades(t) : false;
   sheetSimples({ titulo: t ? 'Editar turma' : 'Nova turma',
@@ -3808,18 +4059,15 @@ function sheetTurma(tid, depois) {
       <div class="two"><div class="field"><label for="tloc">Local</label><select id="tloc"><option value="">Sem local</option>${ordenar(S.locais).map(([id, l]) => `<option value="${esc(id)}" ${t && t.localId === id ? 'selected' : ''}>${esc(l.nome)}</option>`).join('')}</select></div>
       <div class="field"><label for="tpreco">Valor mensal (R$)</label><input id="tpreco" inputmode="decimal" value="${esc(fmtValor(t && t.preco))}" placeholder="0,00"></div></div>
       <div class="field"><label for="tvag">Limite de alunos (opcional)</label><input id="tvag" type="number" min="0" value="${esc(t && t.vagas ? t.vagas : '')}"></div>
-      <div class="field"><span class="lb">Dias de aula</span><div class="seg dias-seg" id="tdias">${[1, 2, 3, 4, 5, 6, 0].map(i => `<button type="button" data-dia="${i}" aria-pressed="${!!(t && (t.dias || []).includes(i))}">${C.DIAS_SEM[i]}</button>`).join('')}</div>
-        <span class="s">A chamada abre no dia da aula mais recente.</span></div>
-      <div class="field"><label for="thora">Começa às</label><input id="thora" type="time" value="${esc((t && t.hora) || '')}" style="max-width:160px"></div>
+      <div class="field"><span class="lb">Dias e horários</span>${camposHorariosHTML()}<span class="s">Horários diferentes em dias diferentes? Toque em "Acrescentar horário".</span></div>
       <label class="liga"><span class="grow"><b>Fazer chamada nesta turma</b><span class="s">Ligada, a turma tem o botão "Fazer chamada" para o professor e para a escola. Desligada, a turma fica sem chamada.</span></span><input type="checkbox" role="switch" id="tcham" ${!t || t.chamada !== false ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
       <label class="liga" id="tobw"><span class="grow"><b>Chamada obrigatória</b><span class="s">Na hora da aula, o professor (e o 2º professor) vê "Fazer chamada" no app e recebe o aviso no celular. Quando um dos dois faz a chamada, o aviso some para os dois.</span></span><input type="checkbox" role="switch" id="tobrig" ${t && t.chamadaObrig ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
-      <div class="field"><label for="thor">Dias e horário</label><input id="thor" maxlength="60" value="${esc(t ? t.horario || '' : '')}" placeholder="Ex.: Seg e Qua, 17h às 18h"></div>
       <div class="field"><label for="trec">A mensalidade vai para</label><select id="trec">${opcoesRec(t && t.recebedor)}</select>
         <div class="note">O Pix da mensalidade cai direto na conta do Mercado Pago de quem você escolher aqui.</div></div>
       ${blocoNota('tnota', !!(t && t.nota === true), 'A nota sai no nome da escola, quando o pagamento entra.', t && t.recebedor)}
       ${n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'} nesta turma. Mudar o valor vale para os meses que ainda não foram pagos.</div>` : ''}`,
     montar: () => { const vob = () => { $('tobw').hidden = !$('tcham').checked; }; $('tcham').addEventListener('change', vob); vob();
-      document.querySelectorAll('#tdias [data-dia]').forEach(b => b.onclick = () => b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'))); ligarBlocoNota('tnota', 'trec'); $('ttodas').onchange = e => { $('tmin').disabled = $('tmax').disabled = e.target.checked; }; if (!t) $('tprof').onchange = e => { if (e.target.value) $('trec').value = e.target.value; }; },
+      HS_TURMA = camposTurmaHorarios(horariosDe(t)); ligarBlocoNota('tnota', 'trec'); $('ttodas').onchange = e => { $('tmin').disabled = $('tmax').disabled = e.target.checked; }; if (!t) $('tprof').onchange = e => { if (e.target.value) $('trec').value = e.target.value; }; },
     salvar: async () => {
       const nome = $('tnome').value.trim(), preco = parseValor($('tpreco').value), todasN = $('ttodas').checked;
       const mn = $('tmin').value === '' ? null : Number($('tmin').value), mx = $('tmax').value === '' ? null : Number($('tmax').value);
@@ -3827,8 +4075,9 @@ function sheetTurma(tid, depois) {
       if (!todasN && mn == null && mx == null) return 'Informe a faixa etária ou marque "Todas as faixas etárias".';
       if (!todasN && mn != null && mx != null && mn > mx) return 'A idade inicial não pode ser maior que a final.';
       if (!(preco >= 0)) return 'Informe o valor mensal da turma, como 150,00.';
-      if ($('tcham').checked && $('tobrig').checked && (!document.querySelector('#tdias [data-dia][aria-pressed="true"]') || !$('thora').value)) return 'Para a chamada obrigatória, marque os dias de aula e o horário em que a aula começa.';
-      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...(() => { const dias = [...document.querySelectorAll('#tdias [data-dia][aria-pressed="true"]')].map(b => Number(b.dataset.dia)).sort(); return { dias, chamada: $('tcham').checked, chamadaObrig: $('tcham').checked && $('tobrig').checked, hora: $('thora').value || null }; })(), recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), horario: $('thor').value.trim(), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
+      const H = salvarHorarios(HS_TURMA, t && t.horario); if (H.erro) return H.erro;
+      if ($('tcham').checked && $('tobrig').checked && (!H.dias.length || H.horarios.some(h => !h.ini))) return 'Para a chamada obrigatória, marque os dias de aula e o horário em que a aula começa.';
+      await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...H, chamada: $('tcham').checked, chamadaObrig: $('tcham').checked && $('tobrig').checked, recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
     },
     depois: depois ? () => depois(novoTid) : null,
     excluir: tid && (() => B.del(`escolas/${S.eid}/turmas/${tid}`)), bloqueio: n ? 'Esta turma tem alunos. Tire os alunos da turma antes de excluir.' : null });
@@ -6928,6 +7177,7 @@ async function semearMock() {
   const alunas = { al1: { nome: 'Sofia Lins', responsavelId: 'r1', turmas: ['t2', 't3'], nascimento: '2016-03-14', descMultiOk: true }, al2: { nome: 'Helena Lins', responsavelId: 'r1b', turmas: ['t4'], nascimento: '2021-08-02' }, al3: { nome: 'Luíza Melo', responsavelId: 'r2', turmas: ['t1'], nascimento: '2018-11-20' },
     al4: { nome: 'Ana Beatriz Andrade', responsavelId: 'r3', turmas: ['t2'], desc: { pct: 0.5, motivo: 'Atleta destaque' }, nascimento: '2015-06-09' }, al5: { nome: 'Pedro Rocha', responsavelId: 'r4', turmas: ['t5'], nascimento: '2017-01-27' }, al6: { nome: 'Alice Rocha', responsavelId: 'r4', turmas: ['t4'], nascimento: '2022-04-15' } };
   for (const [k, v] of Object.entries(alunas)) { v.inicio = m2; v.ativa = true; v.desc = v.desc || null; await set(`${p}/alunas/${k}`, v); }
+  await set(`${p}/pedidosFamilia/uped1`, { nome: 'Rafael Andrade', email: 'rafael@email.com', telefone: '81988887777', cpf: '', rids: ['r3'], em: Date.now() });
   await set(`${p}/grupos/g1`, { nome: 'Equipe competitiva', alunas: ['al1', 'al3', 'al4'] });
   await set(`${p}/grupos/g2`, { nome: 'Vai ao Estadual', alunas: ['al1', 'al4'] });
   await set(`${p}/extras/x1`, { tipo: 'evento', semCobranca: true, tamanhos: { tipo: 'letras', opcoes: ['PP', 'P', 'M', 'G', 'GG'] }, nome: 'Torneio Regional', data: `${mesMais(m, 1)}-06`, dataFim: `${mesMais(m, 1)}-09`, local: 'Caruaru', organizador: 'Federação Pernambucana', valorInscricao: 85, prazo: `${m}-28`, convidados: ['al1', 'al3', 'al4'], origem: { grupos: ['g1'] }, part: { al3: { st: 'inscrito', em: Date.now() - 3 * 864e5, quem: 'escola' }, al4: { st: 'interesse', em: Date.now() - 864e5, quem: 'familia' } }, v: 0, alunas: [], grupos: [], turmas: [] });
@@ -7061,6 +7311,9 @@ async function semearMock() {
     const perfil = await B.get('users/' + u.uid).catch(() => null);
     if (minha !== vez) return;
     MINHAS = Object.fromEntries(Object.entries((perfil && perfil.escolas) || {}).filter(([, e]) => e));
+    USR = perfil || {};
+    // responsável que já fez o cadastro e ainda não tem escola: procura de novo (a escola pode ter cadastrado o e-mail dele)
+    if (!Object.keys(MINHAS).length && USR.perfil && !MOCK) identificarFamilia().then(r => { if (minha !== vez || !(r.escolas || []).length || S) return; const ks = Object.keys(MINHAS); aviso('Achamos seus filhos!'); abrirEscola(ks[0]); }).catch(() => { });
     // convite para a administração: procura sem atrasar a abertura da escola
     vincularProf().then(r => { if (minha !== vez || !r) return; if (((r.escolas || []).length || PROF_PEND.length) && !S) telaInicio(); });
     convitesPara(u).then(c => { CONVITES = c || []; if (minha !== vez || !CONVITES.length) return; if (!S) telaInicio(); else aviso('Você tem um convite para a administração de outra escola. Veja em Ajustes → Minhas escolas.'); }).catch(() => { });

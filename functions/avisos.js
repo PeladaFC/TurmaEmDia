@@ -26,10 +26,15 @@ module.exports = (db, enviar) => {
     return r.responses.map(x => ({ ok: x.success, codigo: x.error && x.error.code }));
   });
 
+  // um registro por horário da turma (Seg e Qua 14h; Ter e Qui 18h): agendaChamada/{eid}_{tid} e {eid}_{tid}_2, _3...
   async function espelhar(eid, tid, t) {
-    const ref = db.doc(`agendaChamada/${eid}_${tid}`);
-    if (!t || t.chamada === false || !t.chamadaObrig || !horaOk(t.hora) || !(t.dias || []).length) return ref.delete().catch(() => { });
-    return ref.set({ eid, tid, nome: t.nome || 'Turma', hora: t.hora, dias: t.dias, pids: C.profsTurma(t) });
+    const hs = t && Array.isArray(t.horarios) && t.horarios.length ? t.horarios.map(h => ({ hora: h.ini, dias: h.dias || [] })) : [{ hora: t && t.hora, dias: (t && t.dias) || [] }];
+    const liga = t && t.chamada !== false && t.chamadaObrig;
+    for (let i = 0; i < 8; i++) {
+      const ref = db.doc(`agendaChamada/${eid}_${tid}${i ? '_' + (i + 1) : ''}`), h = hs[i];
+      if (!liga || !h || !horaOk(h.hora) || !h.dias.length) { await ref.delete().catch(() => { }); continue; }
+      await ref.set({ eid, tid, nome: t.nome || 'Turma', hora: h.hora, dias: h.dias, pids: C.profsTurma(t) });
+    }
   }
   const espelharTurma = onDocumentWritten('escolas/{eid}/turmas/{tid}', ev =>
     espelhar(ev.params.eid, ev.params.tid, ev.data.after.exists ? ev.data.after.data() : null));
