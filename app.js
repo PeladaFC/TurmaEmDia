@@ -7000,7 +7000,7 @@ function sheetAjustes() {
   const sp = sitPlano(), pl = S.plano;
   const planoTxt = !pl ? (LOJA() ? 'Situação do plano' : 'Planos, teste grátis e como pagar') : sp.fase === 'teste' ? `Teste grátis · ${sp.restam ? `faltam ${sp.restam} dia${sp.restam > 1 ? 's' : ''}` : 'termina hoje'}` : sp.fase === 'cortesia' ? `Grátis até ${dataBRA(pl.cortesiaAte)}` : sp.fase === 'ativo' ? `Em dia · pago até ${dataBRA(pl.pagoAte)}${pl.cartao ? ' · cartão' : ''}` : sp.fase === 'aviso' ? `Venceu em ${dataBRA(sp.venc)}` : sp.fase === 'leitura' ? 'Atrasado · só leitura' : sp.fase === 'suspensa' ? 'Suspenso' : 'Planos e como pagar';
   sheet(`<h3>Ajustes da escola</h3>
-    <section><h2>Plano do app</h2><button type="button" class="linha-botao" id="jplano"><span class="grow"><b>Plano da escola</b><span class="s">${esc(planoTxt)}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
+    <section><button type="button" class="linha-botao" id="jplano"><span class="grow"><b>Plano do app</b><span class="s">${esc(planoTxt)}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
     <section><h2>Pix automático</h2>
       ${c.mpConectadoEm ? `<div class="banner ok"><span>Conectado${conta ? ` à conta de <b>${esc(conta.nome)}</b> ${esc(conta.doc || '')}` : ''}.</span></div>
         ${conta && S.mpc.confirmada === false ? `<div class="sub">É essa a conta que deve receber os pagamentos?</div><div class="actions"><button class="btn ok" id="mpsim">Sim, é essa conta</button><button class="btn ghost" id="mpout">Não, conectar outra</button></div>` : ''}
