@@ -3665,15 +3665,17 @@ function sheetProf(pid) {
   sheetSimples({ titulo: P ? 'Editar professor(a)' : 'Novo(a) professor(a)',
     campos: `<div class="field"><label for="pnome">Nome</label><input id="pnome" maxlength="60" value="${esc(P ? P.nome : '')}"></div>
       <div class="field"><label for="ptel">WhatsApp</label><input id="ptel" inputmode="tel" maxlength="20" value="${esc(P ? P.telefone || '' : '')}" placeholder="(81) 99999-9999"></div>
-      <label class="liga"><span class="grow"><b>Pagamento ao professor</b><span class="s">A escola paga um salário a ele(a)</span></span><input type="checkbox" role="switch" id="psal" ${P && (P.salVaria || P.fixoEscola) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
-      <div class="field" id="psalw">
-        <div class="opcoes c2" style="margin-bottom:8px"><label class="check"><input type="radio" name="pstipo" id="psfixo" value="fixo" ${P && P.salVaria ? '' : 'checked'}><span>Salário fixo</span></label><label class="check"><input type="radio" name="pstipo" value="varia" ${P && P.salVaria ? 'checked' : ''}><span>Salário variável</span></label></div>
-        <span class="sub" id="psfixs"></span>
-        <div id="psfixw"><div class="two"><div class="field"><label for="pfixo">Salário líquido (R$)</label><input id="pfixo" inputmode="decimal" value="${esc(P && P.fixoEscola ? fmtValor(P.fixoEscola) : '')}" placeholder="0,00"></div>
-        <div class="field"><label for="psimp">Impostos e encargos (R$)</label><input id="psimp" inputmode="decimal" value="${esc(P && P.salImpostos ? fmtValor(P.salImpostos) : '')}" placeholder="0,00"></div></div>
-        <div class="field"><label for="psben">Benefícios (R$)</label><input id="psben" inputmode="decimal" value="${esc(P && P.salBeneficios ? fmtValor(P.salBeneficios) : '')}" placeholder="Vale-transporte, alimentação…"></div>
+      <div class="sal-quadro">
+        <label class="liga"><span class="grow"><b>Pagamento ao professor</b><span class="s">A escola paga um salário a ele(a)</span></span><input type="checkbox" role="switch" id="psal" ${P && (P.salVaria || P.fixoEscola) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+        <div id="psalw">
+          <label class="sal-op"><span class="grow"><b>Salário fixo</b><span class="s">O mesmo valor todo mês</span></span><input type="radio" name="pstipo" id="psfixo" value="fixo" ${P && P.salVaria ? '' : 'checked'}></label>
+          <label class="sal-op"><span class="grow"><b>Salário variável</b><span class="s">Muda a cada mês (comissão, dias)</span></span><input type="radio" name="pstipo" value="varia" ${P && P.salVaria ? 'checked' : ''}></label>
+          <div id="psfixw"><div class="two"><div class="field"><label for="pfixo">Salário líquido</label><input id="pfixo" inputmode="decimal" value="${esc(P && P.fixoEscola ? fmtValor(P.fixoEscola) : '')}" placeholder="0,00"></div>
+        <div class="field"><label for="psimp">Impostos e encargos</label><input id="psimp" inputmode="decimal" value="${esc(P && P.salImpostos ? fmtValor(P.salImpostos) : '')}" placeholder="0,00"></div></div>
+        <div class="field"><label for="psben">Benefícios</label><input id="psben" inputmode="decimal" value="${esc(P && P.salBeneficios ? fmtValor(P.salBeneficios) : '')}" placeholder="Vale-transporte, alimentação…"></div>
         <div class="sal-calc num" id="pscalc"></div></div>
-        <span class="sub">O professor vê só o salário líquido, no Financeiro do app. Impostos, benefícios e o custo total ficam só com a escola.</span></div>
+          <span class="sub" id="psfixs"></span>
+          <span class="sub">O professor vê só o salário líquido. Impostos, benefícios e o custo total ficam só com a escola.</span></div></div>
       <div class="field"><label for="pemail">E-mail para entrar no app</label><input id="pemail" type="email" inputmode="email" autocomplete="off" autocapitalize="none" maxlength="120" value="${esc(P ? P.emailApp || '' : '')}" placeholder="email@exemplo.com">
         ${P && P.emailApp ? `<span class="sub">${P.appEm ? `Já entrou no app em ${esc(dataCurta(P.appEm))}.` : 'Ainda não entrou no app.'}</span>` : ''}
         <span class="sub">Com o e-mail, ele(a) entra no app e vê só as turmas dele(a): escreve notas sobre os alunos e acompanha os pagamentos que cabem a ele(a). Não vê telefone, CPF nem documentos das famílias, e não cobra ninguém. Para tirar o acesso, apague o e-mail.</span>
@@ -3683,7 +3685,7 @@ function sheetProf(pid) {
         $('pscalc').innerHTML = liq || imp || ben ? `Bruto (salário + impostos): <b>${brl(C.r2(liq + imp))}</b> · Custo total: <b>${brl(C.r2(liq + imp + ben))}</b>` : ''; };
       ['pfixo', 'psimp', 'psben'].forEach(k => $(k).addEventListener('input', calc)); calc();
       const verFixo = () => { const lig = $('psal').checked, f = $('psfixo').checked; $('psalw').hidden = !lig; $('psfixw').hidden = !f;
-        $('psfixs').textContent = f ? 'O mesmo valor todo mês.' : 'Varia (comissão, dias trabalhados): a escola põe o valor de cada mês em Financeiro → Professores.'; };
+        $('psfixs').textContent = f ? '' : 'O valor de cada mês você põe em Financeiro → Professores.'; $('psfixs').hidden = f; };
       $('psal').onchange = verFixo; document.querySelectorAll('.sheet [name=pstipo]').forEach(r => r.onchange = verFixo); verFixo();
       document.querySelectorAll('.sheet [data-conta]').forEach(b => b.onclick = () => abrirDe(() => sheetProf(pid), () => sheetConta(pid))); },
     salvar: async () => { const nome = $('pnome').value.trim(); if (!nome) return 'Digite o nome do(a) professor(a).';
@@ -3976,9 +3978,9 @@ function sheetSalMes(pid, mes) {
   const P = S.profs[pid] || {}, x = ((P.salMes || {})[mes]) || {};
   sheetSimples({ titulo: `${esc(primeiro(P.nome))} · ${esc(nomeMesAno(mes))}`,
     campos: `<div class="sub">Salário que varia (comissão, dias trabalhados). Valores só deste mês.</div>
-      <div class="two"><div class="field"><label for="smliq">Salário líquido (R$)</label><input id="smliq" inputmode="decimal" value="${esc(x.liq ? fmtValor(x.liq) : '')}" placeholder="0,00"></div>
-      <div class="field"><label for="smimp">Impostos e encargos (R$)</label><input id="smimp" inputmode="decimal" value="${esc(x.imp ? fmtValor(x.imp) : '')}" placeholder="0,00"></div></div>
-      <div class="field"><label for="smben">Benefícios (R$)</label><input id="smben" inputmode="decimal" value="${esc(x.ben ? fmtValor(x.ben) : '')}" placeholder="0,00"></div>
+      <div class="two"><div class="field"><label for="smliq">Salário líquido</label><input id="smliq" inputmode="decimal" value="${esc(x.liq ? fmtValor(x.liq) : '')}" placeholder="0,00"></div>
+      <div class="field"><label for="smimp">Impostos e encargos</label><input id="smimp" inputmode="decimal" value="${esc(x.imp ? fmtValor(x.imp) : '')}" placeholder="0,00"></div></div>
+      <div class="field"><label for="smben">Benefícios</label><input id="smben" inputmode="decimal" value="${esc(x.ben ? fmtValor(x.ben) : '')}" placeholder="0,00"></div>
       <div class="sal-calc num" id="smcalc"></div>`,
     montar: () => { const calc = () => { const v = k => parseValor($(k).value) || 0, l = v('smliq'), i = v('smimp'), b = v('smben'); $('smcalc').innerHTML = l || i || b ? `Bruto (salário + impostos): <b>${brl(C.r2(l + i))}</b> · Custo total: <b>${brl(C.r2(l + i + b))}</b>` : ''; };
       ['smliq', 'smimp', 'smben'].forEach(k => $(k).addEventListener('input', calc)); calc(); },
