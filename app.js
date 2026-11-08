@@ -1929,16 +1929,16 @@ function localEventoHTML(x) {
 }
 // arquivos do evento (PDF): a lista fica no evento (x.arquivos), cada arquivo num documento à parte (arquivosEventos)
 const ARQ_EV_MAX = 3, ARQ_EV_BYTES = 700 * 1024;
-const arquivosEvHTML = x => (x.arquivos || []).length ? `<div class="ev-arqs">${x.arquivos.map(a => `<button type="button" class="ev-link" data-verarq="${esc(a.id)}"><span class="grow"><b>${esc(a.nome)}</b><span class="s">PDF · ${kb(a.tam || 0)} · toque para abrir</span></span><span aria-hidden="true">📄</span></button>`).join('')}</div>` : '';
+const arquivosEvHTML = x => (x.arquivos || []).length ? `<div class="ev-arqs">${x.arquivos.map(a => `<button type="button" class="arq-lnk" data-verarq="${esc(a.id)}">📄 <u>${esc(a.nome)}</u> <span class="s num">${kb(a.tam || 0)}</span></button>`).join('')}</div>` : '';
 // campo "Arquivos (PDF)" dos formulários de evento e de taxa (p = prefixo dos ids)
 const formArqsHTML = (p, titulo, dica) => `<div class="field"><span class="lb">${titulo}</span><span class="sub">${dica} Até ${ARQ_EV_MAX} arquivos de até ${kb(ARQ_EV_BYTES)}.</span>
       <div class="ev-links" id="${p}arqs"></div><button type="button" class="add-disc add-largo" id="${p}arqadd">+ Arquivo</button><input type="file" id="${p}arq" accept="application/pdf,.pdf" hidden><div class="err" id="${p}arqerr" role="alert"></div></div>`;
 function ligarFormArqs(x, p) {
   // novos ficam na memória até salvar; os tirados são apagados ao salvar
   let arqs = ((x && x.arquivos) || []).map(a => ({ ...a })); const tirados = [];
-  const ver = () => { $(p + 'arqs').innerHTML = arqs.map((a, i) => `<div class="ev-link"><span class="grow"><b>${esc(a.nome)}</b><span class="s">PDF · ${kb(a.tam || 0)}${a.dados ? ' · novo' : ''}</span></span><button type="button" class="ev-foto-x" style="position:static" data-ax="${i}" aria-label="Tirar este arquivo">×</button></div>`).join('');
+  const ver = () => { $(p + 'arqs').innerHTML = arqs.map((a, i) => `<div class="ev-link"><span class="grow"><b>${esc(a.nome)}</b><span class="s">PDF · ${kb(a.tam || 0)}${a.dados ? ' · novo' : ''}</span></span><button type="button" class="link arq-exc" data-ax="${i}">Excluir</button></div>`).join('');
     $(p + 'arqadd').hidden = arqs.length >= ARQ_EV_MAX;
-    $(p + 'arqs').querySelectorAll('[data-ax]').forEach(b => b.onclick = () => { const [a] = arqs.splice(Number(b.dataset.ax), 1); if (!a.dados) tirados.push(a.id); ver(); }); };
+    $(p + 'arqs').querySelectorAll('[data-ax]').forEach(b => b.onclick = () => duploToque(b, () => { const [a] = arqs.splice(Number(b.dataset.ax), 1); if (!a.dados) tirados.push(a.id); ver(); }, 'Toque de novo')); };
   ver();
   $(p + 'arqadd').onclick = () => $(p + 'arq').click();
   $(p + 'arq').onchange = async () => { const f = $(p + 'arq').files[0]; $(p + 'arq').value = ''; $(p + 'arqerr').textContent = ''; if (!f) return;
@@ -2388,11 +2388,6 @@ function sheetRateio(xid) {
   });
 }
 // família: o convite das taxas divididas com as respostas abertas (na tela Pagar)
-// arquivos das taxas dos filhos (as que não estão com o convite aberto, que já mostra os arquivos)
-function avisoArquivosTaxaFam() {
-  const ts = Object.values(S.extras || {}).filter(x => x && x.tipo === 'taxa' && (x.arquivos || []).length && !(x.rateio && !C.rateioFechado(x)) && [...(x.alunas || []), ...(x.convidados || [])].some(id => S.alunas[id]));
-  return ts.length ? `<div class="rt-card tam-card"><b class="rt-tit">Arquivos das taxas</b>${ts.map(x => `<span class="s"><b>${esc(x.nome)}</b></span>${arquivosEvHTML(x)}`).join('')}</div>` : '';
-}
 function avisoRateioFam() {
   return Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.rateio && !C.rateioFechado(x)).map(([xid, x]) => {
     const meus = (x.convidados || []).filter(id => S.alunas[id]); if (!meus.length) return '';
@@ -4163,7 +4158,7 @@ function tPagar(v) {
   const pixOk = !!S.cfg.mpConectadoEm;
   const pagos = porAl.flatMap(x => x.it.filter(i => i.pago)).sort((a, b) => String(b.pago.d || b.venc).localeCompare(String(a.pago.d || a.venc))).slice(0, 10);
   v.innerHTML = `
-    ${avisoRateioFam()}${avisoTamanhoFam()}${avisoArquivosTaxaFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
+    ${avisoRateioFam()}${avisoTamanhoFam()}${avisoEventosFamilia()}${avisoInscricaoPendente()}${avisoDestratosFam()}${avisoTermos()}${avisoContratos()}${avisoDocsFam()}
     ${(() => { const c = (S.cartoes || []).find(x => x.auto); return c ? `<div class="banner ok"><span><b>Cobrança automática ligada</b> · ${esc(c.marca)} •••• ${esc(c.fim)}. As cobranças ${c.rec === 'escola' ? 'da escola' : 'de ' + esc(nomeRec(c.rec))} são pagas sozinhas no vencimento.</span><button type="button" id="pfdesl" data-rec="${esc(c.rec)}">Desligar</button></div>` : ''; })()}
     ${(S.sug || []).map(sg => `<div class="banner"><span>Encontramos <b>${esc(sg.alunas.join(', '))}</b> cadastrado(a)${sg.alunas.length > 1 ? 's' : ''} com o seu ${esc(sg.por)} (responsável: ${esc(sg.responsavel)}). ${sg.alunas.length > 1 ? 'São seus filhos' : 'É seu filho(a)'}?</span><span class="actions"><button data-vinc="${esc(sg.rid)}">Sim, juntar</button><button data-recusa="${esc(sg.rid)}" style="color:var(--muted)">Não</button></span></div>`).join('')}
     <div class="hero"><div class="headrow" style="align-items:flex-end"><div><div class="label">Em aberto</div><div class="big num">${brl(totAb)}</div></div>
@@ -4174,7 +4169,7 @@ function tPagar(v) {
     ${porAl.filter(x => x.it.some(i => !i.pago)).map(({ id, a, it }) => { const ab = it.filter(i => !i.pago), todos = ab.every(i => S.sel.has(i.k)), sub = C.r2(ab.filter(i => S.sel.has(i.k)).reduce((s, i) => s + i.v, 0));
       return `<div class="month-card ${ab.some(i => i.venc < h) ? 'late' : ''}">
       <div class="headrow"><div><h2>${esc(a.nome)}</h2><div class="s">${esc(turmasTxt(a))}</div></div><button class="chip" data-tudo="${esc(id)}">${todos ? 'Desmarcar' : 'Marcar tudo'}</button></div>
-      <div class="checks" style="max-height:none">${ab.map(i => `<label><input type="checkbox" data-k="${esc(i.k)}" ${S.sel.has(i.k) ? 'checked' : ''}><span class="grow"><span class="t" style="display:block">${esc(i.desc)}</span><span class="s">${esc(tipoItem(i))}</span><span class="s num">Vence ${dataBR(i.venc)}</span>${linhaEnc(i)}<span class="s">Para ${esc(Object.keys(i.partes || { escola: 1 }).map(nomeRec).join(' e '))}</span></span><span class="valor-col"><b class="num">${brl(i.v)}</b>${i.venc < h ? '<span class="chip vencido">Vencida</span>' : ''}</span></label>`).join('')}</div>
+      <div class="checks" style="max-height:none">${ab.map(i => `<label><input type="checkbox" data-k="${esc(i.k)}" ${S.sel.has(i.k) ? 'checked' : ''}><span class="grow"><span class="t" style="display:block">${esc(i.desc)}</span><span class="s">${esc(tipoItem(i))}</span><span class="s num">Vence ${dataBR(i.venc)}</span>${linhaEnc(i)}<span class="s">Para ${esc(Object.keys(i.partes || { escola: 1 }).map(nomeRec).join(' e '))}</span>${i.xid && ((S.extras[i.xid] || {}).arquivos || []).length ? S.extras[i.xid].arquivos.map(a => `<button type="button" class="arq-lnk" data-verarq="${esc(a.id)}">📄 <u>${esc(a.nome)}</u></button>`).join('') : ''}</span><span class="valor-col"><b class="num">${brl(i.v)}</b>${i.venc < h ? '<span class="chip vencido">Vencida</span>' : ''}</span></label>`).join('')}</div>
       <div class="item sub"><span>Marcado de ${esc(primeiro(a.nome))}</span><b class="num" style="color:var(--ink)">${brl(sub)}</b></div>
     </div>`; }).join('')}
     ${!abertos.length && !pagos.length ? `<div class="empty"><b>Nenhuma cobrança ainda.</b><span>Quando a escola cadastrar as turmas dos seus filhos, as cobranças aparecem aqui.</span></div>` : ''}
@@ -5908,7 +5903,7 @@ async function juntarDocsArquivos({ titulo, alids, tids, campos = ['nasc'], even
   const fechar = async (pdf, t) => { pdf.setTitle(pdfTxt(t)); pdf.setProducer('Turma em Dia'); pdf.setCreator('Turma em Dia'); return pdf.save(); };
   const lista = []; for (const id of alids) for (const t of expandeTipos(id, tids)) if (metaJunta(id, t)) lista.push([id, t]);
   if (!tids.length) { const pdf = await novoPdf(); desenharCapa(pdf); progresso('Finalizando…'); return [{ nome: limpaNome(`Lista ${titulo || escola}`) + '.pdf', bytes: await fechar(pdf, tit) }]; }
-  if (!lista.length) throw new Error('Nenhum dos alunos marcados tem esses documentos no app.');
+  if (!lista.length) { const pdf = await novoPdf(); desenharCapa(pdf); progresso('Finalizando…'); return [{ nome: limpaNome(`Lista ${titulo || escola}`) + '.pdf', bytes: await fechar(pdf, tit) }]; } // ninguém tem esses documentos: sai a lista, com "falta" em cada um
   if (!separado) {
     const pdf = await novoPdf(); if (capa) desenharCapa(pdf);
     let n = 0; for (const [id, t] of lista) { progresso(`Juntando ${++n} de ${lista.length}…`); await desenharDoc(pdf, id, t); }
