@@ -1874,13 +1874,15 @@ function sheetPix(chaves, voltar) {
         if (!c || !$('pxst')) return;
         if (c.status === 'approved') {
           // um Pix de vários pago: mostra bem claro "1 de 3 pago ✓" antes de passar para o próximo QR Code
-          if (n + 1 < N) { parar && parar(); parar = null;
+          if (n + 1 < N) { parar && parar(); parar = null; const shA = $('pxc').closest('.sheet'), altA = shA ? shA.offsetHeight : 0;
             $('pxc').innerHTML = `<div class="pix-ok" role="status"><div class="pix-ok-passos">${lotes.map((l, i) => `<span class="${i <= n ? 'ok' : i === n + 1 ? 'prox' : ''}">${i <= n ? '✓' : i + 1}</span>`).join('<i></i>')}</div>
               <svg class="pix-ok-ic" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg>
               <h3>Pix ${n + 1} de ${N} pago</h3><span class="sub">${brl(d.valor)} para ${esc(nomeRec(d.rec))}</span>
               <div class="pix-ok-prox">Agora falta ${N - n - 1 === 1 ? 'o último Pix' : `${N - n - 1} Pix`}: <b>${brl(lotes[n + 1].valor)}</b> para ${esc(nomeRec(lotes[n + 1].rec))}</div>
               <button type="button" class="btn" id="pxprox">Ir para o Pix ${n + 2} de ${N}</button><div class="pix-ok-barra"><i></i></div></div>`;
             $('pxf').hidden = true; // nesta tela só o caminho para o próximo Pix
+            // a janela fica da mesma altura da tela do QR Code (sem "pular"); o conteúdo fica no meio
+            if (shA) { shA.scrollTop = 0; const sobra = altA - shA.offsetHeight; if (sobra > 0) { const ok = $('pxc').querySelector('.pix-ok'); ok.style.paddingTop = ok.style.paddingBottom = Math.floor(sobra / 2) + 'px'; const resto = altA - shA.offsetHeight; if (resto) ok.style.paddingBottom = Math.max(0, Math.floor(sobra / 2) + resto) + 'px'; } }
             let foi = false; const ir = () => { if (foi || !$('pxprox')) return; foi = true; passo(n + 1); const sh = $('pxc') && $('pxc').closest('.sheet'); if (sh) sh.scrollTop = 0; };
             $('pxprox').onclick = ir; setTimeout(ir, 4500); return; }
           $('pxc').innerHTML = `<div class="done"><div class="ok">✓</div><h3>Pagamento confirmado!</h3><span class="sub">${N > 1 ? `${N} Pix, ${brl(total)} no total` : brl(c.valor) + ' recebidos por Pix'}. Obrigado!</span></div>`; S.sel = null; parar && parar(); parar = null;
