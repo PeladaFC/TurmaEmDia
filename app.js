@@ -3138,7 +3138,7 @@ async function profMock(acao, d) {
     for (const a of r.alunos) { const rr = await B.get(`${p}/responsaveis/${(alunas[a.id] || {}).responsavelId}`); if (rr) a.resp = { nome: rr.nome || '', telefone: rr.telefone || '' }; }
     for (const a of r.alunos) { const f = await B.get(`${p}/fotosAlunos/${a.id}`); if (f && f.foto) fotos[a.id] = f.foto; const x = C.saudeProfessor(await B.get(`${p}/saude/${a.id}`)); if (x) saude[a.id] = x; }
     const chamadas = {}; for (const c of Object.values(await colMock(`${p}/chamadas`))) if (minhas.includes(c.tid) && c.data >= somaDias(hoje(), -21)) (chamadas[c.tid] = chamadas[c.tid] || []).push(c.data);
-    return { pid, nome: P.nome || '', mes, ...r, fotos, saude, chamadas };
+    return { pid, nome: P.nome || '', mes, ...r, fotos, saude, chamadas, fixoEscola: Number(P.fixoEscola) > 0 ? C.r2(P.fixoEscola) : null };
   }
   if (acao === 'chamada' || acao === 'salvarChamada') {
     if (!minhas.includes(d.tid)) throw new Error('Esta turma não é sua.'); if (d.data > hoje()) throw new Error('Ainda não chegou esse dia.');
@@ -3255,6 +3255,7 @@ function tPFin(v) {
     <div class="sub">A parte que cabe a você nas suas turmas. Quem cobra as famílias é a escola.</div>
     <button type="button" class="linha-botao" id="pnf" style="margin:10px 0"><span class="grow"><b>Minha nota fiscal</b><span class="s">${nfP.ligado ? 'Ligada: sai sozinha, no seu CNPJ' : 'Para emitir nota da sua parte, com o seu CNPJ'}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>
     <div class="pf-resumo"><div><span>Recebido</span><b class="num">${brl(T.recebido)}</b></div><div><span>A receber</span><b class="num">${brl(T.aVencer)}</b></div><div class="${T.atrasado ? 'ruim' : ''}"><span>Atrasado</span><b class="num">${brl(T.atrasado)}</b></div></div>
+    ${pp.fixoEscola ? `<div class="pf-fixo"><span>Recebe da escola</span><b class="num">${brl(pp.fixoEscola)}</b><span class="s">por mês, valor fixo</span></div>` : ''}
     <section><h2>Mensalidades de ${esc(C.nomeMes(S.mes))}</h2>
       <div class="opcoes c3" id="pfiltro">${[['todos', `Todos (${ativos.length})`], ['pagos', `Pagaram (${nPag})`], ['faltam', `Faltam (${ativos.length - nPag})`]].map(([k, n]) => `<button type="button" class="pick" data-pff="${k}" aria-pressed="${f === k}">${n}</button>`).join('')}</div>
       <button type="button" class="btn ghost pf-mostra" id="pfmostra">${mostrar ? 'Esconder alunos' : 'Mostrar alunos'}</button>
@@ -3664,6 +3665,7 @@ function sheetProf(pid) {
   sheetSimples({ titulo: P ? 'Editar professor(a)' : 'Novo(a) professor(a)',
     campos: `<div class="field"><label for="pnome">Nome</label><input id="pnome" maxlength="60" value="${esc(P ? P.nome : '')}"></div>
       <div class="field"><label for="ptel">WhatsApp</label><input id="ptel" inputmode="tel" maxlength="20" value="${esc(P ? P.telefone || '' : '')}" placeholder="(81) 99999-9999"></div>
+      <div class="field"><label for="pfixo">Recebe da escola por mês (R$, opcional)</label><input id="pfixo" inputmode="decimal" value="${esc(P && P.fixoEscola ? fmtValor(P.fixoEscola) : '')}" placeholder="0,00"><span class="sub">Valor fixo que a escola paga a ele(a), como um salário. Ele(a) vê no Financeiro do app.</span></div>
       <div class="field"><label for="pemail">E-mail para entrar no app</label><input id="pemail" type="email" inputmode="email" autocomplete="off" autocapitalize="none" maxlength="120" value="${esc(P ? P.emailApp || '' : '')}" placeholder="email@exemplo.com">
         ${P && P.emailApp ? `<span class="sub">${P.appEm ? `Já entrou no app em ${esc(dataCurta(P.appEm))}.` : 'Ainda não entrou no app.'}</span>` : ''}
         <span class="sub">Com o e-mail, ele(a) entra no app e vê só as turmas dele(a): escreve notas sobre os alunos e acompanha os pagamentos que cabem a ele(a). Não vê telefone, CPF nem documentos das famílias, e não cobra ninguém. Para tirar o acesso, apague o e-mail.</span>
@@ -3674,7 +3676,7 @@ function sheetProf(pid) {
       const email = $('pemail').value.trim().toLowerCase(); if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return 'Confira o e-mail.';
       const outro = Object.entries(S.profs).find(([id, x]) => id !== pid && email && String(x.emailApp || '').toLowerCase() === email); if (outro) return `Este e-mail já está com ${outro[1].nome}.`;
       const id = pid || novoId(), antes = String((P && P.emailApp) || '').toLowerCase();
-      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, telefone: $('ptel').value.trim(), emailApp: email || null, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
+      await B.set(`escolas/${S.eid}/professoras/${id}`, { nome, fixoEscola: parseValor($('pfixo').value) > 0 ? C.r2(parseValor($('pfixo').value)) : null, telefone: $('ptel').value.trim(), emailApp: email || null, ...(email !== antes ? { appEm: null, appUid: null } : {}) }, { merge: true });
       if (MOCK && email !== antes) await espelhoProfMock(id, antes, email); },
     excluir: pid && (() => B.del(`escolas/${S.eid}/professoras/${pid}`)), bloqueio: n ? 'Este(a) professor(a) tem turmas. Troque o(a) professor(a) dessas turmas antes.' : null });
 }
@@ -6786,7 +6788,7 @@ async function semearMock() {
   await set(`${p}/equipe/${uP}`, { pid: 'p1', email: 'professor@teste.com', nome: 'Juliana Costa', em: Date.now() - 3 * 864e5 });
   await set('convitesProf/' + chaveEmail('professor@teste.com'), { [`${eid}_p1`]: { eid, pid: 'p1', em: Date.now() } });
   await set('users/' + uP, { escolas: { [eid]: { nome: 'Escolinha Movimento', papel: 'professora', prof: 'Juliana Costa' } } });
-  await set(`${p}/professoras/p1`, { emailApp: 'professor@teste.com', appEm: Date.now() - 3 * 864e5, appUid: uP, nome: 'Juliana Costa', telefone: '(81) 95555-1111', mpConectadoEm: Date.now(), mpConta: 'Juliana Costa', mpContaInfo: 'juliana.costa@email.com', pixChave: '(81) 95555-1111' });
+  await set(`${p}/professoras/p1`, { fixoEscola: 1500, emailApp: 'professor@teste.com', appEm: Date.now() - 3 * 864e5, appUid: uP, nome: 'Juliana Costa', telefone: '(81) 95555-1111', mpConectadoEm: Date.now(), mpConta: 'Juliana Costa', mpContaInfo: 'juliana.costa@email.com', pixChave: '(81) 95555-1111' });
   await set(`${p}/professoras/p2`, { nome: 'Camila Ribeiro', telefone: '(81) 95555-2222', mpConectadoEm: Date.now(), mpConta: 'Camila Ribeiro', mpContaInfo: 'camila.ribeiro@email.com', pixChave: 'camila.ribeiro@email.com' });
   await set(`${p}/professoras/p3`, { nome: 'Rafael Souza', telefone: '(81) 95555-3333' });
   await set(`${p}/professoras/p4`, { nome: 'Beatriz Nunes', telefone: '(81) 95555-4444' });

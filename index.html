@@ -831,7 +831,7 @@ nav.tabs button{font-family:var(--f-display);font-style:italic;text-transform:up
 .pf-resumo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .pf-resumo div{display:flex;flex-direction:column;gap:4px;padding:12px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);min-width:0}
 .pf-resumo span{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-.pf-resumo b{font-size:1.02rem;overflow-wrap:anywhere}
+.pf-resumo b{font-size:clamp(.8rem,3.7vw,1.02rem);white-space:nowrap;letter-spacing:-.01em}
 .pf-resumo .ruim b{color:var(--out)}
 
 /* escanear documento: tela cheia para ajustar os cantos */
@@ -940,6 +940,7 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 .arq-lnk{background:none;border:0;padding:4px 0;font:inherit;font-size:.92rem;color:var(--accent);text-align:left;display:block}.arq-lnk u{text-underline-offset:2px}.arq-lnk .s{color:var(--muted);margin-left:4px}
 .link.arq-exc{font-size:.82rem;color:var(--out);padding:4px 2px;white-space:nowrap;text-decoration:none}
 .pf-mostra{margin-top:10px;width:100%}.pf-seta{margin-left:8px;color:var(--muted);font-size:.9rem}.pf-sub{padding:0 0 6px 14px!important;border-top:0!important;display:block!important}.pf-sub .list{margin:0}.pf-div li{padding:8px 0}.pf-mes{margin-bottom:12px}
+.pf-fixo{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:8px;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}.pf-fixo>span:first-child{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}.pf-fixo b{font-size:1.02rem}
 </style>
 </head>
 <body>
