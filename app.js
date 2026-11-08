@@ -5986,13 +5986,15 @@ async function juntarDocsArquivos({ titulo, alids, tids, campos = ['nasc'], even
     ims.forEach((im, k) => { const e = Math.min((W - 2 * M) / im.width, cada / im.height), w = im.width * e, h = im.height * e, topo = TOPO + k * (cada + vao);
       pg.drawImage(im, { x: (W - w) / 2, y: H - topo - h, width: w, height: h }); });
   };
+  // um documento com problema não derruba o PDF: no lugar dele sai uma página avisando
+  const docSeguro = async (pdf, id, t) => { try { await desenharDoc(pdf, id, t); } catch (e) { const pg = pdf.addPage([W, H]); cab(pg, id, t); escrever(pg, 'Não deu para juntar este arquivo. Mande-o à parte.', M, TOPO + 20, { cor: cinza }); } };
   const fechar = async (pdf, t) => { pdf.setTitle(pdfTxt(t)); pdf.setProducer('Turma em Dia'); pdf.setCreator('Turma em Dia'); return pdf.save(); };
   const lista = []; for (const id of alids) for (const t of expandeTipos(id, tids)) if (metaJunta(id, t)) lista.push([id, t]);
   if (!tids.length) { const pdf = await novoPdf(); desenharCapa(pdf); progresso('Finalizando…'); return [{ nome: limpaNome(`Lista ${titulo || escola}`) + '.pdf', bytes: await fechar(pdf, tit) }]; }
   if (!lista.length) { const pdf = await novoPdf(); desenharCapa(pdf); progresso('Finalizando…'); return [{ nome: limpaNome(`Lista ${titulo || escola}`) + '.pdf', bytes: await fechar(pdf, tit) }]; } // ninguém tem esses documentos: sai a lista, com "falta" em cada um
   if (!separado) {
     const pdf = await novoPdf(); if (capa) desenharCapa(pdf);
-    let n = 0; for (const [id, t] of lista) { progresso(`Juntando ${++n} de ${lista.length}…`); await desenharDoc(pdf, id, t); }
+    let n = 0; for (const [id, t] of lista) { progresso(`Juntando ${++n} de ${lista.length}…`); await docSeguro(pdf, id, t); }
     progresso('Finalizando…');
     return [{ nome: limpaNome(`Documentos ${titulo || escola}`) + '.pdf', bytes: await fechar(pdf, tit) }];
   }
@@ -6002,7 +6004,7 @@ async function juntarDocsArquivos({ titulo, alids, tids, campos = ['nasc'], even
   let n = 0;
   for (const [id, t] of lista) {
     progresso(`Preparando ${++n} de ${lista.length}…`);
-    const pdf = await novoPdf(); await desenharDoc(pdf, id, t);
+    const pdf = await novoPdf(); await docSeguro(pdf, id, t);
     saida.push({ nome: nomeUnico(`${(S.alunas[id] || {}).nome || 'Aluno'} - ${tipoDoc(t).nome}`), bytes: await fechar(pdf, `${(S.alunas[id] || {}).nome || ''} · ${tipoDoc(t).nome}`) });
   }
   return saida;
