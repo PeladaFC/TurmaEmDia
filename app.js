@@ -657,23 +657,47 @@ function telaProfEnviado() {
 }
 // criar escola em 4 passos, como fases de um jogo: nome · vencimento · primeira turma · lista de primeiros passos
 let WZ = null;
+const UF_NOMES = { AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará', PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins' };
+// cidades do estado (lista oficial do IBGE); guarda no aparelho. Sem internet: aceita o que for digitado
+const CIDADES = {};
+async function cidadesDoEstado(uf) {
+  if (CIDADES[uf]) return CIDADES[uf];
+  try { const g = JSON.parse(localStorage.getItem('escolinha.cid.' + uf) || 'null'); if (g && g.length) return CIDADES[uf] = g; } catch (e) { }
+  try { const r = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`); if (!r.ok) return null;
+    const l = (await r.json()).map(m => m.nome).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    try { localStorage.setItem('escolinha.cid.' + uf, JSON.stringify(l)); } catch (e) { }
+    return CIDADES[uf] = l; } catch (e) { return null; }
+}
+const acharCidade = (l, v) => l.find(c => semAcento(c) === semAcento(String(v || '').trim())) || '';
 function telaCriarEscola(passo) {
   if (!WZ || passo === 1 && !WZ.nome) WZ = WZ || { nome: '', cidade: '', uf: '', termos: false, venc: 10, turma: { nome: '', preco: '', hs: [{ dias: [], ini: '', fim: '' }] } };
   const voltar = '<button class="btn ghost" id="wvolta">Voltar</button>';
   if (passo === 1) {
     telaOb({ passo: 1, rotulo: 'Passo 1 de 4', titulo: 'Como se chama sua escola?', sub: 'É o nome que as famílias vão ver no app.',
       corpo: `<div class="field"><label for="wnome">Nome da escola</label><input id="wnome" maxlength="60" placeholder="Ex.: Escolinha Movimento" value="${esc(WZ.nome)}"></div>
-        <div class="two"><div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" autocomplete="address-level2" value="${esc(WZ.cidade)}"></div>
-        <div class="field"><label for="wuf">Estado</label><select id="wuf"><option value="">Escolha</option>${UFS.map(u => `<option ${u === WZ.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div>
+        <div class="two"><div class="field"><label for="wuf">Estado</label><select id="wuf"><option value="">Escolha</option>${Object.entries(UF_NOMES).sort((a, b) => a[1].localeCompare(b[1])).map(([u, n]) => `<option value="${u}" ${u === WZ.uf ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+        <div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" list="wcids" autocomplete="off" placeholder="${WZ.uf ? 'Digite a cidade' : 'Escolha o estado'}" ${WZ.uf ? '' : 'disabled'} value="${esc(WZ.cidade)}"><datalist id="wcids"></datalist></div></div>
         <label class="check aceite"><input type="checkbox" id="wtermos" ${WZ.termos ? 'checked' : ''}><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>.</span></label>
         <div class="err" id="werr" role="alert"></div>`,
       botao: '<button class="btn" id="wok">Próximo</button>', dois: voltar });
     $('wvolta').onclick = () => { WZ = null; telaInicio(); };
+    // estado primeiro; a cidade vira uma lista com as cidades daquele estado
+    let cidades = null;
+    const carregar = async () => { const uf = $('wuf').value; $('wcid').disabled = !uf; $('wcid').placeholder = uf ? 'Digite a cidade' : 'Escolha o estado';
+      cidades = null; $('wcids').innerHTML = ''; if (!uf) return;
+      cidades = await cidadesDoEstado(uf); if ($('wuf').value !== uf || !cidades) return;
+      $('wcids').innerHTML = cidades.map(c => `<option value="${esc(c)}">`).join('');
+      if ($('wcid').value && !acharCidade(cidades, $('wcid').value)) $('wcid').value = ''; };
+    $('wuf').onchange = () => { carregar(); setTimeout(() => $('wcid').focus(), 50); };
+    if (WZ.uf) carregar();
     $('wok').onclick = () => {
-      Object.assign(WZ, { nome: $('wnome').value.trim(), cidade: $('wcid').value.trim(), uf: $('wuf').value, termos: $('wtermos').checked });
+      const cid = cidades ? acharCidade(cidades, $('wcid').value) : $('wcid').value.trim();
+      Object.assign(WZ, { nome: $('wnome').value.trim(), cidade: cid || $('wcid').value.trim(), uf: $('wuf').value, termos: $('wtermos').checked });
       const err = m => $('werr').textContent = m;
       if (!WZ.nome) return err('Digite o nome da escola.');
-      if (!WZ.cidade || !WZ.uf) return err('Diga a cidade e o estado da escola.');
+      if (!WZ.uf) return err('Escolha o estado da escola.');
+      if (!WZ.cidade) return err('Digite a cidade da escola.');
+      if (cidades && !cid) return err(`Não achamos "${$('wcid').value.trim()}" em ${UF_NOMES[WZ.uf]}. Escolha a cidade na lista.`);
       if (!WZ.termos) return err('Para criar a escola, aceite os Termos de uso e a Política de privacidade.');
       telaCriarEscola(2);
     };
