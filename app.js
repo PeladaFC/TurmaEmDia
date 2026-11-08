@@ -1340,7 +1340,12 @@ function sheetPendencias(filtro = 'todos') {
 function blocoPendPerfil(alid) {
   const f = faltaCadastro(alid); if (!f.length) return '';
   const m = msgPendencias([alid]);
-  return `<section class="psec"><div class="psec-cab"><h2>Pendências</h2></div><div class="plista">${f.map(x => `<div class="plinha"><span class="grow">${esc(x.charAt(0).toUpperCase() + x.slice(1))}</span><span class="chip aberto">Falta</span></div>`).join('')}</div>
+  // documento e atestado: a escola pode adicionar aqui o que a família mandou por fora (WhatsApp, papel)
+  const acao = x => { if (/atestado/.test(x)) return 'at'; const m = /^mandar(?: de novo)?: (.+?)(?: \((?:venceu|vai vencer)\))?$/.exec(x); const T = m && tiposDoc().find(T => T.nome === m[1]); return T ? 'd:' + T.id : ''; };
+  const lin = x => { const t = esc(x.charAt(0).toUpperCase() + x.slice(1)), k = acao(x);
+    return k ? `<button type="button" class="plinha" data-ppa="${esc(k)}"><span class="grow">${t}</span><span class="padd">+ Adicionar</span></button>`
+      : `<div class="plinha"><span class="grow">${t}</span><span class="chip aberto">Só a família</span></div>`; };
+  return `<section class="psec"><div class="psec-cab"><h2>Pendências</h2></div><div class="plista">${f.map(lin).join('')}</div>
     <div class="actions" style="margin-top:10px">${m && m.wa ? `<a class="btn wa-btn" href="${esc(m.wa)}" target="_blank" rel="noopener">${ICO_WA} Cobrar pelo WhatsApp</a>` : ''}<button type="button" class="btn ghost" id="ppcop">Copiar mensagem</button></div>
     <span class="s" style="display:block;margin-top:6px">A família também vê esses avisos no app, na tela de pagar.</span></section>`;
 }
@@ -3006,6 +3011,7 @@ function sheetPerfilAluno(alid, volta) {
     if ($('pnovodoc')) $('pnovodoc').onclick = () => abrirDe(eu, () => sheetDocAluno(alid, null, eu));
     sh.querySelectorAll('[data-pvct]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetVerContrato(alid)));
     sh.querySelectorAll('[data-psaude]').forEach(b => b.onclick = () => abrirDe(eu, () => sheetVerTermo(alid)));
+    sh.querySelectorAll('[data-ppa]').forEach(b => b.onclick = () => { const k = b.dataset.ppa; abrirDe(eu, () => k === 'at' ? sheetEnviarAtestado(alid, { volta: eu }) : sheetDocAluno(alid, k.slice(2), eu)); });
     if ($('ppcop')) $('ppcop').onclick = () => { const m = msgPendencias([alid]); if (m) copiar(m.txt, 'Mensagem copiada. Cole no WhatsApp ou onde quiser.'); };
   }, () => { if (parar) parar(); });
 }
