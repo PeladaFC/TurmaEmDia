@@ -101,7 +101,7 @@ module.exports = db => {
         const minhasT = Object.keys(turmas).filter(t => C.daTurma(turmas[t], pid)), feitas = {};
         const qc = await db.collection(`escolas/${eid}/chamadas`).where('data', '>=', maisDiasR(hojeRecife(), -21)).get();
         qc.docs.forEach(x => { const c = x.data(); if (minhasT.includes(c.tid)) (feitas[c.tid] = feitas[c.tid] || []).push(c.data); });
-        return res.json({ pid, nome: P.nome || '', mes, ...r, fotos, saude, chamadas: feitas, fixoEscola: Number(P.fixoEscola) > 0 ? C.r2(Number(P.fixoEscola)) : null });
+        return res.json({ pid, nome: P.nome || '', mes, ...r, fotos, saude, chamadas: feitas, ...(() => { const liq = Number(P.salVaria ? ((P.salMes || {})[mes] || {}).liq : P.fixoEscola); return { fixoEscola: liq > 0 ? C.r2(liq) : null, salVaria: !!P.salVaria }; })() });
       }
 
       // chamada: o professor abre e salva a chamada das turmas dele (fica registrado quem fez e cada mudança)
