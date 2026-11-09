@@ -210,6 +210,7 @@ function capaApp(compacta) {
       <h1 class="capa-nome">${esc(NOME_APP())}</h1>
       <p class="capa-frase">Tudo da sua escolinha em um só lugar.</p>
       ${compacta ? '' : '<p class="capa-sub">Para escolinhas de esporte, dança, luta, música e o que mais for.</p>'}
+      ${compacta ? `<ul class="capa-vant">${[['Turmas e chamada', 'Horários, professores, vagas e a frequência de cada aluno.'], ['Cobrança automática', 'A família paga e a mensalidade já aparece como paga.'], ['Eventos e documentos', 'Calendário, inscrições, termos e atestados no mesmo lugar.'], ['O caixa da escola', 'Entradas, saídas, acordos e o repasse dos professores.']].map(([t, d]) => `<li><b>${t}</b><span>${d}</span></li>`).join('')}</ul>` : ''}
     </div>`;
 }
 function vantagensApp() {
@@ -427,6 +428,7 @@ function telaLogin(modo = 'entrar') {
   if (MOCK && modo !== 'senha') {
     RAIZ().innerHTML = `<div class="login entrada">
       ${capaApp(true)}
+      <div class="login-form">
       <section class="entrar-box sobe" style="--d:150ms"><h2>Entrar como</h2>
         <button class="entrar-op" id="eadm"><span class="vant-ic forte">${ICO.painel || ICO.cobr}</span><span class="grow"><b>Administração</b><span class="s">Pendências, alunos, turmas e financeiro da escola</span></span><span aria-hidden="true" class="seta">›</span></button>
         <button class="entrar-op" id="efam"><span class="vant-ic">${ICO.filhas}</span><span class="grow"><b>Responsável</b><span class="s">Ver e pagar as cobranças dos filhos</span></span><span aria-hidden="true" class="seta">›</span></button>
@@ -434,6 +436,7 @@ function telaLogin(modo = 'entrar') {
       </section>
       <div class="note sobe" style="text-align:center;--d:350ms">Modo de teste, com dados de exemplo. O login com senha fica para depois.</div>
       ${linksLegais()}
+      </div>
     </div>`;
     $('eadm').onclick = () => B.login('admin@teste.com', '123456');
     $('efam').onclick = () => B.login('familia@teste.com', '123456');
@@ -442,6 +445,8 @@ function telaLogin(modo = 'entrar') {
   }
   RAIZ().innerHTML = `<div class="login entrada">
     ${capaApp(true)}
+    <div class="login-form">
+    <a class="login-volta" href="../">‹ Voltar ao site</a>
     <h2 style="margin-top:6px">${modo === 'criar' ? 'Criar conta' : 'Entrar'}</h2>
     ${modo === 'criar' ? `<div class="field"><label for="lnome">Seu nome</label><input id="lnome" autocomplete="name"></div>` : ''}
     <div class="field"><label for="lmail">E-mail</label><input id="lmail" type="email" autocomplete="email" inputmode="email"></div>
@@ -453,6 +458,7 @@ function telaLogin(modo = 'entrar') {
     <div class="or">ou</div>
     <button class="btn ghost" id="lgoogle">Entrar com Google</button>
     ${MOCK ? `<div class="banner"><span>Modo de teste. Administração: <b>admin@teste.com</b>; família: <b>familia@teste.com</b>; senha <b>123456</b>.</span></div>` : ''}
+    </div>
   </div>`;
   const err = m => $('lerr').textContent = m;
   $('ltroca').onclick = () => telaLogin(modo === 'criar' ? 'entrar' : 'criar');

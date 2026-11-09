@@ -997,6 +997,9 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 
 /* ================= Computador (tela larga): menu fixo à esquerda, conteúdo mais largo, janelas no centro ================= */
 .tabs-marca{display:none}
+.login-form{display:contents}
+.login-volta{display:none}
+.capa-vant{display:none}
 @media (min-width:1000px) and (hover:hover){
   body{--lado:248px}
   nav.tabs{top:0;bottom:0;right:auto;width:var(--lado);border-top:0;border-right:1px solid var(--line);padding:22px 14px 16px;display:flex;flex-direction:column;gap:18px;overflow:auto}
@@ -1008,7 +1011,7 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
   nav.tabs button:hover{background:var(--surface2);color:var(--ink)}
   nav.tabs button[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
   nav.tabs .tab-ic{position:relative;display:grid;place-items:center}
-  .wrap{max-width:1180px;padding-left:calc(var(--lado) + 40px);padding-right:40px;margin:0 auto 0 0;padding-bottom:56px;box-sizing:content-box}
+  #raiz:has(nav.tabs) .wrap{max-width:1180px;padding-left:calc(var(--lado) + 40px);padding-right:40px;margin:0 auto 0 0;padding-bottom:56px;box-sizing:content-box}
   /* mais coisas à vista: cartões e listas lado a lado */
   #tela{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px!important;align-items:start}
   #tela>*{grid-column:1/-1;min-width:0}
@@ -1043,7 +1046,29 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
   /* telas sem menu (entrar, escolher escola): centralizadas como no celular */
   .login,.intro,.ob{margin-inline:auto}
 }
-@media (min-width:1400px) and (hover:hover){ body{--lado:270px} .wrap{max-width:1240px;padding-left:calc(var(--lado) + 56px)} }
+@media (min-width:1400px) and (hover:hover){ body{--lado:270px} #raiz:has(nav.tabs) .wrap{max-width:1240px;padding-left:calc(var(--lado) + 56px)} }
+
+/* ================= Computador: tela de entrar ocupando a tela toda (marca de um lado, formulário do outro) ================= */
+@media (min-width:1000px) and (hover:hover){
+  .login{max-width:none;min-height:100vh;min-height:100dvh;padding:0;margin:0;flex-direction:row;gap:0;align-items:stretch}
+  .login>.capa{flex:1 1 56%;margin:0;border-radius:0;padding:9vh 6vw;text-align:left;display:flex;flex-direction:column;justify-content:center}
+  .login>.capa::after{width:420px;height:420px;inset:auto -120px -140px auto}
+  .login>.capa .capa-marca{width:112px;height:112px;margin:0 0 28px}
+  .login>.capa .capa-nome{font-size:clamp(3.2rem,4.8vw,5rem)}
+  .login>.capa .capa-frase{font-size:clamp(1.3rem,1.7vw,1.7rem);max-width:none;margin:14px 0 0}
+  .capa-vant{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:26px 36px;list-style:none;margin:52px 0 0;padding:34px 0 0;border-top:1px solid rgba(255,255,255,.25);max-width:760px;position:relative;z-index:1}
+  .capa-vant li{display:flex;flex-direction:column;gap:4px}
+  .capa-vant b{font-family:var(--f-display);font-weight:800;font-style:italic;text-transform:uppercase;font-size:1.25rem;letter-spacing:.01em}
+  .capa-vant span{opacity:.88;font-size:1.02rem;line-height:1.4}
+  .login-form{flex:1 1 44%;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:6vh clamp(40px,5.5vw,110px);max-width:680px;margin:0 auto;width:100%}
+  .login-form h2{font-size:2.6rem;margin:0 0 8px!important}
+  .login-form .field label{font-size:1rem}
+  .login-form input{min-height:56px;font-size:1.12rem}
+  .login-form .btn{min-height:56px;font-size:1.15rem}
+  .login-form .entrar-box{width:100%}
+  .login-volta{display:inline-block;align-self:flex-start;color:var(--muted);font-weight:600;text-decoration:none;margin-bottom:18px}
+  .login-volta:hover{color:var(--ink);text-decoration:underline}
+}
 </style>
 </head>
 <body>
@@ -1051,11 +1076,11 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 <div id="overlay"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="config.js"></script>
-<script src="regras.js?v=202611091620"></script>
-<script src="qrcode.js?v=202611091620"></script>
-<script src="pdf-simples.js?v=202611091620"></script>
-<script src="scanner.js?v=202611091620"></script>
-<script src="relatorio.js?v=202611091620"></script>
-<script type="module" src="app.js?v=202611091620"></script>
+<script src="regras.js?v=202611091800"></script>
+<script src="qrcode.js?v=202611091800"></script>
+<script src="pdf-simples.js?v=202611091800"></script>
+<script src="scanner.js?v=202611091800"></script>
+<script src="relatorio.js?v=202611091800"></script>
+<script type="module" src="app.js?v=202611091800"></script>
 </body>
 </html>
