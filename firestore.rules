@@ -76,7 +76,7 @@ service cloud.firestore {
       allow update: if adminE(eid)
         && request.resource.data.dono == resource.data.dono
         && request.resource.data.dono in request.resource.data.admins
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['convitesAdm', 'adminsInfo'])
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['convitesAdm', 'adminsInfo', 'cartaoPendente'])
         && (request.resource.data.admins == resource.data.admins
             || eu() == resource.data.dono
             || request.resource.data.admins == resource.data.admins.removeAll([eu()]));

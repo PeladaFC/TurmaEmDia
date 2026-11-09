@@ -212,6 +212,7 @@ module.exports = (db, P) => {
         const r = await pedir(tok, 'POST', '/preapproval', corpo);
         if (!r.ok || !r.j.id) { logger.error('plano cartão', r.status, JSON.stringify(r.j)); return res.status(402).json({ erro: /card|token|cvv|security/i.test(JSON.stringify(r.j)) ? 'O cartão não foi aceito. Confira os dados ou use outro cartão.' : 'O Mercado Pago não aceitou o cartão agora. Tente de novo ou use o Pix.' }); }
         await segRef(eid).set({ preId: String(r.j.id), cobradas: 0 }, { merge: true });
+        await db.doc(`escolas/${eid}`).set({ cartaoPendente: false }, { merge: true }); // cadastro da escola completo
         p = await gravar(eid, { forma: 'cartao', ciclo, cartao: { marca: String(b.marca || 'Cartão').slice(0, 30), fim: String(b.fim || '').replace(/\D/g, '').slice(-4) }, pausadoGratis: false, proxCobranca: new Date(inicio - 3 * 3600e3).toISOString().slice(0, 10) });
         p = await sincronizar(eid, p);
         return res.json(await publico(eid, p));
