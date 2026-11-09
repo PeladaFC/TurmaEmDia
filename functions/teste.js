@@ -799,6 +799,21 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
       assert.deepStrictEqual(e5().historico.map(h => h.txt.split(':')[0].split(',')[0]), ['Escola mudou para o plano Completo', 'Escola mudou para o plano Inicial', 'Desconto', 'Desconto', '3 meses grátis']);
       r = resp(); await AS.plano(req({ acao: 'donoTirarCortesia', eid: 'e5' }, dono), r); assert.strictEqual(prer.status, 'authorized');
     });
+    await t('código de cortesia: o dono cria com limite de escolas; a escola usa e não precisa do cartão', async () => {
+      const dono = 'ok:dono:v';
+      let r = resp(); await AS.plano(req({ acao: 'donoCriarCodigo', codigo: 'escola amiga', meses: 2, limite: 1, motivo: 'parceria' }, dono), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+      assert.strictEqual(r.body.codigos[0].codigo, 'ESCOLAAMIGA');
+      r = resp(); await AS.plano(req({ acao: 'donoCriarCodigo', codigo: 'ESCOLAAMIGA', meses: 2, limite: 1 }, dono), r); assert.strictEqual(r.code, 409);
+      S2.set('escolas/e6', { ...S2.get('escolas/e6'), cartaoPendente: true });
+      r = resp(); await AS.plano(req({ acao: 'codigo', eid: 'e6', codigo: 'xxx' }, 'ok:adm6'), r); assert.strictEqual(r.code, 404);
+      r = resp(); await AS.plano(req({ acao: 'codigo', eid: 'e6', codigo: 'escolaamiga' }, 'ok:adm6'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+      assert.strictEqual(r.body.situacao.fase, 'cortesia'); assert.strictEqual(S2.get('escolas/e6').cartaoPendente, false);
+      r = resp(); await AS.plano(req({ acao: 'codigo', eid: 'e6', codigo: 'ESCOLAAMIGA' }, 'ok:adm6'), r); assert.strictEqual(r.code, 409); // um código por escola
+      r = resp(); await AS.plano(req({ acao: 'codigo', eid: 'e5', codigo: 'ESCOLAAMIGA' }, 'ok:adm5'), r); assert.strictEqual(r.code, 409); // limite de 1 escola
+      r = resp(); await AS.plano(req({ acao: 'donoCodigos' }, dono), r); assert.strictEqual(r.body.codigos[0].usos, 1);
+      S2.set('escolas/e6/config/plano', { ...S2.get('escolas/e6/config/plano'), cortesiaAte: '2026-10-01', forma: null });
+      await AS.interno.diario(); assert.strictEqual(S2.get('escolas/e6').cartaoPendente, true); // acabou sem cartão: pede o cartão de novo
+    });
   }
   Date.now = realNow;
   console.log(`\n${n} testes passaram.`);

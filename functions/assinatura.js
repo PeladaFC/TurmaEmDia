@@ -8,6 +8,9 @@
      Fale com a escola."); 90 dias depois do vencimento, aviso de encerramento.
      O servidor grava escolas/{eid}/config/plano.bloqueio ('leitura' | 'suspensa' | null), que as regras do Firestore conferem.
    - Painel do dono: lista as escolas, dá meses grátis (cortesiaAte) e desconto ({ pct } ou { valor } por mês, com ou sem prazo).
+   - Códigos de cortesia (servidor/cortesia/codigos/{CODIGO}): o dono cria um código com N meses grátis e um limite de escolas.
+     A escola digita o código no passo do cartão: ganha os meses e não precisa do cartão até eles acabarem.
+     Quando acabam sem cartão, a escola volta a ver o passo do cartão ao entrar (escolas/{eid}.cartaoPendente).
    Chave da conta da empresa: servidor/mp.accessToken, ou a da própria aplicação (client_credentials). Chave pública: servidor/mp.publicKey. */
 'use strict';
 const { onRequest } = require('firebase-functions/v2/https');
@@ -124,6 +127,13 @@ module.exports = (db, P) => {
     return out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
   const dataOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+  const codRef = c => db.doc(`servidor/cortesia/codigos/${c}`);
+  const normCod = c => String(c || '').trim().toUpperCase().replace(/\s+/g, '');
+  const codOk = c => /^[A-Z0-9-]{3,30}$/.test(c);
+  async function listaCodigos() {
+    const s = await db.collection('servidor/cortesia/codigos').get();
+    return s.docs.map(d => ({ codigo: d.id, ...d.data() })).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+  }
 
   const plano = onRequest({ cors: true, maxInstances: 5, timeoutSeconds: 120 }, async (req, res) => {
     try {
@@ -133,6 +143,21 @@ module.exports = (db, P) => {
       if (String(b.acao || '').startsWith('dono')) {
         await daEmpresa(u);
         if (b.acao === 'donoEscolas') return res.json({ escolas: await listaEscolas() });
+        if (b.acao === 'donoCodigos') return res.json({ codigos: await listaCodigos() });
+        if (b.acao === 'donoCriarCodigo') {
+          const c = normCod(b.codigo), meses = Math.round(Number(b.meses)), limite = Math.round(Number(b.limite));
+          if (!codOk(c)) return res.status(400).json({ erro: 'O código usa de 3 a 30 letras, números ou traço.' });
+          if (!(meses >= 1 && meses <= 36)) return res.status(400).json({ erro: 'Escolha de 1 a 36 meses.' });
+          if (!(limite >= 1 && limite <= 1000)) return res.status(400).json({ erro: 'Escolha de 1 a 1000 escolas.' });
+          if ((await codRef(c).get()).exists) return res.status(409).json({ erro: 'Esse código já existe. Escolha outro.' });
+          await codRef(c).set({ meses, limite, usos: 0, escolas: [], motivo: String(b.motivo || '').trim().slice(0, 200), ativo: true, criadoEm: Date.now(), por: u.email });
+          return res.json({ codigos: await listaCodigos() });
+        }
+        if (b.acao === 'donoDesativarCodigo') {
+          const c = normCod(b.codigo); if (!codOk(c) || !(await codRef(c).get()).exists) return res.status(404).json({ erro: 'Código não encontrado.' });
+          await codRef(c).set({ ativo: false }, { merge: true });
+          return res.json({ codigos: await listaCodigos() });
+        }
         if (!idOk(b.eid) || !(await db.doc(`escolas/${b.eid}`).get()).exists) return res.status(404).json({ erro: 'Escola não encontrada.' });
         const p = await garantir(b.eid), hoje = hojeRecife(), motivo = String(b.motivo || '').trim().slice(0, 200), hist = (p.historico || []).slice(-30);
         const reg = txt => [...hist, { em: Date.now(), por: u.email, txt, motivo }];
@@ -165,6 +190,26 @@ module.exports = (db, P) => {
       // escola que já tinha plano antes da escolha manual: fica no menor que cabe os alunos de hoje
       if (!p.planoId) p = await gravar(eid, { planoId: C.planoPara(await alunosAtivos(eid)).id });
       if (b.acao === 'estado') { p = await sincronizar(eid, p); return res.json(await publico(eid, p)); }
+      // código de cortesia: meses grátis sem precisar do cartão (um código por escola; o código tem limite de escolas)
+      if (b.acao === 'codigo') {
+        const c = normCod(b.codigo);
+        if (!codOk(c)) return res.status(400).json({ erro: 'Confira o código.' });
+        if (p.cortesiaCodigo) return res.status(409).json({ erro: 'Esta escola já usou um código de cortesia.' });
+        let meses = 0, motivo = '';
+        await db.runTransaction(async t => {
+          const s = await t.get(codRef(c)), x = s.exists ? s.data() : null;
+          if (!x || !x.ativo) throw erro('Código não encontrado. Confira as letras e os números.', 404);
+          if ((x.escolas || []).some(e => e.eid === eid)) throw erro('Esta escola já usou este código.', 409);
+          if ((x.usos || 0) >= x.limite) throw erro('Este código já foi usado por todas as escolas que ele permite.', 409);
+          meses = x.meses; motivo = x.motivo || '';
+          t.set(codRef(c), { usos: (x.usos || 0) + 1, escolas: [...(x.escolas || []), { eid, nome: escola.nome || 'Escola', em: Date.now() }] }, { merge: true });
+        });
+        const hoje = hojeRecife(), base = [hoje, p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(), ate = C.maisMeses(base, meses);
+        p = await gravar(eid, { cortesiaAte: ate, cortesiaMotivo: `Código ${c}${motivo ? ' · ' + motivo : ''}`, cortesiaCodigo: c, cartaoPedido: false,
+          historico: [...(p.historico || []).slice(-30), { em: Date.now(), por: u.email, txt: `Código ${c}: ${meses} ${meses === 1 ? 'mês grátis' : 'meses grátis'}, até ${ate}` }] });
+        await db.doc(`escolas/${eid}`).set({ cartaoPendente: false }, { merge: true });
+        return res.json(await publico(eid, p));
+      }
       // a escola escolhe o plano; o novo vale a partir da próxima cobrança. Só desce se os alunos ativos couberem.
       if (b.acao === 'escolher') {
         const pl = C.PLANOS.find(x => x.id === b.planoId); if (!pl) return res.status(400).json({ erro: 'Plano inválido.' });
@@ -245,7 +290,13 @@ module.exports = (db, P) => {
     let n = 0;
     for (const e of (await db.collection('escolas').get()).docs) {
       if (e.data().encerradaEm) continue; // escola encerrada: não cobra mais o plano
-      try { const p = await ler(`escolas/${e.id}/config/plano`); if (!p) continue; await sincronizar(e.id, p); n++; } catch (x) { logger.warn('plano diário', e.id, x.message); }
+      try {
+        const p = await ler(`escolas/${e.id}/config/plano`); if (!p) continue; await sincronizar(e.id, p); n++;
+        // os meses grátis do código acabaram e a escola não tem cartão: volta a pedir o cartão ao entrar
+        if (p.cortesiaCodigo && !p.forma && !p.cartaoPedido && (p.cortesiaAte || '') < hojeRecife()) {
+          await db.doc(`escolas/${e.id}`).set({ cartaoPendente: true }, { merge: true }); await planoRef(e.id).set({ cartaoPedido: true }, { merge: true });
+        }
+      } catch (x) { logger.warn('plano diário', e.id, x.message); }
     }
     return n;
   }

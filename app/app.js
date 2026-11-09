@@ -784,7 +784,19 @@ async function telaCartaoEscola(eid, nome, depois) {
       <div class="note">Depois do teste, o plano custa a partir de ${brl(C.PLANOS[0].mes)} por mês, conforme o número de alunos. Dá para cancelar antes.</div>
       <div class="note">🔒 O número vai direto para o Mercado Pago, que confere se o cartão é válido. O Turma em Dia não vê nem guarda o número.</div>
       <div class="err" id="ccerr" role="alert"></div>`,
-    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="ccsair">Sair da conta</button>' });
+    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="cccod">Tenho um código de cortesia</button><button type="button" id="ccsair">Sair da conta</button>' });
+  $('cccod').onclick = () => sheet(`<h3>Código de cortesia</h3><div class="sub">Digite o código que o Turma em Dia mandou para a escola. Com ele, a escola ganha meses grátis e não precisa cadastrar o cartão agora.</div>
+    <div class="field"><label for="cdcod">Código</label><input id="cdcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
+    <div class="err" id="cderr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Voltar</button><button type="button" class="btn" id="cdok">Usar o código</button></div>`, () => {
+    $('cdcod').focus(); $('cdcod').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); });
+    $('cdok').onclick = async () => { const c = $('cdcod').value.trim(); if (c.length < 3) return $('cderr').textContent = 'Digite o código.';
+      $('cdok').disabled = true;
+      try { const r = await chamarPlano({ acao: 'codigo', codigo: c });
+        if (MOCK) await B.set('escolas/' + eid, { cartaoPendente: false }, { merge: true });
+        fecharSheet(); sair(); S = S0; aviso(`Código aceito: grátis até ${dataBRA(r.plano.cortesiaAte)}`); depois(); }
+      catch (e) { $('cderr').textContent = msgErro(e); $('cdok').disabled = false; } };
+  });
   $('ccsair').onclick = () => { sair(); S = S0; confirmar('Sair da conta?', 'A escola fica criada. Quando você entrar de novo, é só cadastrar o cartão para continuar.', 'Sair', () => { VOLTA_ESCOLA = null; B.sair(); }); };
   $('ccdoc').addEventListener('input', e => { const x = C.soDigitos(e.target.value); e.target.value = x.length > 11 ? fmtCnpj(x) : fmtCpf(x); });
   const err = m => { $('ccerr').textContent = m; $('ccok').disabled = false; $('ccok').textContent = 'Salvar cartão'; };
@@ -6853,6 +6865,7 @@ function faixaPlano() {
     return '';
   }
   if (s.fase === 'teste' && s.restam <= 7) return `<div class="banner"><span><b>Teste grátis:</b> ${s.restam === 0 ? 'termina hoje' : `falta${s.restam > 1 ? 'm' : ''} ${s.restam} dia${s.restam > 1 ? 's' : ''}`}. Escolha como pagar para a escola seguir usando o app.</span>${bt}</div>`;
+  if (s.fase === 'cortesia' && s.restam <= 7 && S.plano.forma !== 'cartao') return `<div class="banner"><span><b>Os meses grátis acabam ${s.restam === 0 ? 'hoje' : `em ${ate(s.venc)}`}.</b> Cadastre o cartão para a escola seguir usando o app.</span>${bt}</div>`;
   if (s.fase === 'aviso') return `<div class="banner"><span><b>O plano do app venceu</b> em ${ate(s.venc)}. Pague até ${ate(C.maisDias(s.venc, 5))} para a escola não ficar só para leitura.</span><button id="fplano">Pagar</button></div>`;
   if (s.fase === 'leitura') return `<div class="banner alerta"><span><b>Só leitura:</b> o plano está atrasado desde ${ate(s.venc)}. As famílias continuam pagando pelo app, mas a escola não edita nem registra dinheiro. Pague até ${ate(C.maisDias(s.venc, 30))} para não suspender.</span><button id="fplano">Pagar</button></div>`;
   return '';
@@ -6993,6 +7006,12 @@ async function mockPlano(b) {
   if (b.acao === 'mockPago') { const venc = [p.testeAte || '', p.pagoAte || ''].sort().pop(); await gravar({ pagoAte: C.maisMeses(venc < C.maisDias(h, -30) ? h : venc, b.ciclo === 'anual' ? 12 : 1), pix: null }); return pub(); }
   if (b.acao === 'cartao') { const venc = [p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(); await gravar({ forma: 'cartao', ciclo: b.ciclo, cartao: { marca: b.marca, fim: b.fim }, proxCobranca: venc > h ? venc : h, ...(venc > h ? {} : { pagoAte: C.maisMeses(h, b.ciclo === 'anual' ? 12 : 1) }) }); return pub(); }
   if (b.acao === 'tirarCartao') { await gravar({ forma: null, cartao: null, proxCobranca: null }); return pub(); }
+  if (b.acao === 'codigo') { const c = String(b.codigo).trim().toUpperCase().replace(/\s+/g, ''), x = MOCK_CODIGOS.find(k => k.codigo === c);
+    if (!x || !x.ativo) throw new Error('Código não encontrado. Confira as letras e os números.');
+    if (p.cortesiaCodigo) throw new Error('Esta escola já usou um código de cortesia.');
+    if (x.usos >= x.limite) throw new Error('Este código já foi usado por todas as escolas que ele permite.');
+    x.usos++; x.escolas.push({ eid: S.eid, nome: (S.escola || {}).nome || 'Escola', em: Date.now() });
+    await gravar({ cortesiaAte: C.maisMeses([h, p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(), x.meses), cortesiaMotivo: 'Código ' + c, cortesiaCodigo: c }); return pub(); }
   return pub();
 }
 
@@ -7000,7 +7019,7 @@ async function mockPlano(b) {
 let DONO_ESC = null, DONO_F = { q: '', sit: 'todas' };
 const FASE_TXT = { teste: ['Teste', 'aberto'], ativo: ['Em dia', 'pago'], cortesia: ['Grátis', 'pago'], aviso: ['Venceu', 'vencido'], leitura: ['Só leitura', 'vencido'], suspensa: ['Suspensa', 'vencido'], livre: ['Sem plano', ''] };
 async function sheetEscolasDono(recarregar) {
-  const casca = h => `${abasDono('escolas')}<h3>Escolas</h3><div class="sub">Todas as escolas do app. Dê meses grátis ou desconto no plano de quem você escolher.</div>${h}<button class="btn ghost" data-fechar>Fechar</button>`;
+  const casca = h => `${abasDono('escolas')}<h3>Escolas</h3><div class="sub">Todas as escolas do app. Dê meses grátis ou desconto no plano de quem você escolher.</div><button type="button" class="btn ghost" id="dcods" style="width:100%;margin-top:8px">🎁 Códigos de cortesia</button>${h}<button class="btn ghost" data-fechar>Fechar</button>`;
   if (!DONO_ESC || recarregar) {
     sheet(casca('<div class="empty">Carregando as escolas…</div>'), () => ligarAbasDono());
     try { DONO_ESC = (MOCK ? await mockDono({ acao: 'donoEscolas' }) : await servidor('plano', { acao: 'donoEscolas' })).escolas || []; }
@@ -7019,13 +7038,50 @@ async function sheetEscolasDono(recarregar) {
   sheet(casca(`<div class="field" style="margin:8px 0"><input type="search" id="dqe" value="${esc(DONO_F.q)}" placeholder="Nome ou cidade da escola" aria-label="Procurar escola"></div>
     <div class="seg" style="margin-bottom:10px;flex-wrap:wrap">${[['todas', 'Todas'], ['teste', 'Teste'], ['ativo', 'Em dia'], ['atraso', 'Atrasadas'], ['beneficio', 'Com benefício']].map(([v, t]) => `<button type="button" data-dsit="${v}" aria-pressed="${DONO_F.sit === v}">${t}</button>`).join('')}</div>
     <div class="sub" id="dqn" style="margin-bottom:8px"></div><ul class="list" id="dql"></ul>`), sh => {
-    ligarAbasDono();
+    ligarAbasDono(); $('dcods').onclick = () => sheetCodigosDono();
     const pinta = () => { const L = lista(); $('dqn').textContent = `${L.length} escola${L.length === 1 ? '' : 's'}`; $('dql').innerHTML = L.map(cartao).join('') || '<li class="empty">Nenhuma escola com esses filtros.</li>';
       $('dql').querySelectorAll('[data-dcort]').forEach(b => b.onclick = () => abrirDe(() => sheetEscolasDono(), () => sheetCortesiaDono(DONO_ESC.find(x => x.eid === b.dataset.dcort))));
       $('dql').querySelectorAll('[data-ddesc]').forEach(b => b.onclick = () => abrirDe(() => sheetEscolasDono(), () => sheetDescontoDono(DONO_ESC.find(x => x.eid === b.dataset.ddesc)))); };
     $('dqe').addEventListener('input', e => { DONO_F.q = e.target.value; pinta(); });
     sh.querySelectorAll('[data-dsit]').forEach(b => b.onclick = () => { DONO_F.sit = b.dataset.dsit; sh.querySelectorAll('[data-dsit]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); pinta(); });
     pinta();
+  });
+}
+// códigos de cortesia: o dono cria um código com meses grátis e um limite de escolas; a escola usa no passo do cartão
+async function sheetCodigosDono() {
+  const casca = h => `<h3>Códigos de cortesia</h3><div class="sub">A escola digita o código no passo do cartão: ganha os meses grátis e só cadastra o cartão quando eles acabarem.</div>${h}<div class="actions"><button type="button" class="btn ghost" id="dkvolta">Voltar</button><button type="button" class="btn" id="dknovo">Criar código</button></div>`;
+  const ligar = () => { $('dkvolta').onclick = () => sheetEscolasDono(); $('dknovo').onclick = () => sheetNovoCodigoDono(); };
+  sheet(casca('<div class="empty">Carregando os códigos…</div>'), ligar);
+  let L; try { L = (MOCK ? await mockCodigos({ acao: 'donoCodigos' }) : await servidor('plano', { acao: 'donoCodigos' })).codigos || []; }
+  catch (e) { sheet(casca(`<div class="empty"><b>Não deu para carregar.</b><span>${esc(msgErro(e))}</span></div>`), ligar); return; }
+  const item = k => { const cheio = k.usos >= k.limite, st = !k.ativo ? ['Desativado', 'vencido'] : cheio ? ['Esgotado', 'vencido'] : ['Ativo', 'pago'];
+    return `<li class="nf-card dono-esc"><div class="grow"><div class="nf-lin"><b>${esc(k.codigo)}</b><span class="chip ${st[1]}">${st[0]}</span></div>
+      <span class="s">${k.meses} ${k.meses === 1 ? 'mês grátis' : 'meses grátis'} · usado por ${k.usos} de ${k.limite} escola${k.limite === 1 ? '' : 's'}${k.motivo ? ' · ' + esc(k.motivo) : ''}</span>
+      ${(k.escolas || []).length ? `<span class="s">Usaram: ${k.escolas.map(e => esc(e.nome)).join(', ')}</span>` : ''}
+      ${k.ativo && !cheio ? `<button type="button" class="link" data-dkdes="${esc(k.codigo)}" style="align-self:flex-start;color:var(--out);font-size:.82rem">Desativar</button>` : ''}</div></li>`; };
+  sheet(casca(`<ul class="list" style="margin-top:8px">${L.map(item).join('') || '<li class="empty">Nenhum código ainda.</li>'}</ul>`), sh => { ligar();
+    sh.querySelectorAll('[data-dkdes]').forEach(b => b.onclick = () => duploToque(b, async () => {
+      try { MOCK ? await mockCodigos({ acao: 'donoDesativarCodigo', codigo: b.dataset.dkdes }) : await servidor('plano', { acao: 'donoDesativarCodigo', codigo: b.dataset.dkdes }); aviso('Código desativado'); sheetCodigosDono(); } catch (e) { aviso(msgErro(e)); } }, 'Toque de novo para desativar')); });
+}
+function sheetNovoCodigoDono() {
+  sheet(`<h3>Novo código</h3><div class="sub">Quando o número de escolas chegar ao limite, o código para de funcionar.</div>
+    <div class="field"><label for="dkcod">Código</label><input id="dkcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
+    <div class="dn-lin"><span class="lb">Meses grátis</span><span class="passador"><button type="button" data-p="dkmes" data-d="-1" aria-label="Menos um mês">−</button><input id="dkmes" inputmode="numeric" value="3" aria-label="Meses grátis"><button type="button" data-p="dkmes" data-d="1" aria-label="Mais um mês">+</button></span></div>
+    <div class="dn-lin"><span class="lb">Quantas escolas</span><span class="passador"><button type="button" data-p="dklim" data-d="-1" aria-label="Menos uma escola">−</button><input id="dklim" inputmode="numeric" value="1" aria-label="Quantas escolas podem usar"><button type="button" data-p="dklim" data-d="1" aria-label="Mais uma escola">+</button></span></div>
+    <div class="field"><label for="dkmot">Motivo (só você vê)</label><input id="dkmot" maxlength="200" placeholder="Ex.: escolas parceiras"></div>
+    <div class="err" id="dkerr" role="alert"></div>
+    <div class="actions"><button type="button" class="btn ghost" id="dkvolta">Voltar</button><button type="button" class="btn" id="dkok">Criar</button></div>`, sh => {
+    const max = { dkmes: 36, dklim: 1000 };
+    sh.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { const i = $(b.dataset.p); i.value = Math.max(1, Math.min(max[b.dataset.p], (Math.round(Number(i.value)) || 0) + Number(b.dataset.d))); });
+    $('dkcod').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); });
+    $('dkvolta').onclick = () => sheetCodigosDono();
+    $('dkok').onclick = async () => { const corpo = { acao: 'donoCriarCodigo', codigo: $('dkcod').value, meses: Math.round(Number($('dkmes').value)), limite: Math.round(Number($('dklim').value)), motivo: $('dkmot').value };
+      if (corpo.codigo.length < 3) return $('dkerr').textContent = 'O código precisa de pelo menos 3 letras ou números.';
+      if (!(corpo.meses >= 1 && corpo.meses <= 36)) return $('dkerr').textContent = 'Escolha de 1 a 36 meses.';
+      if (!(corpo.limite >= 1 && corpo.limite <= 1000)) return $('dkerr').textContent = 'Escolha de 1 a 1000 escolas.';
+      $('dkok').disabled = true;
+      try { MOCK ? await mockCodigos(corpo) : await servidor('plano', corpo); aviso(`Código ${corpo.codigo} criado`); sheetCodigosDono(); }
+      catch (e) { $('dkerr').textContent = msgErro(e); $('dkok').disabled = false; } };
   });
 }
 async function acaoDono(corpo, ok) {
@@ -7077,7 +7133,15 @@ function sheetDescontoDono(e) {
   });
 }
 // modo de teste: as escolas do painel do dono
-const MOCK_DONO = {};
+const MOCK_DONO = {}, MOCK_CODIGOS = [{ codigo: 'ESCOLA-AMIGA', meses: 3, limite: 5, usos: 1, escolas: [{ eid: 'e4', nome: 'Natação Golfinho', em: Date.now() - 864e6 }], motivo: 'Escolas parceiras', ativo: true, criadoEm: Date.now() - 2e9 }];
+async function mockCodigos(b) {
+  if (b.acao === 'donoCriarCodigo') { const c = String(b.codigo || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (!/^[A-Z0-9-]{3,30}$/.test(c)) throw new Error('O código usa de 3 a 30 letras, números ou traço.');
+    if (MOCK_CODIGOS.some(k => k.codigo === c)) throw new Error('Esse código já existe. Escolha outro.');
+    MOCK_CODIGOS.unshift({ codigo: c, meses: b.meses, limite: b.limite, usos: 0, escolas: [], motivo: b.motivo || '', ativo: true, criadoEm: Date.now() }); }
+  if (b.acao === 'donoDesativarCodigo') MOCK_CODIGOS.find(k => k.codigo === b.codigo).ativo = false;
+  return { codigos: MOCK_CODIGOS.map(k => ({ ...k, escolas: [...k.escolas] })) };
+}
 async function mockDono(b) {
   const h = hoje(), base = [['e1', 'Escolinha Movimento', 'Recife', 'PE', 64, { testeAte: C.maisDias(h, 23) }], ['e2', 'Ballet Arte', 'Olinda', 'PE', 28, { testeAte: '2026-08-01', pagoAte: C.maisDias(h, 12), forma: 'cartao' }], ['e3', 'Escola de Futebol Craques do Amanhã', 'Recife', 'PE', 132, { testeAte: '2026-09-01', pagoAte: C.maisDias(h, -9) }], ['e4', 'Judô Kids', 'Caruaru', 'PE', 18, { testeAte: '2026-06-01', pagoAte: C.maisDias(h, -40) }]];
   for (const [eid, nome, cidade, uf, alunos, p] of base) if (!MOCK_DONO[eid]) MOCK_DONO[eid] = { eid, nome, cidade, uf, alunos, pix: eid !== 'e4', ciclo: 'mensal', ...p };
