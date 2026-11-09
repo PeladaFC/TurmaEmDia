@@ -207,7 +207,7 @@ module.exports = (db, P) => {
         // a primeira cobrança é no vencimento (fim do teste, ou do que já está pago); se já venceu, agora
         const venc = [p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(), inicio = venc > hoje ? Date.parse(venc + 'T13:00:00Z') : Date.now() + 5 * 60e3;
         const corpo = { reason: `Turma em Dia · ${escola.nome || 'Escola'}`.slice(0, 120), external_reference: `plano|${eid}`, payer_email: u.email, card_token_id: String(b.token), status: 'authorized',
-          back_url: 'https://turmaemdia.com.br/', auto_recurring: { frequency: ciclo === 'anual' ? 12 : 1, frequency_type: 'months', start_date: new Date(inicio).toISOString(), transaction_amount: pr.valor > 0 ? pr.valor : pr.cheio, currency_id: 'BRL' } };
+          back_url: 'https://www.turmaemdia.com.br/', auto_recurring: { frequency: ciclo === 'anual' ? 12 : 1, frequency_type: 'months', start_date: new Date(inicio).toISOString(), transaction_amount: pr.valor > 0 ? pr.valor : pr.cheio, currency_id: 'BRL' } };
         const r = await pedir(tok, 'POST', '/preapproval', corpo);
         if (!r.ok || !r.j.id) { logger.error('plano cartão', r.status, JSON.stringify(r.j)); return res.status(402).json({ erro: /card|token|cvv|security/i.test(JSON.stringify(r.j)) ? 'O cartão não foi aceito. Confira os dados ou use outro cartão.' : 'O Mercado Pago não aceitou o cartão agora. Tente de novo ou use o Pix.' }); }
         await segRef(eid).set({ preId: String(r.j.id), cobradas: 0 }, { merge: true });
