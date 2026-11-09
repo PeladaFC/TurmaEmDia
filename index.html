@@ -78,14 +78,20 @@ a{color:inherit}
 /* abertura */
 .abre{background:var(--cacau);color:#fff;position:relative;padding:56px var(--borda) 0;
   display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:48px;align-items:end;
-  clip-path:polygon(0 0,100% 0,100% calc(100% - 70px),0 100%);padding-bottom:110px}
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 70px),0 100%);padding-bottom:180px}
 .abre h1{font-family:var(--f-titulo);font-style:italic;font-weight:900;text-transform:uppercase;font-size:clamp(2.9rem,6.2vw,5.8rem);line-height:.88;letter-spacing:-.01em;margin:0 0 26px;max-width:12ch}
 .abre h1 .riscado{display:block;color:var(--areia)}
 .abre .lead{font-size:1.32rem;max-width:36ch;color:#EADFD0;margin:0 0 34px}
 .abre .acoes{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
 .abre .acoes .bt-linha{color:#fff;min-height:52px}
-.abre .nota{margin:22px 0 0;font-size:.95rem;color:#C8B8A2}
-.abre .texto{align-self:center;padding-bottom:20px}
+.abre .nota{margin:0 0 22px;font-size:1rem;color:#C8B8A2}
+.abre .texto{align-self:end}
+/* marca grande na abertura; ao descer a página ela encolhe e vai para o canto do topo */
+.marca.marca-grande{gap:28px;font-size:4.1rem;line-height:1;margin:0 0 40px;color:#fff;transform-origin:0 0;will-change:transform}
+.marca.marca-grande svg{width:118px;height:118px}
+.voando .marca-grande{position:fixed;z-index:30;margin:0;left:0;top:0}
+.voando #marca-topo{visibility:hidden}
+.lugar-marca{display:block}
 
 /* celular com as telas passando */
 .vitrine{display:flex;flex-direction:column;align-items:center;gap:18px;position:relative}
@@ -98,7 +104,7 @@ a{color:inherit}
 .legendas{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:400px}
 .legendas button{border:0;background:rgba(255,255,255,.08);color:#E9DCCB;font:inherit;font-weight:600;font-size:.95rem;padding:7px 14px;border-radius:30px;cursor:pointer;transition:background .2s,color .2s}
 .legendas button[aria-pressed="true"]{background:var(--areia);color:var(--cacau)}
-.legenda-atual{min-height:2.6em;text-align:center;color:#fff;font-weight:600;max-width:30ch;margin:0;font-size:1.05rem}
+.legenda-atual{position:absolute;top:100%;left:50%;transform:translateX(-50%);width:30ch;max-width:90vw;margin:20px 0 0;text-align:center;color:#fff;font-weight:600;font-size:1.05rem}
 @media (prefers-reduced-motion:reduce){.cel .tela img{transition:none;transform:none}}
 
 /* seções */
@@ -112,6 +118,7 @@ section{padding:96px var(--borda)}
 .resolve ul{margin:0;padding:0}
 .resolve .ic{width:52px;height:52px;display:grid;place-items:center;background:var(--marrom);color:#fff;clip-path:polygon(9px 0,100% 0,calc(100% - 9px) 100%,0 100%)}
 .resolve .ic svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.slogan{margin:56px 0 0;padding-top:40px;border-top:3px solid var(--tinta);font-family:var(--f-titulo);font-style:italic;font-weight:900;text-transform:uppercase;font-size:clamp(2rem,4.4vw,3.4rem);line-height:.95;color:var(--marrom);max-width:20ch}
 .resolve h3{margin:2px 0 4px;font-size:1.28rem;font-weight:700}
 .resolve p{margin:0;color:var(--cinza)}
 
@@ -162,7 +169,10 @@ footer nav{display:flex;gap:20px;margin-left:auto}
   .topo nav{display:none}
   .entrar{margin-left:auto}
   .abre{grid-template-columns:1fr;gap:40px;padding-top:40px}
-  .abre .texto{padding-bottom:0}
+  .abre .texto{align-self:start}
+  .marca.marca-grande{font-size:2.4rem;gap:16px;margin-bottom:30px}
+  .marca.marca-grande svg{width:70px;height:70px}
+  .abre{padding-bottom:150px}
   .resolve{grid-template-columns:1fr}
   .perfil,.pc{grid-template-columns:1fr;gap:36px}
   .perfil .cel{margin:0 auto}
@@ -186,7 +196,7 @@ footer nav{display:flex;gap:20px;margin-left:auto}
 
 <header class="topo">
   <div class="in">
-    <a class="marca" href="#" aria-label="Turma em Dia, início">
+    <a class="marca" id="marca-topo" href="#" aria-label="Turma em Dia, início">
       <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="9" width="56" height="51" rx="15" fill="#8B6B47"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="#8B6B47" stroke="#3A2B1C" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="#8B6B47" stroke="#3A2B1C" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#34C759" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Turma em Dia
     </a>
@@ -221,12 +231,13 @@ footer nav{display:flex;gap:20px;margin-left:auto}
 <main id="conteudo">
   <div class="abre">
     <div class="texto">
+      <a class="marca marca-grande" id="marca-grande" href="#" aria-label="Turma em Dia"><svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="9" width="56" height="51" rx="15" fill="#8B6B47"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="#8B6B47" stroke="#3A2B1C" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="#8B6B47" stroke="#3A2B1C" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#34C759" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Turma em Dia</span></a>
       <h1>A escolinha em dia. <span class="riscado">Sem planilha.</span></h1>
       <p class="lead">Turmas, chamadas, eventos, mensalidades e o caixa da escola no mesmo app. A família paga pelo celular e o pagamento é registrado sozinho.</p>
+      <p class="nota">30 dias grátis para testar. Funciona no celular e no computador.</p>
       <div class="acoes">
         <a class="bt bt-claro" href="app/?entrar=novo" data-entrar>Criar minha escola</a>
       </div>
-      <p class="nota">30 dias grátis para testar. Funciona no celular e no computador.</p>
     </div>
 
     <div class="vitrine" aria-roledescription="carrossel" aria-label="Telas do app">
@@ -263,6 +274,7 @@ footer nav{display:flex;gap:20px;margin-left:auto}
           <div><h3>Avisos no celular</h3><p>Vencimento chegando, documento faltando, evento novo: a família recebe o aviso sem você mandar mensagem.</p></div></li>
       </ul>
     </div>
+      <p class="slogan">É mais eficiência e menos trabalho.</p>
   </section>
 
   <section class="perfis" id="perfis">
@@ -396,6 +408,38 @@ footer nav{display:flex;gap:20px;margin-left:auto}
   vit.addEventListener('mouseleave', roda);
   document.addEventListener('visibilitychange', function () { if (document.hidden) clearInterval(timer); else roda(); });
   roda();
+
+
+  // marca grande → pequena no topo, acompanhando a rolagem
+  (function () {
+    var grande = document.getElementById('marca-grande'), topo = document.getElementById('marca-topo');
+    if (!grande || !topo || !grande.getBoundingClientRect) return;
+    // um espaço do mesmo tamanho fica no lugar dela; ela própria vai para fora do fundo marrom (que corta o que passa da borda)
+    var lugar = document.createElement('span'), A = null, B = null, raf = 0;
+    lugar.className = 'lugar-marca'; lugar.setAttribute('aria-hidden', 'true');
+    grande.parentNode.insertBefore(lugar, grande);
+    document.body.appendChild(grande);
+    document.documentElement.classList.add('voando');
+    function mede() {
+      grande.style.transform = 'none'; grande.style.left = '0px'; grande.style.top = '0px';
+      var sg = grande.querySelector('svg').getBoundingClientRect(), mb = innerWidth <= 980 ? 30 : 40;
+      lugar.style.height = (grande.offsetHeight + mb) + 'px';
+      var rl = lugar.getBoundingClientRect(), rt = topo.getBoundingClientRect(), st = topo.querySelector('svg').getBoundingClientRect();
+      A = { top: rl.top + scrollY, left: rl.left, h: sg.height };
+      B = { top: st.top, left: rt.left, h: st.height };
+      anda();
+    }
+    function anda() {
+      raf = 0; if (!A) return;
+      var dist = Math.max(A.top - B.top, 1), t = Math.min(Math.max(scrollY / dist, 0), 1), k = 1 + (B.h / A.h - 1) * t,
+          y = Math.max(A.top - scrollY, B.top), x = A.left + (B.left - A.left) * t;
+      grande.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + k + ')';
+    }
+    addEventListener('scroll', function () { if (!raf) raf = requestAnimationFrame(anda); }, { passive: true });
+    addEventListener('resize', mede);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(mede);
+    mede();
+  })();
 
   // abas dos perfis
   var abas = [].slice.call(document.querySelectorAll('[role=tab]'));
