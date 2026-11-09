@@ -21,9 +21,10 @@ function bancoFalso() {
     delete: async () => { store.delete(p); } });
   const col = (c, filtros = []) => ({
     where: (f, op, v) => col(c, [...filtros, [f, v, op]]),
+    limit: () => col(c, filtros),
     doc: id => doc(c + '/' + id),
     add: async d => { const id = 'n' + Math.random().toString(36).slice(2, 10); store.set(c + '/' + id, JSON.parse(JSON.stringify(d))); return { id }; },
-    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : op === 'array-contains' ? ((store.get(k) || {})[f] || []).includes(v) : op === '>=' ? (store.get(k) || {})[f] >= v : op === 'in' ? v.includes((store.get(k) || {})[f]) : op === '!=' ? (store.get(k) || {})[f] != null && (store.get(k) || {})[f] !== v : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, forEach: f => docs.forEach(f) }; } });
+    get: async () => { const docs = [...store.keys()].filter(k => k.split('/').slice(0, -1).join('/') === c && filtros.every(([f, v, op]) => op === 'array-contains-any' ? ((store.get(k) || {})[f] || []).some(x => v.includes(x)) : op === 'array-contains' ? ((store.get(k) || {})[f] || []).includes(v) : op === '>=' ? (store.get(k) || {})[f] >= v : op === '<' ? (store.get(k) || {})[f] < v : op === 'in' ? v.includes((store.get(k) || {})[f]) : op === '!=' ? (store.get(k) || {})[f] != null && (store.get(k) || {})[f] !== v : (store.get(k) || {})[f] === v)).map(k => ({ id: k.split('/').pop(), data: () => store.get(k), ref: doc(k) })); return { docs, empty: !docs.length, forEach: f => docs.forEach(f) }; } });
   const runTransaction = async fn => fn({ get: r => r.get(), set: (r, d, o) => r.set(d, o), update: (r, d) => r.update(d) });
   return { store, doc, collection: col, runTransaction, getAll: async (...refs) => Promise.all(refs.map(r => r.get())) };
 }
@@ -564,6 +565,24 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     // recusado não volta a pedir
     r = resp(); await ID.familiaAprovar(req({ eid: 'e1', uid: 'ze', ok: false }, 'ok:adm:v'), r); assert.strictEqual(r.code, 200);
     r = resp(); await ID.familiaIdentificar(req({}, 'ok:ze:n'), r); assert.strictEqual(r.body.pedidos, 0);
+  });
+  await t('excluir escola: só quem criou, digitando "excluir"; sem pagamentos apaga, com pagamentos encerra por 5 anos', async () => {
+    const B = bancoFalso(), S = B.store, apagadas = [];
+    const EX = require('./excluirEscola')(B, { apagarTudo: async ref => { apagadas.push(ref.path || ref); for (const k of [...S.keys()]) if (k === (ref.path || ref) || k.startsWith((ref.path || ref) + '/')) S.delete(k); } });
+    S.set('escolas/z1', { nome: 'Teste', dono: 'dono', admins: ['dono', 'adm2'] }); S.set('escolas/z1/membros/fam', { em: 1 });
+    S.set('users/fam', { escolas: { z1: { nome: 'Teste' }, z9: { nome: 'Outra' } } }); S.set('users/dono', { escolas: { z1: { nome: 'Teste' } } });
+    S.set('codigos/ABC123', { eid: 'z1', rid: 'r1' }); S.set('agendaChamada/z1_t1', { eid: 'z1' });
+    let r = resp(); await EX.excluirEscola(req({ eid: 'z1', confirma: 'excluir' }, 'ok:adm2:v'), r); assert.strictEqual(r.code, 403);
+    r = resp(); await EX.excluirEscola(req({ eid: 'z1', confirma: 'sim' }, 'ok:dono:v'), r); assert.strictEqual(r.code, 400);
+    r = resp(); await EX.excluirEscola(req({ eid: 'z1', confirma: 'Excluir ' }, 'ok:dono:v'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.strictEqual(r.body.apagada, true); assert.ok(!S.has('escolas/z1') && !S.has('escolas/z1/membros/fam'));
+    assert.deepStrictEqual(Object.keys(S.get('users/fam').escolas), ['z9']); assert.ok(!S.has('codigos/ABC123') && !S.has('agendaChamada/z1_t1'));
+    // com pagamento: encerra e guarda
+    S.set('escolas/z2', { nome: 'Paga', dono: 'dono', admins: ['dono'] }); S.set('escolas/z2/cobrancas/c1', { status: 'approved' });
+    r = resp(); await EX.excluirEscola(req({ eid: 'z2', confirma: 'excluir' }, 'ok:dono:v'), r); assert.strictEqual(r.body.apagada, false);
+    assert.ok(S.get('escolas/z2').encerradaEm && S.has('escolas/z2/cobrancas/c1'));
+    assert.strictEqual(await EX.interno.limpar(Date.now()), 0);
+    assert.strictEqual(await EX.interno.limpar(Date.now() + 6 * 365 * 864e5), 1); assert.ok(!S.has('escolas/z2'));
   });
   /* ---------- nota fiscal da escola e dos professores para as famílias ---------- */
   const EMITIDAS = [];

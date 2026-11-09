@@ -114,6 +114,7 @@ module.exports = (db, P) => {
   async function listaEscolas() {
     const hoje = hojeRecife(), out = [];
     for (const e of (await db.collection('escolas').get()).docs) {
+      if (e.data().encerradaEm) continue; // escola encerrada: não cobra mais o plano
       const x = e.data(), [cfg, p] = await Promise.all([ler(`escolas/${e.id}/config/geral`), ler(`escolas/${e.id}/config/plano`)]);
       const n = await alunosAtivos(e.id), sit = C.situacaoPlano(p, hoje), pr = C.precoPlano(n, (p || {}).ciclo, p, hoje);
       out.push({ eid: e.id, nome: x.nome || 'Escola', cidade: (cfg || {}).cidade || '', uf: (cfg || {}).uf || '', criadaEm: x.criadaEm || null, alunos: n, pix: !!(cfg || {}).mpConectadoEm,
@@ -242,10 +243,17 @@ module.exports = (db, P) => {
   async function diario() {
     let n = 0;
     for (const e of (await db.collection('escolas').get()).docs) {
+      if (e.data().encerradaEm) continue; // escola encerrada: não cobra mais o plano
       try { const p = await ler(`escolas/${e.id}/config/plano`); if (!p) continue; await sincronizar(e.id, p); n++; } catch (x) { logger.warn('plano diário', e.id, x.message); }
     }
     return n;
   }
 
-  return { plano, planoWebhook, interno: { diario, sincronizar, garantir, tokenEmpresa } };
+  // escola excluída/encerrada: cancela o cartão do plano no Mercado Pago (para de cobrar)
+  async function cancelarCartao(eid) {
+    const seg = (await segRef(eid).get()).data() || {};
+    if (seg.preId) { const tok = await tokenEmpresa(); await pedir(tok, 'PUT', `/preapproval/${seg.preId}`, { status: 'cancelled' }).catch(() => null); }
+    await segRef(eid).set({ preId: null }, { merge: true });
+  }
+  return { plano, planoWebhook, interno: { diario, sincronizar, garantir, tokenEmpresa, cancelarCartao } };
 };

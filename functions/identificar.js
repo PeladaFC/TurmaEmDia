@@ -54,7 +54,8 @@ module.exports = (db, opcoes = {}) => {
   }
 
   async function ligar(uid, u, eid, rids, via, nome) {
-    const esc = (await ler(`escolas/${eid}`)) || {};
+    const esc = await ler(`escolas/${eid}`);
+    if (!esc || esc.encerradaEm) return null; // escola excluída ou encerrada
     const mref = db.doc(`escolas/${eid}/membros/${uid}`);
     if (!(await mref.get()).exists) await mref.set({ nome: nome || u.name || '', email: u.email || '', em: Date.now(), via });
     let familia = '';
@@ -82,7 +83,7 @@ module.exports = (db, opcoes = {}) => {
     for (const [eid, rids] of Object.entries(A)) {
       const ja = new Set((await db.collection(`escolas/${eid}/membros/${u.uid}/vinculos`).get()).docs.map(d => d.id));
       const novos = rids.filter(r => !ja.has(r)); if (!novos.length) continue;
-      escolas.push(await ligar(u.uid, u, eid, novos, 'email', p.nome));
+      const r = await ligar(u.uid, u, eid, novos, 'email', p.nome); if (r) escolas.push(r);
     }
     let pedidos = 0;
     for (const [eid, rids] of Object.entries(B)) {

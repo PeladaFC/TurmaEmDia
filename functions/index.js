@@ -25,6 +25,9 @@ exports.vinculos = P.vinculos;
 const CA = require('./cartao')(db, P.interno);
 exports.pagar = CA.pagar;
 const AS = require('./assinatura')(db, P.interno);
+// excluir a escola (só quem criou): sem pagamentos apaga; com pagamentos encerra e guarda pelo prazo da lei
+const EX = require('./excluirEscola')(db, { cancelarCartao: AS.interno.cancelarCartao });
+exports.excluirEscola = EX.excluirEscola;
 exports.plano = AS.plano;
 exports.planoWebhook = AS.planoWebhook;
 
@@ -71,6 +74,7 @@ exports.rotinaDiaria = onSchedule({ schedule: '0 10 * * *', timeZone: 'America/R
   try { await N.interno.tarefaDiaria(hoje); } catch (e) { logger.error('nota fiscal', e.message); }
   // plano das escolas: cartões, Pix e bloqueio por atraso
   try { await AS.interno.diario(); } catch (e) { logger.error('plano', e.message); }
+  try { await EX.interno.limpar(); } catch (e) { logger.error('limpar escolas encerradas', e.message); }
   // avisos no celular das famílias: vencimentos, pendências do cadastro e eventos (1 por dia, no máximo)
   try { await AF.interno.diario(hoje); } catch (e) { logger.error('avisos famílias', e.message); }
   // cobrança automática no cartão salvo das famílias (só quando o Mercado Pago liberar: servidor/mp.automatico)

@@ -198,6 +198,7 @@ module.exports = (db, P) => {
     const plat = (await ler('servidor/mp')) || {}; if (plat.automatico !== true) return { feitos: 0 };
     let feitos = 0;
     for (const e of (await db.collection('escolas').get()).docs) {
+      if (e.data().encerradaEm) continue;
       const eid = e.id, cfg = (await ler(`escolas/${eid}/config/geral`)) || {};
       if (!((cfg.formas || {}).recorrente === true && (cfg.formas || {}).cartao === true) || await pausada(eid)) continue;
       const cards = await db.collection(`escolas/${eid}/cartoes`).where('auto', '==', true).get();

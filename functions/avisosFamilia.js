@@ -175,6 +175,7 @@ module.exports = (db, enviar) => {
   async function diario(hoje, agora = Date.now()) {
     let total = 0;
     for (const e of (await db.collection('escolas').get()).docs) {
+      if (e.data().encerradaEm) continue;
       try { total += await escola(e.id, e.data(), hoje, agora); } catch (er) { require('firebase-functions/logger').error('avisos famílias', e.id, er.message); }
     }
     return { enviados: total };

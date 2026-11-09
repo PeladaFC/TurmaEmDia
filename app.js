@@ -6655,6 +6655,24 @@ async function apagarDadosPessoais(alids, pedidoId) {
   if (pedidoId) ops.push({ op: 'merge', p: `escolas/${S.eid}/pedidos/${pedidoId}`, d: { status: 'feito', feitoEm: Date.now(), por: EU.uid } });
   await B.lote(ops);
 }
+// excluir a escola: 1) explica o que acontece  2) pede para digitar "excluir"
+function excluirEscolaPassos() {
+  confirmar('Excluir a escola?', `<b>${esc(S.escola.nome || 'A escola')}</b> some do app para todos: administração, professores e famílias. Alunos, turmas, cobranças e avisos param.<br><br>Se a escola já recebeu pagamentos pelo app, esses registros e as notas fiscais ficam guardados por 5 anos, como pede a lei, e depois são apagados.`, 'Continuar', async () => setTimeout(excluirEscolaDigitar, 60));
+}
+function excluirEscolaDigitar() {
+  sheet(`<h3>Confirme a exclusão</h3><p class="sub" style="margin:0">Para excluir <b>${esc(S.escola.nome || 'a escola')}</b>, digite <b>excluir</b> abaixo. Não dá para desfazer.</p>
+    <div class="field"><input id="exdig" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="excluir"></div><div class="err" id="exerr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn danger" id="exok" disabled>Excluir escola</button></div>`, () => {
+    $('exdig').oninput = () => { $('exok').disabled = $('exdig').value.trim().toLowerCase() !== 'excluir'; };
+    $('exok').onclick = async () => {
+      $('exok').disabled = true; const eid = S.eid;
+      try {
+        if (MOCK) await B.set('users/' + EU.uid, { escolas: { [eid]: null } }, { merge: true }); else await servidor('excluirEscola', { eid, confirma: $('exdig').value });
+        delete MINHAS[eid]; fecharSheet(); VOLTA_ESCOLA = null; aviso('Escola excluída'); telaInicio();
+      } catch (e) { $('exerr').textContent = msgErro(e); $('exok').disabled = false; }
+    };
+  });
+}
 function confirmarApagar(alids, pedidoId) {
   const nomes = alids.map(id => (S.alunas[id] || {}).nome).filter(Boolean).join(', ');
   confirmar('Apagar dados pessoais?', `${esc(nomes || 'Os alunos')} ${alids.length > 1 ? 'deixam' : 'deixa'} de ter nome, nascimento e contato do responsável no app, e sai${alids.length > 1 ? 'em' : ''} das turmas e grupos. O registro do que foi pago fica, sem identificar a pessoa, pelo prazo da lei. Isto não pode ser desfeito.`, 'Apagar dados', async () => { await apagarDadosPessoais(alids, pedidoId); aviso('Dados pessoais apagados'); });
@@ -7079,7 +7097,9 @@ function sheetAjustes() {
     <div class="actions"><button class="btn ghost" data-fechar>Fechar</button><button class="btn" id="jok">Salvar ajustes</button></div>
     <section><h2>Conta</h2><div class="sub">${esc(EU.nome || '')} · ${esc(EU.email || '')}</div>
       <div id="jnotasplat"></div>
-      <div class="actions"><button class="btn ghost" id="jtroca">Minhas escolas</button><button class="btn ghost" id="jsair">Sair da conta</button></div></section>`, () => {
+      <div class="actions"><button class="btn ghost" id="jtroca">Minhas escolas</button><button class="btn ghost" id="jsair">Sair da conta</button></div></section>
+    ${(S.escola.dono || (S.escola.admins || [])[0]) === EU.uid ? '<p class="excluir-esc"><a href="#" id="jexcl">Excluir escola</a></p>' : ''}`, () => {
+    if ($('jexcl')) $('jexcl').onclick = e => { e.preventDefault(); excluirEscolaPassos(); };
     if ($('jsimv')) { const verJ = ligarSimTaxa('jsim', () => $('jrep').checked); $('jrep').addEventListener('change', verJ); }
     const err = m => $('jerr').textContent = m;
     if ($('juf')) ligarEstadoCidade('juf', 'jcid', S.cfg.cidade || '');
