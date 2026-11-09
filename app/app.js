@@ -776,11 +776,12 @@ async function telaCartaoEscola(eid, nome, depois) {
   let R = null, campos = null, metodo = null;
   const sair = () => { if (campos) campos.sair(); campos = null; };
   telaOb({ passo: 3, rotulo: 'Passo 3 de 5', titulo: 'Cadastre o cartão',
-    sub: `Nada é cobrado agora. Depois dos 30 dias de teste grátis, o plano custa a partir de ${brl(C.PLANOS[0].mes)} por mês, conforme o número de alunos. Dá para cancelar antes.`,
+    sub: 'Nada é cobrado até acabar o teste grátis de 30 dias. Pode aparecer uma cobrança pequena só para confirmar o cartão, que é devolvida em seguida.',
     corpo: `<div class="field"><label>Número do cartão</label><div class="mpcampo" id="ccnum"></div></div>
       <div class="two"><div class="field"><label>Validade</label><div class="mpcampo" id="ccval"></div></div><div class="field"><label>Código de segurança</label><div class="mpcampo" id="cccvv"></div></div></div>
       <div class="field"><label for="ccnome">Nome no cartão</label><input id="ccnome" autocomplete="cc-name" placeholder="Como está no cartão"></div>
       <div class="field"><label for="ccdoc">CPF ou CNPJ do titular</label><input id="ccdoc" inputmode="numeric"></div>
+      <div class="note">Depois do teste, o plano custa a partir de ${brl(C.PLANOS[0].mes)} por mês, conforme o número de alunos. Dá para cancelar antes.</div>
       <div class="note">🔒 O número vai direto para o Mercado Pago, que confere se o cartão é válido. O Turma em Dia não vê nem guarda o número.</div>
       <div class="err" id="ccerr" role="alert"></div>`,
     botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="ccsair">Sair da conta</button>' });
