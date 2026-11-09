@@ -954,6 +954,7 @@ function sheet(html, montar, aoFechar) {
   JANELA_TECLADO(); // janela nova aberta com o teclado ainda na tela
   if (rolagem) $('overlay').querySelector('.sheet').scrollTop = rolagem;
   montar && montar($('overlay').querySelector('.sheet'));
+  if (anima) focoInicial($('overlay').querySelector('.sheet'));
   if (rolagem) { const sh = $('overlay').querySelector('.sheet'); if (sh && !sh.scrollTop) sh.scrollTop = rolagem; }
 }
 let SHEET_CHAVE = '';
@@ -996,6 +997,45 @@ let SHEET_SAIR = null;
 window.addEventListener('beforeunload', e => { if (SHEET_SAIR && SHEET_SAIR.sujo && SHEET_SAIR.sujo()) { e.preventDefault(); e.returnValue = ''; } });
 function fecharSheet(forcar) { if (!forcar && SHEET_SAIR && SHEET_SAIR(() => fecharSheet(true))) return; SHEET_SAIR = null; TELA_SHEET = ''; if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); } SHEET_VOLTAR = null; $('overlay').innerHTML = ''; travarFundo(false); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('overlay').innerHTML) fecharSheet(); });
+/* ================= No computador: teclado como num programa de computador =================
+   Enter passa para o próximo campo; no último campo, Enter salva (aperta o botão principal da janela).
+   Ctrl+Enter salva de qualquer campo. "/" ou Ctrl+K abre a busca. Alt+1, Alt+2... trocam de aba.
+   A janela nova já abre com o cursor no primeiro campo vazio. No celular nada disso muda. */
+const DESK = () => !!(window.matchMedia && matchMedia('(min-width:1000px) and (hover:hover)').matches);
+const CAMPO_SEL = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]):not([type=submit]):not([type=range]),select,textarea';
+const visivel = el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length) && getComputedStyle(el).visibility !== 'hidden';
+const camposDe = caixa => [...caixa.querySelectorAll(CAMPO_SEL)].filter(el => !el.disabled && !el.readOnly && visivel(el));
+const botaoPrincipal = caixa => { const bs = [...caixa.querySelectorAll('button.btn:not(.ghost):not(.btn-mini):not([disabled])')].filter(visivel); return bs[bs.length - 1] || null; };
+function focoInicial(caixa) {
+  if (!DESK() || !caixa || caixa.contains(document.activeElement)) return;
+  const cs = camposDe(caixa).filter(el => el.tagName !== 'SELECT'); const alvo = cs.find(el => !el.value) || null;
+  if (alvo) { try { alvo.focus({ preventScroll: true }); } catch (e) { } }
+}
+document.addEventListener('keydown', e => {
+  if (!DESK() || e.isComposing) return;
+  const el = e.target, caixa = el && el.closest && (el.closest('#overlay .sheet') || el.closest('.login') || el.closest('#tela'));
+  // Ctrl+Enter (ou Cmd+Enter): salva a janela aberta
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { const sh = $('overlay').querySelector('.sheet'); const b = sh && botaoPrincipal(sh); if (b) { e.preventDefault(); b.click(); } return; }
+  // Enter num campo: vai para o próximo; no último, aperta o botão principal
+  if (e.key === 'Enter' && !e.shiftKey && !e.altKey && caixa && el.matches && el.matches(CAMPO_SEL) && el.tagName !== 'TEXTAREA') {
+    if (e.defaultPrevented || el.onkeydown) return; // o campo já tem o seu próprio Enter
+    const cs = camposDe(caixa), i = cs.indexOf(el); if (i < 0) return;
+    e.preventDefault();
+    if (i < cs.length - 1) { const n = cs[i + 1]; n.focus(); if (n.select && /^(text|email|tel|number|search|url)$/.test(n.type)) n.select(); return; }
+    const b = caixa.closest('#overlay') ? botaoPrincipal(caixa) : null; if (b) b.click();
+    return;
+  }
+  // atalhos fora dos campos
+  const digitando = el && el.matches && el.matches('input,textarea,select,[contenteditable]');
+  if (((e.key === '/' && !digitando) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')) && !$('overlay').innerHTML) {
+    const busca = $('abusca') || (document.querySelector('#tela input[type=search], #tela .busca-campo input')) ; if (busca) { e.preventDefault(); busca.focus(); busca.select && busca.select(); return; }
+    if ($('hbusca')) { e.preventDefault(); $('hbusca').click(); }
+    return;
+  }
+  if (e.altKey && !e.ctrlKey && !e.metaKey && /^[1-9]$/.test(e.key) && !$('overlay').innerHTML) {
+    const abas = document.querySelectorAll('nav.tabs [data-tab]'), b = abas[+e.key - 1]; if (b) { e.preventDefault(); b.click(); }
+  }
+});
 function confirmar(titulo, texto, botao, acao) {
   sheet(`<h3>${esc(titulo)}</h3><p class="sub" style="margin:0">${texto}</p><div class="err" id="kerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn danger" id="kok">${esc(botao)}</button></div>`, () => {
@@ -1380,7 +1420,7 @@ function render() {
     <div id="faixa"></div>
     <main id="tela" style="display:flex;flex-direction:column;gap:16px"></main>
   </div>
-  <nav class="tabs" aria-label="Seções"><div class="tabs-marca"><span class="marca-mini">${MARCA_SVG}</span><span>Turma em Dia</span></div><div class="in">${abas.map(([k, n, ic]) => `<button data-tab="${k}" aria-current="${S.tab === k ? 'page' : 'false'}"><span class="tab-ic">${ICO[ic]}${bolhaAba(k)}</span>${n}</button>`).join('')}</div></nav>`;
+  <nav class="tabs" aria-label="Seções"><div class="tabs-marca"><span class="marca-mini">${MARCA_SVG}</span><span>Turma em Dia</span></div><div class="in">${abas.map(([k, n, ic], i) => `<button data-tab="${k}" aria-current="${S.tab === k ? 'page' : 'false'}" title="Alt+${i + 1}"><span class="tab-ic">${ICO[ic]}${bolhaAba(k)}</span>${n}</button>`).join('')}</div><div class="tabs-atalhos"><b>Atalhos do teclado</b><span><kbd>Enter</kbd> próximo campo</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> salvar</span><span><kbd>Esc</kbd> fechar janela</span>${adm ? '<span><kbd>/</kbd> buscar</span>' : ''}<span><kbd>Alt</kbd>+<kbd>1</kbd>… trocar de aba</span></div></nav>`;
   RAIZ().querySelectorAll('[data-tab]').forEach(b => b.onclick = () => irPara(b.dataset.tab));
   ABAS_ATUAIS = abas.map(([k]) => k);
   $('hcfg').onclick = () => sheetAjustes();
@@ -7379,6 +7419,7 @@ async function semearMock() {
   let vez = 0;
   B.onAuth(async u => {
     const minha = ++vez;
+    const saiu = !!EU && !u; // tocou em Sair (não é a primeira abertura sem conta)
     pararOuvintes(); fecharSheet(); EU = u; $('toast').hidden = true;
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
     if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
@@ -7386,6 +7427,8 @@ async function semearMock() {
     // o site de entrada (turmaemdia.com.br) manda direto para o app quem já entrou neste aparelho
     if (!MOCK) { try { if (u) localStorage.setItem('ted.entrou', '1'); else localStorage.removeItem('ted.entrou'); } catch (e) { } }
     // sem conta (abriu sem login ou saiu da conta): a apresentação do app aparece de novo antes do login
+    // no computador, quem sai da conta volta para o site (turmaemdia.com.br); no celular continua na tela de entrar
+    if (saiu && DESK() && !MOCK && /\/app\/?$/.test(location.pathname)) { location.replace('../'); return; }
     if (!u) { S = null; INTRO_VISTA = !!ENTRAR_PARAM; sairAbertura(); return telaLogin(ENTRAR_NOVO() ? 'criar' : 'entrar'); }
     const perfil = await B.get('users/' + u.uid).catch(() => null);
     if (minha !== vez) return;

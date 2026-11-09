@@ -999,7 +999,7 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 .tabs-marca{display:none}
 @media (min-width:1000px) and (hover:hover){
   body{--lado:248px}
-  nav.tabs{top:0;bottom:0;right:auto;width:var(--lado);border-top:0;border-right:1px solid var(--line);padding:22px 14px;display:flex;flex-direction:column;gap:18px;overflow:auto}
+  nav.tabs{top:0;bottom:0;right:auto;width:var(--lado);border-top:0;border-right:1px solid var(--line);padding:22px 14px 16px;display:flex;flex-direction:column;gap:18px;overflow:auto}
   .tabs-marca{display:flex;align-items:center;gap:10px;padding:0 10px 14px;border-bottom:1px solid var(--line);font-family:var(--f-marca);font-weight:800;font-size:1.12rem;color:var(--ink)}
   .tabs-marca .marca-mini{width:34px;height:34px;color:var(--accent);flex:none}
   .tabs-marca .marca-mini svg{width:100%;height:100%}
@@ -1008,7 +1008,29 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
   nav.tabs button:hover{background:var(--surface2);color:var(--ink)}
   nav.tabs button[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
   nav.tabs .tab-ic{position:relative;display:grid;place-items:center}
-  .wrap{max-width:1000px;padding-left:calc(var(--lado) + 40px);padding-right:40px;margin:0 auto 0 0;padding-bottom:56px;box-sizing:content-box}
+  .wrap{max-width:1180px;padding-left:calc(var(--lado) + 40px);padding-right:40px;margin:0 auto 0 0;padding-bottom:56px;box-sizing:content-box}
+  /* mais coisas à vista: cartões e listas lado a lado */
+  #tela{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px!important;align-items:start}
+  #tela>*{grid-column:1/-1;min-width:0}
+  #tela>ul.list:has(+ ul.list),#tela>ul.list+ul.list,
+  #tela>.faixa-resumo:has(+ .faixa-resumo),#tela>.faixa-resumo+.faixa-resumo{grid-column:auto}
+  #tela>.faixa-resumo{height:100%}
+  .tree{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+  .tree>*{min-width:0;margin:0!important}
+  /* atalhos do teclado no pé do menu */
+  .tabs-atalhos{margin-top:auto;display:flex;flex-direction:column;gap:6px;padding:14px 10px 4px;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted)}
+  .tabs-atalhos b{font-size:.78rem;color:var(--ink);font-weight:700}
+  kbd{display:inline-block;min-width:20px;padding:1px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;background:var(--surface);font:600 .74rem/1.4 var(--f-body);color:var(--ink);text-align:center}
+  /* formulários: campos curtos lado a lado, como num programa de computador */
+  .sheet{max-width:860px;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 20px!important;align-content:start}
+  .sheet>*{grid-column:1/-1;min-width:0}
+  /* só campos simples (uma caixa de texto ou uma lista de escolha) ficam lado a lado */
+  .sheet>.field:has(>input:not([type=checkbox]):not([type=radio]),>select):has(+ .field>input:not([type=checkbox]):not([type=radio]),+ .field>select),
+  .sheet>.field:has(>input:not([type=checkbox]):not([type=radio]),>select)+.field:has(>input:not([type=checkbox]):not([type=radio]),>select){grid-column:auto}
+  .sheet>.field:has(textarea,.checks,.opcoes){grid-column:1/-1}
+  input,select,textarea{cursor:text} select,button,[role=button],.tap,label{cursor:pointer}
+  .list li.tap:hover,.list .tap:hover{background:var(--surface2)}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:0}
   header.top{padding-top:22px}
   .brand h1{font-size:2rem}
   /* janelas de formulário: no meio da tela, com cantos arredondados */
@@ -1021,7 +1043,7 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
   /* telas sem menu (entrar, escolher escola): centralizadas como no celular */
   .login,.intro,.ob{margin-inline:auto}
 }
-@media (min-width:1400px) and (hover:hover){ body{--lado:270px} .wrap{max-width:1080px;padding-left:calc(var(--lado) + 64px)} }
+@media (min-width:1400px) and (hover:hover){ body{--lado:270px} .wrap{max-width:1240px;padding-left:calc(var(--lado) + 56px)} }
 </style>
 </head>
 <body>
@@ -1029,11 +1051,11 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 <div id="overlay"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="config.js"></script>
-<script src="regras.js?v=202611091530"></script>
-<script src="qrcode.js?v=202611091530"></script>
-<script src="pdf-simples.js?v=202611091530"></script>
-<script src="scanner.js?v=202611091530"></script>
-<script src="relatorio.js?v=202611091530"></script>
-<script type="module" src="app.js?v=202611091530"></script>
+<script src="regras.js?v=202611091620"></script>
+<script src="qrcode.js?v=202611091620"></script>
+<script src="pdf-simples.js?v=202611091620"></script>
+<script src="scanner.js?v=202611091620"></script>
+<script src="relatorio.js?v=202611091620"></script>
+<script type="module" src="app.js?v=202611091620"></script>
 </body>
 </html>
