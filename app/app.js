@@ -6,6 +6,9 @@ const MOCK = !!window.DEMO || new URLSearchParams(location.search).has('mock');
 const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 const URLF = n => `https://${CFG.regiao || 'southamerica-east1'}-${(CFG.firebase || {}).projectId}.cloudfunctions.net/${n}`;
 const MP_VOLTA = new URLSearchParams(location.search).get('mp');
+// vindo do site (turmaemdia.com.br): ?entrar=escola|professor|familia abre em Entrar; ?entrar=novo abre em Criar conta (só na primeira tela)
+let ENTRAR_PARAM = new URLSearchParams(location.search).get('entrar');
+const ENTRAR_NOVO = () => { const r = ENTRAR_PARAM === 'novo'; ENTRAR_PARAM = null; return r; };
 
 /* ================= Banco ================= */
 let B;
@@ -1348,7 +1351,7 @@ function render() {
     <div id="faixa"></div>
     <main id="tela" style="display:flex;flex-direction:column;gap:16px"></main>
   </div>
-  <nav class="tabs" aria-label="Seções"><div class="in">${abas.map(([k, n, ic]) => `<button data-tab="${k}" aria-current="${S.tab === k ? 'page' : 'false'}"><span class="tab-ic">${ICO[ic]}${bolhaAba(k)}</span>${n}</button>`).join('')}</div></nav>`;
+  <nav class="tabs" aria-label="Seções"><div class="tabs-marca"><span class="marca-mini">${MARCA_SVG}</span><span>Turma em Dia</span></div><div class="in">${abas.map(([k, n, ic]) => `<button data-tab="${k}" aria-current="${S.tab === k ? 'page' : 'false'}"><span class="tab-ic">${ICO[ic]}${bolhaAba(k)}</span>${n}</button>`).join('')}</div></nav>`;
   RAIZ().querySelectorAll('[data-tab]').forEach(b => b.onclick = () => irPara(b.dataset.tab));
   ABAS_ATUAIS = abas.map(([k]) => k);
   $('hcfg').onclick = () => sheetAjustes();
@@ -6533,7 +6536,7 @@ const linksLegais = () => `<div class="legal"><button type="button" class="link"
 // os textos ficam em privacidade.html e termos.html; aqui abrem dentro do app
 document.addEventListener('click', e => { const b = e.target.closest('[data-doc]'); if (!b) return; e.preventDefault(); e.stopPropagation(); abrirDocLegal(b.dataset.doc); });
 async function abrirDocLegal(tipo) {
-  const volta = $('overlay').innerHTML ? null : null, url = tipo + '.html';
+  const volta = $('overlay').innerHTML ? null : null, url = '../' + tipo + '.html';
   let corpo = '';
   try { const r = await fetch(url, { cache: 'no-cache' }); const t = await r.text(); const m = new DOMParser().parseFromString(t, 'text/html').querySelector('main'); corpo = m ? m.innerHTML : ''; } catch (e) { }
   if (!corpo) corpo = `<p>Não deu para abrir agora. <a href="${esc(url)}" target="_blank" rel="noopener">Abrir em outra aba</a>.</p>`;
@@ -7311,8 +7314,10 @@ async function semearMock() {
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
     if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
     if (u) setTimeout(enviarErros, 3000); // erros guardados antes do login
+    // o site de entrada (turmaemdia.com.br) manda direto para o app quem já entrou neste aparelho
+    if (!MOCK) { try { if (u) localStorage.setItem('ted.entrou', '1'); else localStorage.removeItem('ted.entrou'); } catch (e) { } }
     // sem conta (abriu sem login ou saiu da conta): a apresentação do app aparece de novo antes do login
-    if (!u) { S = null; INTRO_VISTA = false; sairAbertura(); return telaLogin(); }
+    if (!u) { S = null; INTRO_VISTA = !!ENTRAR_PARAM; sairAbertura(); return telaLogin(ENTRAR_NOVO() ? 'criar' : 'entrar'); }
     const perfil = await B.get('users/' + u.uid).catch(() => null);
     if (minha !== vez) return;
     MINHAS = Object.fromEntries(Object.entries((perfil && perfil.escolas) || {}).filter(([, e]) => e));

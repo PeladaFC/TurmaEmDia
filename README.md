@@ -11,14 +11,15 @@ App de mensalidades para qualquer escolinha (ginástica, futebol, natação, dan
 - **Aparência:** em Ajustes, a administração escolhe a cor principal e coloca a logo da escola. Vale para todos que usam o app daquela escola e aparece também no relatório em PDF.
 - O que foi pago por Pix fica travado. Só o que foi recebido em dinheiro pode ser desfeito.
 
-Para testar sem Firebase, abra `index.html?mock=1` num servidor local. O app abre com dados de exemplo e um botão para trocar entre administração e família.
+Para testar sem Firebase, abra `app/index.html?mock=1` num servidor local. O app abre com dados de exemplo e um botão para trocar entre administração e família.
 
 ## Arquivos
 
 | Arquivo | O que é |
 | --- | --- |
-| `index.html`, `app.js` | O app (telas da administração e da família) |
-| `config.js` | Dados do seu projeto Firebase (**preencher**) |
+| `index.html`, `img/` | Site de entrada (turmaemdia.com.br): apresentação do app e botão Entrar |
+| `app/index.html`, `app/app.js` | O app (telas da administração, do professor e da família), em turmaemdia.com.br/app/ |
+| `app/config.js` | Dados do seu projeto Firebase (**preencher**) |
 | `functions/calculo.js` | Regras de cobrança: mensalidade, descontos, extras e valor do Pix. O app e o servidor usam o mesmo arquivo |
 | `functions/pagamentos.js` | Servidor: `criarPix` (um Pix por recebedor), `mpWebhook`, `mpConectar`, `mpRetorno`, `mpLigar` (link do professor) e `vinculos` |
 | `functions/acoes.js` | Servidor: `adminConvite` (convite para a administração) e `eventoResposta` (vai / não vai) |
@@ -31,7 +32,7 @@ Para testar sem Firebase, abra `index.html?mock=1` num servidor local. O app abr
 ## Do zero até o primeiro Pix
 
 1. **Firebase:** crie um projeto novo (ex.: `escolinha-gr`). Ligue Authentication (E-mail/senha e Google) e o Firestore (região `southamerica-east1`). Ative o plano Blaze e coloque um alerta de orçamento baixo.
-2. **App da Web:** em Configurações do projeto → Seus apps → Web, copie a configuração para `config.js`. Coloque o id do projeto em `.firebaserc`.
+2. **App da Web:** em Configurações do projeto → Seus apps → Web, copie a configuração para `app/config.js`. Coloque o id do projeto em `.firebaserc`.
 3. **GitHub Pages:** suba estes arquivos num repositório e ligue o Pages (branch `main`, pasta raiz). Em Authentication → Configurações → Domínios autorizados, adicione `SEU-USUARIO.github.io`.
 4. **Servidor e regras:** no Cloud Shell, rode
    `curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/instalar.sh | bash`
@@ -63,7 +64,7 @@ Para testar sem Firebase, abra `index.html?mock=1` num servidor local. O app abr
 ## Servidor (20/10/2026)
 
 Feito no servidor e nas regras, com testes em `functions/teste.js` (20 testes):
-- **Mesmo cálculo no app e no servidor:** `functions/calculo.js` é cópia exata de `regras.js` (o teste confere). Inclui descontos só quando a escola escolhe, faixa etária, acordos, valor por atleta nas taxas e **multa e juros** (com o "sem multa e juros até tal data").
+- **Mesmo cálculo no app e no servidor:** `functions/calculo.js` é cópia exata de `app/regras.js` (o teste confere). Inclui descontos só quando a escola escolhe, faixa etária, acordos, valor por atleta nas taxas e **multa e juros** (com o "sem multa e juros até tal data").
 - **Pix por recebedor:** um Pix para a escola e um para cada professor(a) que recebe as próprias turmas; mensalidade dividida só fica paga quando todos recebem.
 - **Conta do(a) professor(a):** a escola gera um link (vale 7 dias, `mpLigar`) e manda pelo WhatsApp; o(a) professor(a) autoriza com a conta dele(a). Desligar apaga a chave no servidor.
 - **Convite para a administração** (`adminConvite`): só o dono convida; só quem entra com o e-mail convidado, **confirmado**, aceita.
@@ -74,7 +75,7 @@ Feito no servidor e nas regras, com testes em `functions/teste.js` (20 testes):
 
 Ficou para depois (perguntar antes):
 - PDF da professora como link no WhatsApp (Firebase Storage).
-- Boleto e cartão (`OUTRAS_FORMAS = false` em `app.js`).
+- Boleto e cartão (`OUTRAS_FORMAS = false` em `app/app.js`).
 - Apagar o login do responsável no Firebase Auth quando os dados forem excluídos.
 - Notificações no celular (reaproveitar o modelo do Pelada FC: `chavePush`, `sw.js`, chaves VAPID novas).
 

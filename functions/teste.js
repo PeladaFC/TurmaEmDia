@@ -46,7 +46,7 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
 (async () => {
   await t('o servidor usa exatamente o mesmo cálculo do app (calculo.js = regras.js)', () => {
     const fs = require('fs'), path = require('path');
-    assert.strictEqual(fs.readFileSync(path.join(__dirname, 'calculo.js'), 'utf8'), fs.readFileSync(path.join(__dirname, '..', 'regras.js'), 'utf8'), 'copie regras.js para functions/calculo.js');
+    assert.strictEqual(fs.readFileSync(path.join(__dirname, 'calculo.js'), 'utf8'), fs.readFileSync(path.join(__dirname, '..', 'app', 'regras.js'), 'utf8'), 'copie regras.js para functions/calculo.js');
   });
   /* ---------- cálculo ---------- */
   const H = '2026-10-15';
