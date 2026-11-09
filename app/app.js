@@ -776,7 +776,7 @@ async function telaCartaoEscola(eid, nome, depois) {
   let R = null, campos = null, metodo = null;
   const sair = () => { if (campos) campos.sair(); campos = null; };
   telaOb({ passo: 3, rotulo: 'Passo 3 de 5', titulo: 'Cadastre o cartão',
-    sub: 'Nada é cobrado agora. A primeira cobrança do plano é só depois dos 30 dias de teste grátis, e dá para cancelar antes.',
+    sub: `Nada é cobrado agora. Depois dos 30 dias de teste grátis, o plano custa a partir de ${brl(C.PLANOS[0].mes)} por mês, conforme o número de alunos. Dá para cancelar antes.`,
     corpo: `<div class="field"><label>Número do cartão</label><div class="mpcampo" id="ccnum"></div></div>
       <div class="two"><div class="field"><label>Validade</label><div class="mpcampo" id="ccval"></div></div><div class="field"><label>Código de segurança</label><div class="mpcampo" id="cccvv"></div></div></div>
       <div class="field"><label for="ccnome">Nome no cartão</label><input id="ccnome" autocomplete="cc-name" placeholder="Como está no cartão"></div>
@@ -6803,9 +6803,10 @@ function sheetPrivEscola() {
    Preço pela quantidade de alunos ativos; 30 dias de teste; cartão (cobrança automática) ou Pix a cada mês.
    Com o plano atrasado: até 5 dias, aviso; de 6 a 30, só leitura; mais de 30, suspensa. Quem decide é o servidor (config/plano). */
 const sitPlano = () => C.situacaoPlano(S && S.plano, hoje());
-/* App das lojas (Apple e Google): o plano do Turma em Dia é pago só pelo site. Dentro do app da loja não aparece
-   preço, pagamento nem troca de plano (regras das lojas para assinaturas digitais); só a situação do plano. */
-const LOJA = () => NATIVO() || new URLSearchParams(location.search).has('loja');
+/* App das lojas (Apple e Google): desde 09/11/2026 o plano é pago dentro do app igual ao site (cartão pelo Mercado Pago,
+   como o MFIT faz; no Brasil a Apple permite pagamento alternativo desde o iOS 26.2). LOJA() fica sempre falso;
+   para voltar a esconder o pagamento nas lojas: NATIVO() || new URLSearchParams(location.search).has('loja'). */
+const LOJA = () => false;
 const planoTrava = () => !!(S && S.admin && S.plano && (S.plano.bloqueio || ['leitura', 'suspensa'].includes(sitPlano().fase)));
 const MSG_LEITURA = 'O plano do app está atrasado e a escola está só para leitura. Pague em Ajustes → Plano para voltar a editar.';
 const MSG_PAUSA = 'O acesso da escola ao app e seus serviços está pausado. Fale com a escola.';
