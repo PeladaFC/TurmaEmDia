@@ -6657,12 +6657,15 @@ async function apagarDadosPessoais(alids, pedidoId) {
 }
 // excluir a escola: 1) explica o que acontece  2) pede para digitar "excluir"
 function excluirEscolaPassos() {
-  confirmar('Excluir a escola?', `<b>${esc(S.escola.nome || 'A escola')}</b> some do app para todos: administração, professores e famílias. Alunos, turmas, cobranças e avisos param.<br><br>Se a escola já recebeu pagamentos pelo app, esses registros e as notas fiscais ficam guardados por 5 anos, como pede a lei, e depois são apagados.`, 'Continuar', async () => setTimeout(excluirEscolaDigitar, 60));
+  sheet(`<h3>Excluir a escola?</h3><p class="sub" style="margin:0"><b>${esc(S.escola.nome || 'A escola')}</b> some do app para todos: administração, professores e famílias. Alunos, turmas, cobranças e avisos param.</p>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn danger" id="exseg">Continuar</button></div>`, sh => {
+    sh.classList.add('ex-passo'); $('exseg').onclick = () => excluirEscolaDigitar(); });
 }
 function excluirEscolaDigitar() {
   sheet(`<h3>Confirme a exclusão</h3><p class="sub" style="margin:0">Para excluir <b>${esc(S.escola.nome || 'a escola')}</b>, digite <b>excluir</b> abaixo. Não dá para desfazer.</p>
     <div class="field"><input id="exdig" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="excluir"></div><div class="err" id="exerr" role="alert"></div>
-    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn danger" id="exok" disabled>Excluir escola</button></div>`, () => {
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn danger" id="exok" disabled>Excluir escola</button></div>`, sh => {
+    sh.classList.add('ex-passo');
     $('exdig').oninput = () => { $('exok').disabled = $('exdig').value.trim().toLowerCase() !== 'excluir'; };
     $('exok').onclick = async () => {
       $('exok').disabled = true; const eid = S.eid;
