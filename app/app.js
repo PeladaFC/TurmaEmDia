@@ -784,17 +784,17 @@ async function telaCartaoEscola(eid, nome, depois) {
       <div class="note">Depois do teste, o plano custa a partir de ${brl(C.PLANOS[0].mes)} por mês, conforme o número de alunos. Dá para cancelar antes.</div>
       <div class="note">🔒 O número vai direto para o Mercado Pago, que confere se o cartão é válido. O Turma em Dia não vê nem guarda o número.</div>
       <div class="err" id="ccerr" role="alert"></div>`,
-    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="cccod">Tenho um código de cortesia</button><button type="button" id="ccsair">Sair da conta</button>' });
-  $('cccod').onclick = () => sheet(`<h3>Código de cortesia</h3><div class="sub">Digite o código que o Turma em Dia mandou para a escola. Com ele, a escola ganha meses grátis e não precisa cadastrar o cartão agora.</div>
-    <div class="field"><label for="cdcod">Código</label><input id="cdcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
+    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="cccod">Tenho um cupom</button><button type="button" id="ccsair">Sair da conta</button>' });
+  $('cccod').onclick = () => sheet(`<h3>Cupom</h3><div class="sub">Digite o cupom que o Turma em Dia mandou para a escola. Com ele, a escola ganha meses grátis e não precisa cadastrar o cartão agora.</div>
+    <div class="field"><label for="cdcod">Cupom</label><input id="cdcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
     <div class="err" id="cderr" role="alert"></div>
-    <div class="actions"><button type="button" class="btn ghost" data-fechar>Voltar</button><button type="button" class="btn" id="cdok">Usar o código</button></div>`, () => {
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Voltar</button><button type="button" class="btn" id="cdok">Usar o cupom</button></div>`, () => {
     $('cdcod').focus(); $('cdcod').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); });
-    $('cdok').onclick = async () => { const c = $('cdcod').value.trim(); if (c.length < 3) return $('cderr').textContent = 'Digite o código.';
+    $('cdok').onclick = async () => { const c = $('cdcod').value.trim(); if (c.length < 3) return $('cderr').textContent = 'Digite o cupom.';
       $('cdok').disabled = true;
       try { const r = await chamarPlano({ acao: 'codigo', codigo: c });
         if (MOCK) await B.set('escolas/' + eid, { cartaoPendente: false }, { merge: true });
-        fecharSheet(); sair(); S = S0; aviso(`Código aceito: grátis até ${dataBRA(r.plano.cortesiaAte)}`); depois(); }
+        fecharSheet(); sair(); S = S0; aviso(`Cupom aceito: grátis até ${dataBRA(r.plano.cortesiaAte)}`); depois(); }
       catch (e) { $('cderr').textContent = msgErro(e); $('cdok').disabled = false; } };
   });
   $('ccsair').onclick = () => { sair(); S = S0; confirmar('Sair da conta?', 'A escola fica criada. Quando você entrar de novo, é só cadastrar o cartão para continuar.', 'Sair', () => { VOLTA_ESCOLA = null; B.sair(); }); };
@@ -7007,11 +7007,11 @@ async function mockPlano(b) {
   if (b.acao === 'cartao') { const venc = [p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(); await gravar({ forma: 'cartao', ciclo: b.ciclo, cartao: { marca: b.marca, fim: b.fim }, proxCobranca: venc > h ? venc : h, ...(venc > h ? {} : { pagoAte: C.maisMeses(h, b.ciclo === 'anual' ? 12 : 1) }) }); return pub(); }
   if (b.acao === 'tirarCartao') { await gravar({ forma: null, cartao: null, proxCobranca: null }); return pub(); }
   if (b.acao === 'codigo') { const c = String(b.codigo).trim().toUpperCase().replace(/\s+/g, ''), x = MOCK_CODIGOS.find(k => k.codigo === c);
-    if (!x || !x.ativo) throw new Error('Código não encontrado. Confira as letras e os números.');
-    if (p.cortesiaCodigo) throw new Error('Esta escola já usou um código de cortesia.');
-    if (x.usos >= x.limite) throw new Error('Este código já foi usado por todas as escolas que ele permite.');
+    if (!x || !x.ativo) throw new Error('Cupom não encontrado. Confira as letras e os números.');
+    if (p.cortesiaCodigo) throw new Error('Esta escola já usou um cupom.');
+    if (x.usos >= x.limite) throw new Error('Este cupom já foi usado por todas as escolas que ele permite.');
     x.usos++; x.escolas.push({ eid: S.eid, nome: (S.escola || {}).nome || 'Escola', em: Date.now() });
-    await gravar({ cortesiaAte: C.maisMeses([h, p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(), x.meses), cortesiaMotivo: 'Código ' + c, cortesiaCodigo: c }); return pub(); }
+    await gravar({ cortesiaAte: C.maisMeses([h, p.testeAte || '', p.pagoAte || '', p.cortesiaAte || ''].sort().pop(), x.meses), cortesiaMotivo: 'Cupom ' + c, cortesiaCodigo: c }); return pub(); }
   return pub();
 }
 
@@ -7019,7 +7019,7 @@ async function mockPlano(b) {
 let DONO_ESC = null, DONO_F = { q: '', sit: 'todas' };
 const FASE_TXT = { teste: ['Teste', 'aberto'], ativo: ['Em dia', 'pago'], cortesia: ['Grátis', 'pago'], aviso: ['Venceu', 'vencido'], leitura: ['Só leitura', 'vencido'], suspensa: ['Suspensa', 'vencido'], livre: ['Sem plano', ''] };
 async function sheetEscolasDono(recarregar) {
-  const casca = h => `${abasDono('escolas')}<h3>Escolas</h3><div class="sub">Todas as escolas do app. Dê meses grátis ou desconto no plano de quem você escolher.</div><button type="button" class="btn ghost" id="dcods" style="width:100%;margin-top:8px">🎁 Códigos de cortesia</button>${h}<button class="btn ghost" data-fechar>Fechar</button>`;
+  const casca = h => `${abasDono('escolas')}<h3>Escolas</h3><div class="sub">Todas as escolas do app. Dê meses grátis ou desconto no plano de quem você escolher.</div><button type="button" class="btn ghost" id="dcods" style="width:100%;margin-top:8px">🎁 Cupons</button>${h}<button class="btn ghost" data-fechar>Fechar</button>`;
   if (!DONO_ESC || recarregar) {
     sheet(casca('<div class="empty">Carregando as escolas…</div>'), () => ligarAbasDono());
     try { DONO_ESC = (MOCK ? await mockDono({ acao: 'donoEscolas' }) : await servidor('plano', { acao: 'donoEscolas' })).escolas || []; }
@@ -7047,11 +7047,11 @@ async function sheetEscolasDono(recarregar) {
     pinta();
   });
 }
-// códigos de cortesia: o dono cria um código com meses grátis e um limite de escolas; a escola usa no passo do cartão
+// cupons: o dono cria um cupom com meses grátis e um limite de escolas; a escola usa no passo do cartão
 async function sheetCodigosDono() {
-  const casca = h => `<h3>Códigos de cortesia</h3><div class="sub">A escola digita o código no passo do cartão: ganha os meses grátis e só cadastra o cartão quando eles acabarem.</div>${h}<div class="actions"><button type="button" class="btn ghost" id="dkvolta">Voltar</button><button type="button" class="btn" id="dknovo">Criar código</button></div>`;
+  const casca = h => `<h3>Cupons</h3><div class="sub">A escola digita o cupom no passo do cartão: ganha os meses grátis e só cadastra o cartão quando eles acabarem.</div>${h}<div class="actions"><button type="button" class="btn ghost" id="dkvolta">Voltar</button><button type="button" class="btn" id="dknovo">Criar cupom</button></div>`;
   const ligar = () => { $('dkvolta').onclick = () => sheetEscolasDono(); $('dknovo').onclick = () => sheetNovoCodigoDono(); };
-  sheet(casca('<div class="empty">Carregando os códigos…</div>'), ligar);
+  sheet(casca('<div class="empty">Carregando os cupons…</div>'), ligar);
   let L; try { L = (MOCK ? await mockCodigos({ acao: 'donoCodigos' }) : await servidor('plano', { acao: 'donoCodigos' })).codigos || []; }
   catch (e) { sheet(casca(`<div class="empty"><b>Não deu para carregar.</b><span>${esc(msgErro(e))}</span></div>`), ligar); return; }
   const item = k => { const cheio = k.usos >= k.limite, st = !k.ativo ? ['Desativado', 'vencido'] : cheio ? ['Esgotado', 'vencido'] : ['Ativo', 'pago'];
@@ -7059,13 +7059,13 @@ async function sheetCodigosDono() {
       <span class="s">${k.meses} ${k.meses === 1 ? 'mês grátis' : 'meses grátis'} · usado por ${k.usos} de ${k.limite} escola${k.limite === 1 ? '' : 's'}${k.motivo ? ' · ' + esc(k.motivo) : ''}</span>
       ${(k.escolas || []).length ? `<span class="s">Usaram: ${k.escolas.map(e => esc(e.nome)).join(', ')}</span>` : ''}
       ${k.ativo && !cheio ? `<button type="button" class="link" data-dkdes="${esc(k.codigo)}" style="align-self:flex-start;color:var(--out);font-size:.82rem">Desativar</button>` : ''}</div></li>`; };
-  sheet(casca(`<ul class="list" style="margin-top:8px">${L.map(item).join('') || '<li class="empty">Nenhum código ainda.</li>'}</ul>`), sh => { ligar();
+  sheet(casca(`<ul class="list" style="margin-top:8px">${L.map(item).join('') || '<li class="empty">Nenhum cupom ainda.</li>'}</ul>`), sh => { ligar();
     sh.querySelectorAll('[data-dkdes]').forEach(b => b.onclick = () => duploToque(b, async () => {
-      try { MOCK ? await mockCodigos({ acao: 'donoDesativarCodigo', codigo: b.dataset.dkdes }) : await servidor('plano', { acao: 'donoDesativarCodigo', codigo: b.dataset.dkdes }); aviso('Código desativado'); sheetCodigosDono(); } catch (e) { aviso(msgErro(e)); } }, 'Toque de novo para desativar')); });
+      try { MOCK ? await mockCodigos({ acao: 'donoDesativarCodigo', codigo: b.dataset.dkdes }) : await servidor('plano', { acao: 'donoDesativarCodigo', codigo: b.dataset.dkdes }); aviso('Cupom desativado'); sheetCodigosDono(); } catch (e) { aviso(msgErro(e)); } }, 'Toque de novo para desativar')); });
 }
 function sheetNovoCodigoDono() {
-  sheet(`<h3>Novo código</h3><div class="sub">Quando o número de escolas chegar ao limite, o código para de funcionar.</div>
-    <div class="field"><label for="dkcod">Código</label><input id="dkcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
+  sheet(`<h3>Novo cupom</h3><div class="sub">Quando o número de escolas chegar ao limite, o cupom para de funcionar.</div>
+    <div class="field"><label for="dkcod">Cupom</label><input id="dkcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
     <div class="dn-lin"><span class="lb">Meses grátis</span><span class="passador"><button type="button" data-p="dkmes" data-d="-1" aria-label="Menos um mês">−</button><input id="dkmes" inputmode="numeric" value="3" aria-label="Meses grátis"><button type="button" data-p="dkmes" data-d="1" aria-label="Mais um mês">+</button></span></div>
     <div class="dn-lin"><span class="lb">Quantas escolas</span><span class="passador"><button type="button" data-p="dklim" data-d="-1" aria-label="Menos uma escola">−</button><input id="dklim" inputmode="numeric" value="1" aria-label="Quantas escolas podem usar"><button type="button" data-p="dklim" data-d="1" aria-label="Mais uma escola">+</button></span></div>
     <div class="field"><label for="dkmot">Motivo (só você vê)</label><input id="dkmot" maxlength="200" placeholder="Ex.: escolas parceiras"></div>
@@ -7076,11 +7076,11 @@ function sheetNovoCodigoDono() {
     $('dkcod').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''); });
     $('dkvolta').onclick = () => sheetCodigosDono();
     $('dkok').onclick = async () => { const corpo = { acao: 'donoCriarCodigo', codigo: $('dkcod').value, meses: Math.round(Number($('dkmes').value)), limite: Math.round(Number($('dklim').value)), motivo: $('dkmot').value };
-      if (corpo.codigo.length < 3) return $('dkerr').textContent = 'O código precisa de pelo menos 3 letras ou números.';
+      if (corpo.codigo.length < 3) return $('dkerr').textContent = 'O cupom precisa de pelo menos 3 letras ou números.';
       if (!(corpo.meses >= 1 && corpo.meses <= 36)) return $('dkerr').textContent = 'Escolha de 1 a 36 meses.';
       if (!(corpo.limite >= 1 && corpo.limite <= 1000)) return $('dkerr').textContent = 'Escolha de 1 a 1000 escolas.';
       $('dkok').disabled = true;
-      try { MOCK ? await mockCodigos(corpo) : await servidor('plano', corpo); aviso(`Código ${corpo.codigo} criado`); sheetCodigosDono(); }
+      try { MOCK ? await mockCodigos(corpo) : await servidor('plano', corpo); aviso(`Cupom ${corpo.codigo} criado`); sheetCodigosDono(); }
       catch (e) { $('dkerr').textContent = msgErro(e); $('dkok').disabled = false; } };
   });
 }
@@ -7136,8 +7136,8 @@ function sheetDescontoDono(e) {
 const MOCK_DONO = {}, MOCK_CODIGOS = [{ codigo: 'ESCOLA-AMIGA', meses: 3, limite: 5, usos: 1, escolas: [{ eid: 'e4', nome: 'Natação Golfinho', em: Date.now() - 864e6 }], motivo: 'Escolas parceiras', ativo: true, criadoEm: Date.now() - 2e9 }];
 async function mockCodigos(b) {
   if (b.acao === 'donoCriarCodigo') { const c = String(b.codigo || '').trim().toUpperCase().replace(/\s+/g, '');
-    if (!/^[A-Z0-9-]{3,30}$/.test(c)) throw new Error('O código usa de 3 a 30 letras, números ou traço.');
-    if (MOCK_CODIGOS.some(k => k.codigo === c)) throw new Error('Esse código já existe. Escolha outro.');
+    if (!/^[A-Z0-9-]{3,30}$/.test(c)) throw new Error('O cupom usa de 3 a 30 letras, números ou traço.');
+    if (MOCK_CODIGOS.some(k => k.codigo === c)) throw new Error('Esse cupom já existe. Escolha outro.');
     MOCK_CODIGOS.unshift({ codigo: c, meses: b.meses, limite: b.limite, usos: 0, escolas: [], motivo: b.motivo || '', ativo: true, criadoEm: Date.now() }); }
   if (b.acao === 'donoDesativarCodigo') MOCK_CODIGOS.find(k => k.codigo === b.codigo).ativo = false;
   return { codigos: MOCK_CODIGOS.map(k => ({ ...k, escolas: [...k.escolas] })) };
