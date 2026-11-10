@@ -784,7 +784,7 @@ async function telaCartaoEscola(eid, nome, depois) {
       <div class="note">Depois do teste, o plano custa a partir de ${brl(C.PLANOS[0].mes)} por mês, conforme o número de alunos. Dá para cancelar antes.</div>
       <div class="note">🔒 O número vai direto para o Mercado Pago, que confere se o cartão é válido. O Turma em Dia não vê nem guarda o número.</div>
       <div class="err" id="ccerr" role="alert"></div>`,
-    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="cccod">Tenho um cupom</button><button type="button" id="ccsair">Sair da conta</button>' });
+    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="cccod">Tenho um cupom</button><button type="button" id="ccsair">Voltar</button>' });
   $('cccod').onclick = () => sheet(`<h3>Cupom</h3><div class="sub">Digite o cupom que o Turma em Dia mandou para a escola. Com ele, a escola ganha meses grátis e não precisa cadastrar o cartão agora.</div>
     <div class="field"><label for="cdcod">Cupom</label><input id="cdcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
     <div class="err" id="cderr" role="alert"></div>
@@ -797,7 +797,8 @@ async function telaCartaoEscola(eid, nome, depois) {
         fecharSheet(); sair(); S = S0; aviso(`Cupom aceito: grátis até ${dataBRA(r.plano.cortesiaAte)}`); depois(); }
       catch (e) { $('cderr').textContent = msgErro(e); $('cdok').disabled = false; } };
   });
-  $('ccsair').onclick = () => { sair(); S = S0; confirmar('Sair da conta?', 'A escola fica criada. Quando você entrar de novo, é só cadastrar o cartão para continuar.', 'Sair', () => { VOLTA_ESCOLA = null; B.sair(); }); };
+  // desistir agora: volta para a lista de escolas (lá tem "Sair da conta"); a escola fica criada e pede o cartão quando for aberta
+  $('ccsair').onclick = () => { sair(); S = null; VOLTA_ESCOLA = null; telaInicio(); };
   $('ccdoc').addEventListener('input', e => { const x = C.soDigitos(e.target.value); e.target.value = x.length > 11 ? fmtCnpj(x) : fmtCpf(x); });
   const err = m => { $('ccerr').textContent = m; $('ccok').disabled = false; $('ccok').textContent = 'Salvar cartão'; };
   try { R = await chamarPlano({ acao: 'estado' }); campos = await camposCartao(R.publicKey || 'TEST-PUB', { num: 'ccnum', val: 'ccval', cvv: 'cccvv' }, async b => { try { metodo = await campos.metodo(b); } catch (e) { } }); }
@@ -1647,7 +1648,7 @@ function camposMsg(tipo, alid, itens) {
     total: brl(tot) + (A && A.desconto > 0 ? ` (com desconto de ${brl(A.desconto)})` : ''),
     parcelas: A ? A.parcelas.map(q => `• Parcela ${q.n} de ${A.parcelas.length}: ${brl(q.v)}, vence ${dataBR(q.venc)}`).join('\n') : '',
     pendencias: tipo === 'pendencias' ? faltaCadastro(alid).map(x => '• ' + x).join('\n') : '',
-    link: LINK_APP, codigo: r.codigo ? `No primeiro acesso, use o código: ${r.codigo}` : '' };
+    link: LINK_APP, codigo: r.codigo ? `Se ainda não entrou no app: abra o link, entre com seu e-mail (ou conta Google) e, em "Novo aqui?", digite o código ${r.codigo}.` : '' };
 }
 // o que falta no cadastro do aluno, para a família resolver pelo app (termo, atestado, documentos, contrato)
 function faltaCadastro(alid) {
@@ -1723,7 +1724,7 @@ function textoMsg(tipo, alid, itens) {
 // editar e salvar os modelos das mensagens
 function sheetModelos(tipo0) {
   let tipo = tipo0 || 'lembrete'; const rasc = { ...MODELOS_PADRAO, ...(S.cfg.modelos || {}) };
-  const exemplo = { responsavel: 'Patrícia', aluno: 'Sofia', escola: S.escola.nome || 'Escola', lista: '• Mensalidade de outubro: R$ 260,00 (venceu 10/10)\n• Taxa da federação: R$ 40,00 (vence 12/11)', total: 'R$ 300,00', parcelas: '• Parcela 1 de 2: R$ 150,00, vence 20/10\n• Parcela 2 de 2: R$ 150,00, vence 20/11', link: LINK_APP, codigo: 'No primeiro acesso, use o código: ABC123' };
+  const exemplo = { responsavel: 'Patrícia', aluno: 'Sofia', escola: S.escola.nome || 'Escola', lista: '• Mensalidade de outubro: R$ 260,00 (venceu 10/10)\n• Taxa da federação: R$ 40,00 (vence 12/11)', total: 'R$ 300,00', parcelas: '• Parcela 1 de 2: R$ 150,00, vence 20/10\n• Parcela 2 de 2: R$ 150,00, vence 20/11', link: LINK_APP, codigo: 'Se ainda não entrou no app: abra o link, entre com seu e-mail (ou conta Google) e, em "Novo aqui?", digite o código ABC123.' };
   sheet(`<h3>Mensagens do WhatsApp</h3>
     <div class="sub">Escreva do seu jeito. O app troca os campos entre chaves pelos dados de cada aluno na hora de enviar.</div>
     <div class="seg">${Object.entries(MODELOS_NOME).map(([k, n]) => `<button type="button" data-mod="${k}">${n}</button>`).join('')}</div>
@@ -3329,7 +3330,8 @@ function sheetPerfilAluno(alid, volta) {
   const r = adm ? respDe(alid) : prof ? (A.resp || {}) : {};
   const ts = (prof ? A.turmas || [] : a.turmas || []).map(t => S.turmas[t]).filter(Boolean);
   const gs = prof ? A.grupos || [] : porNome(S.grupos).filter(([, G]) => (G.alunas || []).includes(alid)).map(([, G]) => G.nome);
-  const wa = (adm || prof) && r.telefone ? waLink(r.telefone, prof ? `Olá, ${primeiro(r.nome || '')}! Aqui é ${primeiro(((S.profs || {})[S.prof] || {}).nome || EU.nome || '')}, professor(a) de ${primeiro(a.nome)} na ${S.escola.nome || 'escola'}.` : `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
+  const mPend = adm ? msgPendencias([alid]) : null;
+  const wa = mPend && mPend.wa ? mPend.wa : (adm || prof) && r.telefone ? waLink(r.telefone, prof ? `Olá, ${primeiro(r.nome || '')}! Aqui é ${primeiro(((S.profs || {})[S.prof] || {}).nome || EU.nome || '')}, professor(a) de ${primeiro(a.nome)} na ${S.escola.nome || 'escola'}.` : `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
   const cor = hexOk(S.cfg.cor) ? S.cfg.cor : COR_PADRAO;
   let filtro = '', notas = null, parar = null;
   const desenharNotas = () => {
@@ -3358,7 +3360,7 @@ function sheetPerfilAluno(alid, volta) {
         ${idade(a.nascimento) ? `<div class="pcard-meta num">${esc(idade(a.nascimento))}</div>` : ''}
         ${ts.length ? `<div class="pcard-turmas">${ts.map(t => `<span>${esc(t.nome)}</span>`).join(' · ')}</div>` : ''}
         ${gs.length ? `<div class="pcard-grupos">${gs.map(g => `<span>${esc(g)}</span>`).join(' · ')}</div>` : ''}
-        ${(adm || prof) && r.nome ? `<div class="pcard-resp"><span>${prof ? "Responsável: " : ""}${esc(r.nome)}</span>${wa ? `<a class="pcard-wa" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(r.nome)}">${ICO_WA}</a>` : ''}</div>` : ''}
+        ${(adm || prof) && r.nome ? `<div class="pcard-resp"><span>${prof ? "Responsável: " : ""}${esc(r.nome)}</span>${wa ? `<a class="pcard-wa" href="${esc(wa)}" target="_blank" rel="noopener" ${mPend && mPend.wa ? `data-cobr="${esc(alid)}:pend" ` : ''}aria-label="WhatsApp de ${esc(r.nome)}">${ICO_WA}</a>` : ''}</div>` : ''}
       </div>
     </div>
     ${adm ? '<div class="pacoes"><button type="button" class="pacao" id="pedit">Editar cadastro</button><button type="button" class="pacao" id="pcob">Cobranças</button></div>' : ''}
