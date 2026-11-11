@@ -11,7 +11,6 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-app
 main{max-width:720px;margin:0 auto;padding:24px 16px 64px}
 h1{font-size:1.6rem;line-height:1.2;margin:0 0 4px} h2{font-size:1.1rem;margin:28px 0 8px;color:var(--accent)}
 p,li{color:var(--ink)} .meta{color:var(--muted);font-size:.9rem;margin:0 0 16px}
-.rascunho{background:var(--warn);border-radius:12px;padding:12px 14px;font-size:.9rem}
 table{width:100%;border-collapse:collapse;font-size:.92rem} td,th{border-top:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}
 th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 </style>
@@ -19,17 +18,16 @@ th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.0
 <body>
 <main>
 <h1>Política de Privacidade</h1>
-<p class="meta">Turma em Dia · Versão 1 · 19 de outubro de 2026</p>
-<p class="rascunho"><b>Rascunho para revisão jurídica.</b> Os trechos entre colchetes ainda precisam ser preenchidos antes de publicar. Este texto não substitui a orientação de um advogado.</p>
+<p class="meta">Turma em Dia · Versão 2 · 11 de novembro de 2026</p>
 
 <h2>1. Quem somos e quem decide sobre os dados</h2>
-<p>O Turma em Dia é um aplicativo de gestão de mensalidades e cobranças para escolinhas (esporte, dança, luta, música e outras atividades), mantido por <b>Luiz Felipe dos Santos Costa</b>.</p>
+<p>O Turma em Dia é um aplicativo de gestão para escolinhas (esporte, dança, luta, música e outras atividades): turmas, chamada, documentos, eventos, mensalidades e cobranças. É mantido por <b>Luiz Felipe dos Santos Costa</b> e funciona pelo navegador, no celular e no computador, em <b>www.turmaemdia.com.br</b>.</p>
 <p>Cada <b>escola</b> que usa o app é a <b>controladora</b> dos dados dos seus alunos, responsáveis e professores: é ela que decide quais dados cadastrar e para quê. O Turma em Dia atua como <b>operador</b>: guarda e processa esses dados em nome da escola, só para prestar o serviço. Para os dados de cadastro da própria conta (nome e e-mail de quem usa o app), o Turma em Dia é controlador.</p>
 
 <h2>2. Quais dados o app guarda</h2>
 <table>
 <tr><th>De quem</th><th>Dados</th></tr>
-<tr><td>Quem usa o app (escola e famílias)</td><td>Nome, e-mail e senha de acesso (a senha fica com o Google Firebase, criptografada; nós não a vemos).</td></tr>
+<tr><td>Quem usa o app (escola, professores e famílias)</td><td>Nome, e-mail e senha de acesso (a senha fica com o Google Firebase, criptografada; nós não a vemos). Quem entra com a conta Google: o nome e o e-mail que o Google informa.</td></tr>
 <tr><td>Alunos</td><td>Nome, data de nascimento, turmas, grupos, descontos e o motivo do desconto, situação de pagamento.</td></tr>
 <tr><td>Termo de matrícula (saúde)</td><td>Respostas do questionário de saúde, alergias, remédios de uso contínuo, plano de saúde, contato de emergência, autorização de primeiros socorros e de uso de imagem, e a foto ou o PDF do atestado médico, quando for pedido. São <b>dados sensíveis</b>: só a administração e o(a) professor(a) da turma veem, e só com autorização específica do responsável. O(a) professor(a) vê um <b>resumo</b>: o que no questionário não foi “não”, os detalhes, as alergias, os remédios, se a família autoriza os primeiros socorros, se o atestado foi entregue e o contato de emergência. Não vê o plano de saúde, a foto do atestado nem os documentos.</td></tr>
 <tr><td>Documentos dos alunos</td><td>Se a escola pedir: foto ou PDF de documentos como parecer cardiológico, documento de identidade ou certidão de nascimento, com a data e a validade. O parecer cardiológico é <b>dado de saúde (sensível)</b>. Só a administração da escola e a família do aluno veem.</td></tr>
@@ -43,7 +41,7 @@ th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.0
 <tr><td>Notas fiscais para as famílias</td><td>Se a escola ou o(a) professor(a) ligar: para cada pagamento, a nota fiscal de serviço com o nome, o CPF e o e-mail do responsável, os nomes dos alunos, o que foi pago e o valor. O certificado digital e a senha de quem emite ficam só no servidor, protegidos; ninguém da escola nem das famílias consegue ler.</td></tr>
 <tr><td>Professores</td><td>Nome, WhatsApp, e-mail ou CPF da conta do Mercado Pago e chave Pix (para conferência e para o relatório).</td></tr>
 <tr><td>Pagamentos</td><td>Valores, vencimentos, datas e forma de pagamento (Pix, boleto, cartão ou dinheiro). O número do cartão e os dados da conta bancária de quem paga <b>não</b> passam pelo app: vão direto para o Mercado Pago. Se a família pedir para salvar o cartão, o app guarda só a bandeira, os 4 últimos números, a validade e o código do cartão no Mercado Pago, para a próxima vez pedir só o código de segurança. Para o boleto, o Mercado Pago pede o nome, o CPF e o endereço de quem paga, que o app envia a ele.</td></tr>
-<tr><td>Plano da escola</td><td>CPF ou CNPJ de quem responde pela escola (para o teste grátis, um por CPF ou CNPJ), quantidade de alunos ativos, forma de pagamento do plano (bandeira e 4 últimos números do cartão) e as datas de pagamento.</td></tr>
+<tr><td>Plano da escola</td><td>CPF ou CNPJ de quem responde pela escola (para o teste grátis, um por CPF ou CNPJ), quantidade de alunos ativos, forma de pagamento do plano (bandeira e 4 últimos números do cartão; o número completo fica só com o Mercado Pago), o cupom usado, se houver, e as datas de pagamento.</td></tr>
 <tr><td>Escola</td><td>Nome, cidade e estado, logo, cor, chave Pix, ajustes de cobrança e lançamentos do caixa.</td></tr>
 <tr><td>Registro técnico de erros</td><td>Quando o app apresenta uma falha, ele grava automaticamente: a mensagem técnica do erro, em que tela e em qual botão aconteceu, o identificador interno da conta (um código, sem nome), a versão do app, o modelo do aparelho e do navegador, e a data e a hora. <b>Não</b> grava nome, CPF, telefone, e-mail nem dados de saúde; números longos e e-mails que aparecerem na mensagem são apagados antes de gravar.</td></tr>
 </table>
@@ -58,14 +56,14 @@ th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.0
 <h2>4. Para que usamos os dados</h2>
 <ul>
 <li>Calcular e mostrar mensalidades, eventos, competições, taxas e descontos;</li>
-<li>Gerar a cobrança por Pix e dar baixa automática quando o pagamento cai;</li>
+<li>Gerar a cobrança (Pix, boleto ou cartão, conforme as formas que a escola escolher) e dar baixa automática quando o pagamento cai;</li>
 <li>Mostrar à família o que está em aberto e o histórico do que foi pago;</li>
 <li>Gerar relatórios para a escola e para cada professor(a);</li>
 <li>Preparar mensagens de cobrança que <b>a própria escola</b> envia pelo WhatsApp (o app só abre a conversa com o texto pronto; quem envia é a escola);</li>
 <li>Avisar a escola sobre mudança de faixa etária dos alunos;</li>
 <li>Guardar os documentos que a escola pede de cada aluno, avisar quando vão vencer e juntá-los num PDF quando a escola precisar mandar a uma competição;</li>
 <li>Emitir, quando a escola ou o(a) professor(a) ligar, a nota fiscal de serviço dos pagamentos das famílias, no nome e CPF do responsável, como exige a lei;</li>
-<li>Emitir a nota fiscal da comissão do app (1% dos Pix) no nome e CPF ou CNPJ do dono da conta do Mercado Pago que recebe os pagamentos (a escola ou o professor), como exige a lei;</li>
+<li>Emitir a nota fiscal da comissão do app (1% dos pagamentos feitos pelo app) no nome e CPF ou CNPJ do dono da conta do Mercado Pago que recebe os pagamentos (a escola ou o professor), como exige a lei;</li>
 <li>Encontrar e corrigir falhas do app, pelo registro técnico de erros (só a empresa do app vê; as escolas não);</li>
 <li>Manter o app seguro e funcionando, e cumprir obrigações legais.</li>
 </ul>
@@ -76,12 +74,15 @@ th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.0
 <h2>6. Com quem os dados são compartilhados</h2>
 <ul>
 <li><b>Google Firebase</b> (Google Cloud): hospeda o banco de dados e o login. Os servidores podem ficar fora do Brasil; o Google adota as cláusulas e garantias exigidas para transferência internacional de dados.</li>
-<li><b>Mercado Pago</b>: processa os pagamentos por Pix. Recebe o valor, a descrição da cobrança e os dados de quem paga, conforme a política de privacidade do próprio Mercado Pago.</li>
+<li><b>Mercado Pago</b>: processa os pagamentos (Pix, boleto e cartão). Recebe o valor, a descrição da cobrança e os dados de quem paga, conforme a política de privacidade do próprio Mercado Pago.</li>
 <li><b>WhatsApp</b>: só quando a escola toca em “Abrir no WhatsApp”. A mensagem é enviada pela conta da escola, no aparelho dela.</li>
-<li><b>Prefeitura e Receita (Emissor Nacional da NFS-e)</b>: recebem o nome, o CPF ou CNPJ e o valor da comissão de quem recebe os Pix, para a nota fiscal. Se a escola ou o(a) professor(a) ligar a nota para as famílias, recebem também o nome, o CPF e o e-mail do responsável, o que foi pago e o valor.</li>
+<li><b>Prefeitura e Receita (Emissor Nacional da NFS-e)</b>: recebem o nome, o CPF ou CNPJ e o valor da comissão de quem recebe os pagamentos, para a nota fiscal. Se a escola ou o(a) professor(a) ligar a nota para as famílias, recebem também o nome, o CPF e o e-mail do responsável, o que foi pago e o valor.</li>
 <li><b>Autoridades</b>: quando a lei exigir.</li>
 </ul>
 <p>Não vendemos nem alugamos dados pessoais.</p>
+
+<h2>6.1. O que fica guardado no seu aparelho</h2>
+<p>O site e o app guardam no navegador do seu aparelho apenas o necessário para funcionar: manter você conectado, lembrar a última escola aberta (com a cor e o logo dela), a aba em que você estava e se você já viu a apresentação do app. Se você pagar com boleto, o nome, o CPF e o endereço que você preencheu ficam guardados <b>só no seu aparelho</b>, para não precisar digitar de novo na próxima vez. Para apagar tudo isso, basta limpar os dados do site no navegador. Não usamos cookies de propaganda nem ferramentas de rastreamento. As letras do site são carregadas do Google Fonts, que recebe o endereço de internet de quem abre a página, como acontece em qualquer site que usa esse serviço.</p>
 
 <h2>7. Por quanto tempo guardamos</h2>
 <p>Enquanto a escola usar o app. Quando um aluno sai ou quando o responsável pede a exclusão, a escola apaga os dados pessoais dele (nome, nascimento, contato). Os <b>registros de pagamento</b> podem ser mantidos, sem identificar a pessoa, pelo prazo exigido em lei (em geral, 5 anos para registros financeiros e fiscais). As notas fiscais emitidas ficam guardadas por esse mesmo prazo. Se a escola encerrar a conta, os dados são apagados em até 90 dias, salvo o que a lei obriga a guardar.</p>
@@ -89,13 +90,13 @@ th{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.0
 
 <h2>8. Seus direitos</h2>
 <p>Pela LGPD (artigo 18), você pode: saber se tratamos seus dados; ter acesso a eles; corrigir dados errados; pedir a exclusão, anonimização ou bloqueio do que for desnecessário; receber uma cópia (portabilidade); saber com quem compartilhamos; e retirar o consentimento.</p>
-<p>No próprio app, em <b>Minha conta → Privacidade e dados</b>, o responsável pode <b>baixar uma cópia</b> dos dados dele e dos filhos e <b>pedir a exclusão</b>. O pedido vai para a escola, que é quem decide e apaga. Você também pode escrever para [E-MAIL DE CONTATO].</p>
+<p>No próprio app, em <b>Minha conta → Privacidade e dados</b>, o responsável pode <b>baixar uma cópia</b> dos dados dele e dos filhos e <b>pedir a exclusão</b>. O pedido vai para a escola, que é quem decide e apaga. Você também pode escrever para <a href="mailto:pelotafc.app@gmail.com">pelotafc.app@gmail.com</a>.</p>
 
 <h2>9. Segurança</h2>
 <p>O acesso é protegido por login. Cada escola só vê os próprios dados, e cada família só vê os próprios filhos. A comunicação é criptografada (HTTPS) e o banco de dados tem cópias de segurança. Se houver um incidente que possa trazer risco às pessoas, avisaremos a escola, os titulares afetados e a Autoridade Nacional de Proteção de Dados (ANPD), como manda a lei.</p>
 
 <h2>10. Encarregado (DPO) e contato</h2>
-<p>Encarregado pelo tratamento de dados: Luiz Felipe dos Santos Costa · [E-MAIL DE CONTATO]. Você também pode reclamar à ANPD (www.gov.br/anpd).</p>
+<p>Encarregado pelo tratamento de dados: Luiz Felipe dos Santos Costa, pelo e-mail <a href="mailto:pelotafc.app@gmail.com">pelotafc.app@gmail.com</a>. Você também pode reclamar à Autoridade Nacional de Proteção de Dados (ANPD), em <a href="https://www.gov.br/anpd">www.gov.br/anpd</a>.</p>
 
 <h2>11. Mudanças nesta política</h2>
 <p>Se esta política mudar de forma importante, avisaremos no app antes de a mudança valer. A data da versão fica no topo desta página.</p>

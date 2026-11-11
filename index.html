@@ -91,6 +91,8 @@ a{color:inherit}
 .marca.marca-grande svg{width:118px;height:118px}
 .voando .marca-grande{position:fixed;z-index:30;margin:0;left:0;top:0}
 .voando #marca-topo{visibility:hidden}
+/* com o menu Entrar aberto, a marca não fica por cima das opções */
+.menu-aberto .marca-grande{visibility:hidden}
 .lugar-marca{display:block}
 
 /* celular com as telas passando */
@@ -391,7 +393,7 @@ footer nav{display:flex;gap:20px;margin-left:auto}
 
   // menu "Entrar"
   var caixa = document.getElementById('entrar'), botao = caixa.querySelector('button');
-  function abre(sim) { caixa.classList.toggle('aberto', sim); botao.setAttribute('aria-expanded', sim ? 'true' : 'false'); }
+  function abre(sim) { caixa.classList.toggle('aberto', sim); document.documentElement.classList.toggle('menu-aberto', !!sim); botao.setAttribute('aria-expanded', sim ? 'true' : 'false'); }
   botao.addEventListener('click', function (e) { e.stopPropagation(); abre(!caixa.classList.contains('aberto')); if (caixa.classList.contains('aberto')) caixa.querySelector('.menu-entrar a').focus(); });
   document.addEventListener('click', function (e) { if (!caixa.contains(e.target)) abre(false); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && caixa.classList.contains('aberto')) { abre(false); botao.focus(); } });
