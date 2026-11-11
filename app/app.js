@@ -729,7 +729,7 @@ function telaCriarEscola(passo) {
       $('wok').disabled = true; const eid = novoId();
       try {
         await B.lote([
-          { op: 'set', p: 'escolas/' + eid, d: { nome: WZ.nome, dono: EU.uid, admins: [EU.uid], adminsInfo: { [EU.uid]: { nome: EU.nome || '', email: EU.email || '', em: Date.now() } }, criadaEm: Date.now(), termosAceitos: { em: Date.now(), versao: VERSAO_TERMOS, uid: EU.uid }, ...(LOJA() ? {} : { cartaoPendente: true }) } },
+          { op: 'set', p: 'escolas/' + eid, d: { nome: WZ.nome, dono: EU.uid, admins: [EU.uid], adminsInfo: { [EU.uid]: { nome: EU.nome || '', email: EU.email || '', em: Date.now() } }, criadaEm: Date.now(), termosAceitos: { em: Date.now(), versao: VERSAO_TERMOS, uid: EU.uid } } },
           { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: WZ.venc, pixRepassa: false, descIrmas: 0, descMulti: 0, cidade: WZ.cidade, uf: WZ.uf, primeirosPassos: true } }
         ]);
         await B.set('users/' + EU.uid, { escolas: { [eid]: { nome: WZ.nome, papel: 'admin' } } }, { merge: true });
@@ -776,7 +776,7 @@ async function telaCartaoEscola(eid, nome, depois) {
   let R = null, campos = null, metodo = null;
   const sair = () => { if (campos) campos.sair(); campos = null; };
   telaOb({ passo: 3, rotulo: 'Passo 3 de 5', titulo: 'Cadastre o cartão',
-    sub: 'Nada é cobrado até acabar o teste grátis de 30 dias. Pode aparecer uma cobrança pequena só para confirmar o cartão, que é devolvida em seguida.',
+    sub: 'Opcional. Nada é cobrado até acabar o teste grátis de 30 dias. Pode aparecer uma cobrança pequena só para confirmar o cartão, devolvida em seguida.',
     corpo: `<div class="field"><label>Número do cartão</label><div class="mpcampo" id="ccnum"></div></div>
       <div class="two"><div class="field"><label>Validade</label><div class="mpcampo" id="ccval"></div></div><div class="field"><label>Código de segurança</label><div class="mpcampo" id="cccvv"></div></div></div>
       <div class="field"><label for="ccnome">Nome no cartão</label><input id="ccnome" autocomplete="cc-name" placeholder="Como está no cartão"></div>
@@ -784,7 +784,7 @@ async function telaCartaoEscola(eid, nome, depois) {
       <div class="note">Depois do teste, o plano custa a partir de ${brl(C.PLANOS[0].mes)} por mês, conforme o número de alunos. Dá para cancelar antes.</div>
       <div class="note">🔒 O número vai direto para o Mercado Pago, que confere se o cartão é válido. O Turma em Dia não vê nem guarda o número.</div>
       <div class="err" id="ccerr" role="alert"></div>`,
-    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="cccod">Tenho um cupom</button><button type="button" id="ccsair">Voltar</button>' });
+    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="cccod">Tenho um cupom</button><button type="button" id="ccsair">Cadastrar depois</button>' });
   $('cccod').onclick = () => sheet(`<h3>Cupom</h3><div class="sub">Digite o cupom que o Turma em Dia mandou para a escola. Com ele, a escola ganha meses grátis e não precisa cadastrar o cartão agora.</div>
     <div class="field"><label for="cdcod">Cupom</label><input id="cdcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
     <div class="err" id="cderr" role="alert"></div>
@@ -797,8 +797,8 @@ async function telaCartaoEscola(eid, nome, depois) {
         fecharSheet(); sair(); S = S0; aviso(`Cupom aceito: grátis até ${dataBRA(r.plano.cortesiaAte)}`); depois(); }
       catch (e) { $('cderr').textContent = msgErro(e); $('cdok').disabled = false; } };
   });
-  // desistir agora: volta para a lista de escolas (lá tem "Sair da conta"); a escola fica criada e pede o cartão quando for aberta
-  $('ccsair').onclick = () => { sair(); S = null; VOLTA_ESCOLA = null; telaInicio(); };
+  // o cartão não é obrigatório: dá para seguir sem ele (o plano pede a forma de pagamento perto do fim do teste)
+  $('ccsair').onclick = () => { sair(); S = S0; depois(); };
   $('ccdoc').addEventListener('input', e => { const x = C.soDigitos(e.target.value); e.target.value = x.length > 11 ? fmtCnpj(x) : fmtCpf(x); });
   const err = m => { $('ccerr').textContent = m; $('ccok').disabled = false; $('ccok').textContent = 'Salvar cartão'; };
   try { R = await chamarPlano({ acao: 'estado' }); campos = await camposCartao(R.publicKey || 'TEST-PUB', { num: 'ccnum', val: 'ccval', cvv: 'cccvv' }, async b => { try { metodo = await campos.metodo(b); } catch (e) { } }); }
@@ -1124,7 +1124,6 @@ async function abrirEscola(eid, tab) {
   if (!escola) { aviso('Você não tem mais acesso a essa escola.'); delete MINHAS[eid]; return telaInicio(); }
   const admin = (escola.admins || []).includes(EU.uid);
   // escola criada sem terminar o cadastro do cartão: volta para esse passo
-  if (admin && escola.cartaoPendente && !LOJA()) return telaCartaoEscola(eid, escola.nome, () => abrirEscola(eid, tab));
   let prof = null;
   // professor(a) com acesso ao app: o servidor criou escolas/{eid}/equipe/{uid} quando ele(a) entrou com o e-mail cadastrado
   if (!admin) { const eq = await B.get(`escolas/${eid}/equipe/${EU.uid}`).catch(() => null); if (eq && eq.pid) prof = eq.pid; }
