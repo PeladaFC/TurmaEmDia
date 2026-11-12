@@ -12,14 +12,15 @@
 <link rel="icon" type="image/png" href="app/icon-192.png">
 <link rel="apple-touch-icon" href="app/apple-touch-icon.png">
 <script>
-/* Quem chega por um link do app (convite, cobrança, aviso), pelo app instalado ou já entrou neste aparelho vai direto para o app.
-   Para ver o site mesmo assim: turmaemdia.com.br/?site=1 */
+/* Quem chega por um link do app (convite, cobrança, aviso) ou pelo app instalado no celular vai direto para o app.
+   O endereço principal (turmaemdia.com.br) sempre mostra o site, mesmo para quem já entrou no app neste aparelho.
+   Marcas de propaganda no link (utm_, fbclid, gclid...) não contam como link do app. */
 (function () {
-  var q = location.search, h = location.hash, site = /[?&]site=1/.test(q);
-  if (site) return;
+  var q = location.search, h = location.hash;
+  var doApp = q.replace(/^\?/, '').split('&').filter(function (p) { var k = p.split('=')[0]; return k && !/^(utm_|fbclid|gclid|igshid|msclkid|ref$|si$|site$)/i.test(k); }).length > 0;
+  if (/[?&]site=1/.test(q)) return;
   var instalado = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone;
-  var entrou = null; try { entrou = localStorage.getItem('ted.entrou'); } catch (e) { }
-  if ((q && q !== '?') || (h && h !== '#') || instalado || entrou) location.replace('app/' + q + h);
+  if (doApp || (h && h.length > 1 && !/^#(conteudo|resolve|perfis|computador|comeca)$/.test(h)) || instalado) location.replace('app/' + q + h);
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
