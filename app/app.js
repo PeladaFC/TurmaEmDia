@@ -9,6 +9,9 @@ const MP_VOLTA = new URLSearchParams(location.search).get('mp');
 // vindo do site (turmaemdia.com.br): ?entrar=escola|professor|familia abre em Entrar; ?entrar=novo abre em Criar conta (só na primeira tela)
 let ENTRAR_PARAM = new URLSearchParams(location.search).get('entrar');
 const ENTRAR_NOVO = () => { const r = ENTRAR_PARAM === 'novo'; ENTRAR_PARAM = null; return r; };
+// veio do "Criar minha escola" do site: depois de entrar, vai direto para criar a escola (guardado porque o login com Google recarrega a página)
+try { if (ENTRAR_PARAM === 'novo') sessionStorage.setItem('ted.criarEscola', '1'); } catch (e) { }
+const QUER_CRIAR = () => { try { const r = sessionStorage.getItem('ted.criarEscola') === '1'; sessionStorage.removeItem('ted.criarEscola'); return r; } catch (e) { return false; } };
 
 /* ================= Banco ================= */
 let B;
@@ -593,15 +596,15 @@ async function identificarFamilia(dados) {
   for (const e of r.escolas || []) MINHAS[e.eid] = { nome: e.nome, papel: 'familia', familia: e.familia };
   return r;
 }
-function telaNovo() {
-  if (USR.perfilProf) return telaProfEnviado();
-  if (USR.perfil) return telaCadastroFeito();
+function telaNovo(forcar) {
+  if (!forcar && USR.perfilProf) return telaProfEnviado();
+  if (!forcar && USR.perfil) return telaCadastroFeito();
   const cod = `<div class="field"><label for="ncod">Código do responsável <span class="sub">(a escola envia)</span></label><input id="ncod" class="cod" maxlength="6" autocapitalize="characters" placeholder="K7Q2MX"></div>`;
   telaOb({ rotulo: `Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}`, titulo: 'Novo aqui?',
     sub: 'Faça seu cadastro. Use o código que a escola enviou ou aguarde: em breve você será identificado como responsável.',
-    corpo: `<div class="field"><label for="nnome">Nome completo</label><input id="nnome" maxlength="80" autocomplete="name" value="${esc(EU.nome || '')}"></div>
-      <div class="two"><div class="field"><label for="ntel">WhatsApp</label><input id="ntel" inputmode="tel" autocomplete="tel" placeholder="(81) 9 9999-9999"></div>
-      <div class="field"><label for="ncpf">CPF</label><input id="ncpf" inputmode="numeric" placeholder="000.000.000-00"></div></div>
+    corpo: `<div class="field"><label for="nnome">Nome completo</label><input id="nnome" maxlength="80" autocomplete="name" value="${esc((USR.perfil || {}).nome || EU.nome || '')}"></div>
+      <div class="two"><div class="field"><label for="ntel">WhatsApp</label><input id="ntel" inputmode="tel" autocomplete="tel" placeholder="(81) 9 9999-9999" value="${esc((USR.perfil || {}).telefone || '')}"></div>
+      <div class="field"><label for="ncpf">CPF</label><input id="ncpf" inputmode="numeric" placeholder="000.000.000-00" value="${esc(fmtCpf((USR.perfil || {}).cpf || ''))}"></div></div>
       <div class="field"><label>E-mail</label><input class="ro" value="${esc(EU.email || '')}" readonly tabindex="-1"></div>
       ${cod}<div class="err" id="nerr" role="alert"></div>`,
     botao: '<button class="btn" id="nok">Continuar</button>',
@@ -626,8 +629,8 @@ function telaCadastroFeito(pedidos) {
   telaOb({ rotulo: `Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}`, titulo: 'Cadastro feito!',
     sub: pedidos ? 'A escola vai confirmar que você é o responsável. Assim que ela liberar, seus filhos aparecem aqui.' : 'Quando a escola cadastrar seu e-mail ou CPF, seus filhos aparecem aqui sozinhos. Filhos em outra escola? Use o código dela.',
     corpo: `<div class="ob-icone">⏳</div><div class="field"><label for="ncod">Código do responsável <span class="sub">(a escola envia)</span></label><input id="ncod" class="cod" maxlength="6" autocapitalize="characters" placeholder="K7Q2MX"></div><div class="err" id="nerr" role="alert"></div>`,
-    botao: '<button class="btn" id="nok">Entrar com o código</button>', links: linkSair });
-  ligarSair();
+    botao: '<button class="btn" id="nok">Entrar com o código</button>', links: '<button type="button" id="nvolta">Voltar</button>' + linkSair });
+  ligarSair(); $('nvolta').onclick = () => telaNovo(true);
   $('nok').onclick = async () => { $('nok').disabled = true; try { if (!(await entrarComCodigo($('ncod').value, m => $('nerr').textContent = m))) $('nok').disabled = false; } catch (e) { $('nerr').textContent = msgErro(e); $('nok').disabled = false; } };
 }
 // professor(a): cadastro completo; a escola libera o acesso cadastrando o e-mail dele(a)
@@ -3011,6 +3014,25 @@ const notaDaFamilia = r => r && r.nota ? r.nota === 'sim' : nfModo() !== 'pedido
 // CPF com pontos e traço enquanto digita
 const fmtCpf = c => { const d = C.soDigitos(c).slice(0, 11); return d.length <= 3 ? d : d.length <= 6 ? `${d.slice(0, 3)}.${d.slice(3)}` : d.length <= 9 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}` : `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`; };
 document.addEventListener('input', e => { if (e.target && e.target.id === 'rcpf') { const v = fmtCpf(e.target.value); if (v !== e.target.value) e.target.value = v; } });
+// aluno novo: mensagem pronta para o responsável (link do app e, se ele ainda não entrou, o código do primeiro acesso)
+function avisoNovoAluno(r, rid, aluno) {
+  const noApp = !!r.codigo && Object.values(S.membros || {}).some(m => m && m.codigo === r.codigo);
+  const oi = `Olá${r.nome ? ', ' + primeiro(r.nome) : ''}! ${primeiro(aluno)} foi cadastrado(a) na ${S.escola.nome || 'escola'}.`;
+  return noApp ? { noApp, txt: `${oi} Já aparece no seu app, em Meus filhos: ${LINK_APP}` }
+    : { noApp, txt: `${oi} Pelo app Turma em Dia você acompanha mensalidades, eventos e documentos, e paga por Pix.\n1. Abra ${LINK_APP}\n2. Crie sua conta com seu e-mail (ou entre com Google)\n3. Em "Novo aqui?", digite o código: ${r.codigo}` };
+}
+function sheetAvisarResp(r, rid, aluno) {
+  if (!r.codigo) return;
+  const { noApp, txt } = avisoNovoAluno(r, rid, aluno), tel = numeroWa(r.telefone);
+  sheet(`<h3>Avisar ${esc(primeiro(r.nome) || 'o responsável')}</h3>
+    <div class="sub">${noApp ? `${esc(primeiro(r.nome))} já usa o app: ${esc(primeiro(aluno))} aparece lá sozinho(a).` : `Mande o link do app e o código do primeiro acesso: <b class="num">${esc(r.codigo)}</b>.`}</div>
+    <div class="note" style="white-space:pre-line">${esc(txt)}</div>
+    <div class="actions">${tel ? `<a class="btn wa-btn" id="avwa" href="${esc(waLink(r.telefone, txt))}" target="_blank" rel="noopener">${ICO_WA} Enviar no WhatsApp</a>` : ''}<button type="button" class="btn ghost" id="avcop">Copiar mensagem</button></div>
+    <button type="button" class="btn ghost" data-fechar>Agora não</button>`, () => {
+    $('avcop').onclick = () => copiar(txt, 'Mensagem copiada. Cole no WhatsApp do responsável.');
+    if ($('avwa')) $('avwa').addEventListener('click', () => setTimeout(fecharSheet, 300));
+  });
+}
 function sheetResp(rid) {
   const r = S.resps[rid]; if (!r) return;
   const al = alunasDoResp(rid), noApp = Object.values(S.membros).filter(m => m.codigo === r.codigo).length;
@@ -3171,7 +3193,12 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       if (!achado) { $('rsug').innerHTML = ''; return; }
       const [mid, m] = achado, irmas = alunasDoResp(mid).map(([, x]) => primeiro(x.nome));
       $('rsug').innerHTML = `<div class="banner"><span><b>${esc(m.nome)}</b> já está cadastrado(a) com esse ${mesmoContato({ telefone: atual.telefone }, m) ? 'telefone' : 'CPF'}${irmas.length ? `, responsável por ${esc(irmas.join(', '))}` : ''}. É a mesma pessoa?</span><span class="actions"><button type="button" id="rsim">Sim, agrupar</button><button type="button" id="rnao" style="color:var(--muted)">Não, é outra</button></span></div>`;
-      $('rsim').onclick = () => { rid = mid; $('rnome').value = m.nome || ''; $('rend').value = m.endereco || ''; $('rtel').value = m.telefone || ''; $('rcpf').value = m.cpf || ''; sugerir(); prev(); aviso('Agrupada com ' + primeiro(m.nome)); };
+      const agrupar = nomeFica => { rid = mid; $('rnome').value = nomeFica; $('rend').value = $('rend').value.trim() || m.endereco || ''; $('rtel').value = m.telefone || $('rtel').value; $('rcpf').value = m.cpf || $('rcpf').value; sugerir(); prev(); aviso('Agrupado com ' + primeiro(nomeFica)); };
+      // o nome digitado é diferente do que já está salvo: pergunta qual fica
+      $('rsim').onclick = () => { const dig = $('rnome').value.trim(), igual = x => String(x || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        if (!dig || igual(dig) === igual(m.nome)) return agrupar(m.nome || dig);
+        $('rsug').innerHTML = `<div class="banner"><span><b>Qual nome do responsável salvar?</b> Vale para todos os alunos dele(a).</span><span class="actions"><button type="button" id="rn1">${esc(m.nome)}</button><button type="button" id="rn2">${esc(dig)}</button></span></div>`;
+        $('rn1').onclick = () => agrupar(m.nome); $('rn2').onclick = () => agrupar(dig); };
       $('rnao').onclick = () => { recusado.add(mid); sugerir(); };
     };
     // primeiro mês: dias que faltam no mês de início (contando hoje, se começa neste mês)
@@ -3252,6 +3279,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         if ($('amat') && $('amat').checked) { const d7 = new Date(Date.now() + 3 * 864e5 - 3 * 36e5).toISOString().slice(0, 10);
           ops.push({ op: 'set', p: `escolas/${S.eid}/extras/${novoId()}`, d: { tipo: 'taxa', matricula: true, nome: 'Taxa de matrícula', v: C.r2(S.cfg.matricula.valor), venc: d7, alunas: [id], valores: {}, grupos: [], turmas: [], recebedor: 'escola', nota: false, criadoEm: Date.now() } }); }
         await B.lote(ops); if (novaFoto) FOTOS[id] = novaFoto; fecharSheet(); aviso(ed ? 'Aluno(a) atualizado(a)' : 'Aluno(a) cadastrado(a)');
+        if (!ed && adm) { const cod = ((ops.find(o => o.p === `escolas/${S.eid}/responsaveis/${r}`) || {}).d || {}).codigo || (S.resps[r] || {}).codigo; sheetAvisarResp({ nome: rn, telefone: rt, codigo: cod }, r, nome); }
       } catch (e) { err(msgErro(e)); $('aok').disabled = false; }
     };
     if ($('aanon')) $('aanon').onclick = () => confirmarApagar([alid], null);
@@ -7551,6 +7579,7 @@ async function semearMock() {
     if (minha !== vez) return;
     MINHAS = Object.fromEntries(Object.entries((perfil && perfil.escolas) || {}).filter(([, e]) => e));
     USR = perfil || {};
+    if (QUER_CRIAR()) { sairAbertura(); return telaCriarEscola(1); }
     // responsável que já fez o cadastro e ainda não tem escola: procura de novo (a escola pode ter cadastrado o e-mail dele)
     if (!Object.keys(MINHAS).length && USR.perfil && !MOCK) identificarFamilia().then(r => { if (minha !== vez || !(r.escolas || []).length || S) return; const ks = Object.keys(MINHAS); aviso('Achamos seus filhos!'); abrirEscola(ks[0]); }).catch(() => { });
     // convite para a administração: procura sem atrasar a abertura da escola
