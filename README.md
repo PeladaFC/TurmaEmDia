@@ -1,5 +1,7 @@
 # Turma em Dia
 
+> Para continuar o trabalho, leia antes o `CLAUDE.md` (regras de trabalho, o que está pronto e as pendências).
+
 App de mensalidades para qualquer escolinha (ginástica, futebol, natação, dança, lutas, música…), com Pix automático pelo Mercado Pago. Usa a mesma base de pagamento do Pelada FC: o Pix é único por cobrança, o servidor calcula o valor, a baixa é automática e a comissão de 1% é separada pelo próprio Mercado Pago.
 
 - **Tudo é por aluno(a).** Cada aluno(a) tem turma(s) e um responsável. A mensalidade é a soma das turmas, com os descontos que a administração escolher para cada aluna (irmã, mais de uma atividade, %, R$, valor combinado ou bolsista).
@@ -53,7 +55,7 @@ Para testar sem Firebase, abra `app/index.html?mock=1` num servidor local. O app
 
 ## Privacidade (LGPD)
 
-- `privacidade.html` e `termos.html`: **rascunhos para revisão jurídica**. Preencher os trechos entre colchetes ([NOME DA EMPRESA], [CNPJ], [E-MAIL DE CONTATO], prazos) antes de publicar.
+- `privacidade.html` e `termos.html`: versão 2 (nov/2026), sem trechos a preencher. Trocar nome, dados da empresa e e-mail quando a KS Soluções assumir.
 - Ao criar a escola, a administração aceita os termos (`escolas/{id}.termosAceitos`).
 - No primeiro acesso, o responsável autoriza o uso dos dados dos filhos (`membros/{uid}.consentimento`, LGPD art. 14).
 - Responsável: Minha conta → Privacidade e dados → baixar os dados (arquivo .json) ou pedir exclusão (`pedidos/{id}`).

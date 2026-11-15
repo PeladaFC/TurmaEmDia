@@ -1778,7 +1778,7 @@ function camposMsg(tipo, alid, itens) {
     total: brl(tot) + (A && A.desconto > 0 ? ` (com desconto de ${brl(A.desconto)})` : ''),
     parcelas: A ? A.parcelas.map(q => `• Parcela ${q.n} de ${A.parcelas.length}: ${brl(q.v)}, vence ${dataBR(q.venc)}`).join('\n') : '',
     pendencias: tipo === 'pendencias' ? faltaCadastro(alid).map(x => '• ' + x).join('\n') : '',
-    link: LINK_APP, codigo: r.codigo ? `Se ainda não entrou no app: abra o link, entre com seu e-mail (ou conta Google) e, em "Novo aqui?", digite o código ${r.codigo}.` : '' };
+    link: LINK_APP, codigo: r.codigo ? `Se ainda não entrou no app: toque em ${linkConvite(r)} e crie sua conta com o seu e-mail. Se o app pedir um código, é ${r.codigo}.` : '' };
 }
 // o que falta no cadastro do aluno, para a família resolver pelo app (termo, atestado, documentos, contrato)
 function faltaCadastro(alid) {
@@ -3143,7 +3143,7 @@ function tAlunas(v) {
     <div class="field"><input id="abusca" type="search" placeholder="Buscar aluno(a), responsável ou telefone" value="${esc(S.busca || '')}" aria-label="Buscar"></div>
     ${q ? (achR.length || achA.length ? `${achR.length ? `<h2 class="busca-tit">Responsáveis <span class="num">(${achR.length})</span></h2>${achR.map(g => blocoResp(g, true)).join('')}` : ''}
         ${achA.length ? `<h2 class="busca-tit">Alunos <span class="num">(${achA.length})</span></h2><ul class="list">${achA.map(([id, a]) => linhaAl(id, a, true, true)).join('')}</ul>` : ''}` : '<div class="empty">Nada encontrado.</div>')
-      : modo === 'aluno' ? (ativos.length ? `<ul class="list">${ativos.map(([id, a]) => linhaAl(id, a, true, false)).join('')}</ul>` : vazio)
+      : modo === 'aluno' ? `${S.admin ? '<button type="button" class="add-disc add-largo" id="analuno" style="margin-bottom:12px">+ Aluno(a)</button>' : ''}${ativos.length ? `<ul class="list">${ativos.map(([id, a]) => linhaAl(id, a, true, false)).join('')}</ul>` : vazio}`
       : `${S.admin ? '<button type="button" class="add-disc add-largo" id="anresp" style="margin-bottom:12px">+ Responsável</button>' : ''}${grupos.length ? grupos.map(g => blocoResp(g, false)).join('') : vazio}`}
     ${!q && S.admin && nEx ? `<button type="button" class="faixa-resumo neutra" id="aexal" style="margin-top:14px"><span class="grow"><b>Ex-alunos (${nEx})</b><span class="s">Matrículas encerradas, guardadas pelo prazo da lei. Dá para rematricular.</span></span><span class="seta" aria-hidden="true">›</span></button>` : ''}`;
   $('abusca').oninput = e => { S.busca = e.target.value; const pos = e.target.selectionStart; render(); const b = $('abusca'); if (b) { b.focus(); try { b.setSelectionRange(pos, pos); } catch (x) { } } };
@@ -3151,6 +3151,7 @@ function tAlunas(v) {
   $('ana').onclick = () => sheetAluna();
   if ($('aexal')) $('aexal').onclick = () => sheetExAlunos();
   if ($('anresp')) $('anresp').onclick = () => sheetNovoResp();
+  if ($('analuno')) $('analuno').onclick = () => sheetAluna();
   if ($('adocs')) $('adocs').onclick = () => sheetDocsEscola();
   v.querySelectorAll('[data-resp]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; sheetResp(li.dataset.resp); });
   v.querySelectorAll('[data-al]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; S.admin ? sheetPerfilAluno(li.dataset.al) : sheetAluna(li.dataset.al); });
@@ -3180,7 +3181,7 @@ function juntarResps(a, b) {
 const codigosDoResp = r => [...new Set([r.codigo, ...(r.codigosAntigos || [])].filter(Boolean))];
 // link que já entra com o código do responsável (o app liga os filhos sozinho depois do login)
 const linkConvite = r => `${LINK_APP}?c=${r.codigo}`;
-const passosConvite = r => `Toque no link e crie sua conta${r.email ? ` com o e-mail ${r.email}` : ''} (ou entre com o Google):\n${linkConvite(r)}\n\nSe o app pedir um código, é este: ${r.codigo}`;
+const passosConvite = r => `Toque no link e crie sua conta${r.email ? ` com o e-mail ${r.email}` : ' com o seu e-mail'}:\n${linkConvite(r)}\n\nSe o app pedir um código, é este: ${r.codigo}`;
 function convite(r) { return `Olá${r.nome ? ', ' + primeiro(r.nome) : ''}! Aqui é da ${S.escola.nome || 'escola'}. Agora mensalidades, eventos e documentos ficam no app Turma em Dia, e você paga pelo celular.\n\n${passosConvite(r)}`; }
 // nota fiscal para as famílias: ligada pela escola ou por algum professor?
 const nfFamLigada = () => !!((S.cfg.nfFam || {}).ligado || Object.values((S.admin ? S.profsPub : S.profs) || {}).some(p => p && p.nf && p.nf.ligado));
