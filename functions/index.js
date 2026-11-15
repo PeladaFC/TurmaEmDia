@@ -42,6 +42,14 @@ exports.indexarResp = ID.indexarResp;
 exports.familiaIdentificar = ID.familiaIdentificar;
 exports.familiaAprovar = ID.familiaAprovar;
 exports.perfilProf = ID.perfilProf;
+// professor(a) pede para entrar numa escola com o código da escola; a escola libera ou recusa
+const PP = require('./pedidoProf')(db);
+exports.codigoEscola = PP.codigoEscola;
+exports.profPedir = PP.profPedir;
+exports.profAprovar = PP.profAprovar;
+// apagar a própria conta (qualquer pessoa, até quem ainda não está em nenhuma escola)
+const XC = require('./excluirConta')(db);
+exports.excluirConta = XC.excluirConta;
 
 const E = require('./espelho')(db);
 exports.espelharProf = E.espelharProf;

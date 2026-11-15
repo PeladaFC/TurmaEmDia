@@ -541,6 +541,7 @@ function telaInicio() {
       <button class="btn ghost" id="icriar">Criar minha escola</button>
     </section>
     <button class="btn ghost" id="isair" style="margin-top:8px">Sair da conta</button>
+    <button type="button" class="link" id="iapagar" style="display:block;margin:18px auto 0;color:var(--muted)">Apagar minha conta</button>
   </div>`;
   RAIZ().querySelectorAll('[data-e]').forEach(li => li.onclick = () => abrirComCartas(li.dataset.e)); // trocar de escola: passa o carteado
   if ($('ipconf')) $('ipconf').onclick = async () => { await B.verificarEmail(); aviso('Link enviado para ' + (EU.email || 'o seu e-mail')); };
@@ -550,6 +551,7 @@ function telaInicio() {
   if ($('ivolta')) $('ivolta').onclick = () => abrirEscola(volta);
   $('isair').onclick = () => confirmar('Sair da conta?', 'Para entrar de novo, você vai precisar do seu e-mail e senha (ou da conta Google).', 'Sair', () => { VOLTA_ESCOLA = null; B.sair(); });
   $('icriar').onclick = () => telaCriarEscola(1);
+  $('iapagar').onclick = () => sheetApagarConta();
   $('ientrar').onclick = async () => {
     const err = m => $('ierr').textContent = m;
     $('ientrar').disabled = true;
@@ -587,6 +589,26 @@ function telaOb({ passo, rotulo, titulo, sub, corpo, botao, dois, links }) {
   window.scrollTo(0, 0);
 }
 const linkSair = '<button type="button" id="obsair">Sair da conta</button>';
+const linkApagar = '<button type="button" id="obapagar">Apagar minha conta</button>';
+const ligarApagar = () => { if ($('obapagar')) $('obapagar').onclick = () => sheetApagarConta(); };
+// apagar a própria conta: login, perfil e a ligação com as escolas. Os cadastros que a escola fez continuam com a escola.
+function sheetApagarConta() {
+  sheet(`<h3>Apagar minha conta</h3>
+    <p class="sub" style="margin:0">Isto apaga o seu login (${esc(EU.email || 'sua conta')}), o seu cadastro e a sua ligação com as escolas. <b>Não dá para desfazer.</b></p>
+    <ul class="consent-lista"><li>Os cadastros que a escola fez (aluno, responsável, professor) e os pagamentos continuam com a escola, como a lei exige. Para apagar esses, peça à escola.</li><li>Se você criou uma escola, exclua a escola antes (Ajustes da escola → Excluir escola).</li></ul>
+    <div class="field"><label for="axdig">Para confirmar, digite <b>apagar</b></label><input id="axdig" autocomplete="off" autocapitalize="none"></div>
+    <div class="err" id="axerr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn danger" id="axok" disabled>Apagar minha conta</button></div>`, () => {
+    $('axdig').oninput = () => { $('axok').disabled = $('axdig').value.trim().toLowerCase() !== 'apagar'; };
+    $('axok').onclick = async () => {
+      $('axok').disabled = true;
+      try {
+        if (!MOCK) await servidor('excluirConta', { confirma: 'apagar' });
+        fecharSheet(); VOLTA_ESCOLA = null; aviso('Sua conta foi apagada.'); await B.sair().catch(() => { });
+      } catch (e) { $('axerr').textContent = msgErro(e); $('axok').disabled = false; }
+    };
+  });
+}
 const ligarSair = () => { if ($('obsair')) $('obsair').onclick = () => confirmar('Sair da conta?', 'Para entrar de novo, você vai precisar do seu e-mail e senha (ou da conta Google).', 'Sair', () => { VOLTA_ESCOLA = null; B.sair(); }); };
 // procura os filhos pelo cadastro (e-mail confirmado entra sozinho; CPF/WhatsApp viram pedido para a escola)
 async function identificarFamilia(dados) {
@@ -629,8 +651,8 @@ function telaCadastroFeito(pedidos) {
   telaOb({ rotulo: `Olá, ${esc(primeiro(EU.nome) || 'tudo bem?')}`, titulo: 'Cadastro feito!',
     sub: pedidos ? 'A escola vai confirmar que você é o responsável. Assim que ela liberar, seus filhos aparecem aqui.' : 'Quando a escola cadastrar seu e-mail ou CPF, seus filhos aparecem aqui sozinhos. Filhos em outra escola? Use o código dela.',
     corpo: `<div class="ob-icone">⏳</div><div class="field"><label for="ncod">Código do responsável <span class="sub">(a escola envia)</span></label><input id="ncod" class="cod" maxlength="6" autocapitalize="characters" placeholder="K7Q2MX"></div><div class="err" id="nerr" role="alert"></div>`,
-    botao: '<button class="btn" id="nok">Entrar com o código</button>', links: '<button type="button" id="nvolta">Voltar</button>' + linkSair });
-  ligarSair(); $('nvolta').onclick = () => telaNovo(true);
+    botao: '<button class="btn" id="nok">Entrar com o código</button>', links: '<button type="button" id="nvolta">Voltar</button>' + linkSair + linkApagar });
+  ligarSair(); ligarApagar(); $('nvolta').onclick = () => telaNovo(true);
   $('nok').onclick = async () => { $('nok').disabled = true; try { if (!(await entrarComCodigo($('ncod').value, m => $('nerr').textContent = m))) $('nok').disabled = false; } catch (e) { $('nerr').textContent = msgErro(e); $('nok').disabled = false; } };
 }
 // professor(a): cadastro completo; a escola libera o acesso cadastrando o e-mail dele(a)
@@ -663,10 +685,28 @@ function telaProfCadastro() {
   };
 }
 function telaProfEnviado() {
-  telaOb({ rotulo: 'Professor(a)', titulo: 'Cadastro enviado!', sub: 'Agora é só aguardar, a escola em breve irá liberar seu acesso.',
-    corpo: `<div class="ob-icone">✅</div><div class="ob-dica" style="justify-content:center;text-align:center"><span>Avise a escola que o seu e-mail é <b>${esc(EU.email || '')}</b>.</span></div>`,
-    botao: '<button class="btn" id="qedit">Editar meu cadastro</button>', links: linkSair });
-  ligarSair(); $('qedit').onclick = () => telaProfCadastro();
+  const peds = Object.values(USR.pedidosProf || {}).filter(Boolean);
+  telaOb({ rotulo: 'Professor(a)', titulo: peds.length ? 'Pedido enviado!' : 'Cadastro feito!',
+    sub: peds.length ? `A ${esc(peds.map(x => x.nome).join(', '))} vai liberar o seu acesso. Assim que liberar, a escola aparece aqui.` : 'Peça à escola o código dela e digite abaixo. A escola recebe o seu pedido e libera o seu acesso.',
+    corpo: `<div class="ob-icone">${peds.length ? '⏳' : '✅'}</div>
+      <div class="field"><label for="qcod">Código da escola <span class="sub">(a escola envia)</span></label><input id="qcod" class="cod" maxlength="6" autocapitalize="characters" autocomplete="off" placeholder="A3K9PZ"></div>
+      <div class="err" id="qcerr" role="alert"></div>
+      <div class="ob-dica" style="justify-content:center;text-align:center"><span>A escola também pode liberar pelo seu e-mail: <b>${esc(EU.email || '')}</b>.</span></div>`,
+    botao: '<button class="btn" id="qpedir">Pedir para entrar</button>',
+    links: '<button type="button" id="qedit">Editar meu cadastro</button>' + linkSair + linkApagar });
+  ligarSair(); ligarApagar(); $('qedit').onclick = () => telaProfCadastro();
+  $('qpedir').onclick = async () => {
+    const err = m => $('qcerr').textContent = m, cod = $('qcod').value.trim().toUpperCase().replace(/\s/g, '');
+    if (cod.length !== 6) return err('O código da escola tem 6 letras e números.');
+    $('qpedir').disabled = true;
+    try {
+      if (MOCK) { aviso('No modo de teste o pedido não é enviado.'); $('qpedir').disabled = false; return; }
+      const r = await servidor('profPedir', { codigo: cod });
+      if (r.ja) { await vincularProf(); aviso(`Você já é professor(a) da ${r.escola}.`); return telaInicio(); }
+      USR.pedidosProf = { ...(USR.pedidosProf || {}), [cod]: { nome: r.escola, em: Date.now() } };
+      aviso(`Pedido enviado para a ${r.escola}`); telaProfEnviado();
+    } catch (e) { err(msgErro(e)); $('qpedir').disabled = false; }
+  };
 }
 // criar escola em 4 passos, como fases de um jogo: nome · vencimento · primeira turma · lista de primeiros passos
 let WZ = null;
@@ -850,6 +890,59 @@ function ligarPedidosFamilia(v) {
     try { if (MOCK) await B.del(`escolas/${S.eid}/pedidosFamilia/${uid}`); else await servidor('familiaAprovar', { eid: S.eid, uid, ok }); aviso(ok ? 'Acesso liberado' : 'Pedido recusado'); }
     catch (e) { aviso(msgErro(e)); b.disabled = false; }
   });
+}
+// professor(a) que digitou o código da escola: a escola libera (ligando a um professor já cadastrado ou criando um novo)
+function cardPedidosProf() {
+  const ps = Object.entries(S.pedidosProf || {}).filter(([, p]) => p && !p.recusadoEm);
+  if (!ps.length) return '';
+  return `<section><h2>Professores pedindo para entrar</h2><ul class="list">${ps.map(([uid, p]) => `<li><div class="grow"><div class="t">${esc(p.nome || 'Alguém')} quer entrar como professor(a)</div>
+      <span class="s">${esc(p.email || '')}${p.telefone ? ' · ' + esc(foneBR(p.telefone)) : ''}${p.ensina ? ' · Ensina ' + esc(p.ensina) : ''}${p.cref ? ' · CREF ' + esc(p.cref) : ''}</span>
+      <div class="actions" style="margin-top:8px"><button class="btn ghost btn-mini" data-ppno="${esc(uid)}">Recusar</button><button class="btn btn-mini" data-ppok="${esc(uid)}">Liberar</button></div></div></li>`).join('')}</ul>
+    <div class="note">Usou o código da escola. Liberando, a pessoa entra no app como professor(a) e vê só as turmas dela.</div></section>`;
+}
+function ligarPedidosProf(v) {
+  v.querySelectorAll('[data-ppno]').forEach(b => b.onclick = () => { const uid = b.dataset.ppno, p = (S.pedidosProf || {})[uid] || {};
+    confirmar('Recusar o pedido?', `${esc(p.nome || 'A pessoa')} não entra na escola. Ela pode pedir de novo daqui a 7 dias.`, 'Recusar', async () => {
+      if (MOCK) await B.del(`escolas/${S.eid}/pedidosProf/${uid}`); else await servidor('profAprovar', { eid: S.eid, uid, ok: false }); aviso('Pedido recusado'); }); });
+  v.querySelectorAll('[data-ppok]').forEach(b => b.onclick = () => sheetLiberarProf(b.dataset.ppok));
+}
+function sheetLiberarProf(uid) {
+  const p = (S.pedidosProf || {})[uid]; if (!p) return;
+  const livres = Object.entries(S.profs || {}).filter(([, x]) => x && !x.emailApp).sort((a, b) => String(a[1].nome).localeCompare(String(b[1].nome), 'pt-BR'));
+  sheet(`<h3>Liberar ${esc(primeiro(p.nome) || 'professor(a)')}</h3>
+    <div class="sub">${esc(p.nome || '')} · ${esc(p.email || '')}${p.telefone ? ' · ' + esc(foneBR(p.telefone)) : ''}</div>
+    <section><h2>Quem é na escola?</h2>
+      <label class="sal-op"><span class="grow"><b>Professor(a) novo(a)</b><span class="s">Cria o cadastro com o nome e o WhatsApp dele(a)</span></span><input type="radio" name="lpq" value="" checked></label>
+      ${livres.map(([pid, x]) => `<label class="sal-op"><span class="grow"><b>${esc(x.nome || 'Professor(a)')}</b><span class="s">Já cadastrado(a), ainda sem acesso ao app</span></span><input type="radio" name="lpq" value="${esc(pid)}"></label>`).join('')}
+    </section>
+    <div class="err" id="lperr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="lpok">Liberar acesso</button></div>`, () => {
+    $('lpok').onclick = async () => {
+      const pid = (document.querySelector('.sheet [name=lpq]:checked') || {}).value || null; $('lpok').disabled = true;
+      try {
+        if (MOCK) { const id = pid || novoId(); await B.set(`escolas/${S.eid}/professoras/${id}`, pid ? { emailApp: p.email } : { nome: p.nome, telefone: p.telefone || '', emailApp: p.email }, { merge: true }); await espelhoProfMock(id, '', p.email); await B.del(`escolas/${S.eid}/pedidosProf/${uid}`); }
+        else await servidor('profAprovar', { eid: S.eid, uid, ok: true, pid });
+        fecharSheet(); aviso(`${primeiro(p.nome) || 'Professor(a)'} liberado(a). Agora é só colocar nas turmas.`);
+      } catch (e) { $('lperr').textContent = msgErro(e); $('lpok').disabled = false; }
+    };
+  });
+}
+// código da escola: o(a) professor(a) digita no app para pedir para entrar
+async function codigoDaEscola() {
+  if (S.escola && S.escola.codigoProf) return S.escola.codigoProf;
+  if (MOCK) { const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', c = Array.from({ length: 6 }, () => L[Math.floor(Math.random() * L.length)]).join(''); await B.set(`escolas/${S.eid}`, { codigoProf: c }, { merge: true }); return c; }
+  const r = await servidor('codigoEscola', { eid: S.eid }); if (S.escola) S.escola.codigoProf = r.codigo; return r.codigo;
+}
+function msgCodigoEscola(c) {
+  return `Olá! Para entrar como professor(a) da ${S.escola.nome || 'escola'} no app Turma em Dia:\n1) Abra ${location.origin}/app/ e crie sua conta.\n2) Toque em "Professor" e faça o seu cadastro.\n3) Digite o código da escola: ${c}`;
+}
+function sheetCodigoEscola(c) {
+  sheet(`<h3>Código da escola</h3>
+    <div class="sub">Mande este código para os professores. Com ele, o(a) professor(a) pede para entrar pelo app, e você libera nas Pendências.</div>
+    <div class="cod-grande num" aria-label="Código ${esc(c.split('').join(' '))}">${esc(c)}</div>
+    <div class="actions"><button class="btn ghost" id="cecop">Copiar o código</button><a class="btn" id="cewa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msgCodigoEscola(c))}">Mandar no WhatsApp</a></div>
+    <div class="note">É o mesmo código para todos os professores. Ele não serve para as famílias: elas usam o código do responsável.</div>
+    <button class="btn ghost" data-fechar>Fechar</button>`, () => { $('cecop').onclick = () => copiar(c, 'Código copiado'); });
 }
 function passoAbrir(k) {
   if (k === 'turma') return sheetTurma(null);
@@ -1150,7 +1243,7 @@ async function abrirEscola(eid, tab) {
   } else if (admin) {
     OUV.push(col('acordos', 'acordos')); OUV.push(col('contratos', 'contratos')); OUV.push(col('destratos', 'destratos'));
     OUV.push(col('professoras', 'profs')); OUV.push(col('profsPublico', 'profsPub')); OUV.push(col('responsaveis', 'resps')); OUV.push(col('alunas', 'alunas')); OUV.push(col('pagamentos', 'pags'));
-    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('fixas', 'fixas')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidosFamilia', 'pedidosFam')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
+    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('fixas', 'fixas')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidosFamilia', 'pedidosFam')); OUV.push(col('pedidosProf', 'pedidosProf')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
   } else {
     // a família só vê o nome de cada professor(a) (profsPublico, copiado pelo servidor); telefone e chave Pix ficam com a escola
     OUV.push(col(MOCK ? 'professoras' : 'profsPublico', 'profs'));
@@ -1601,7 +1694,7 @@ function tCobrancas(v) {
   }
   const ext = Object.entries(S.extras).filter(([, x]) => !eventoNovo(x) || pelaEscola(x)).sort((a, b) => String(b[1].venc).localeCompare(String(a[1].venc)));
   const fil = (k, n) => `<button class="pick" data-fl="${k}" aria-pressed="${filtro === k}">${n} <span class="num">${cont[k]}</span></button>`;
-  v.innerHTML = `${cardPrimeirosPassos()}${cardPedidosFamilia()}${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}${avisoPendenciasAdm()}
+  v.innerHTML = `${cardPrimeirosPassos()}${cardPedidosFamilia()}${cardPedidosProf()}${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}${avisoPendenciasAdm()}
     ${antigos.length && filtro !== 'antigos' ? `<button class="banner" data-fl="antigos" style="border:0;text-align:left;width:100%;background:var(--out-soft)"><span>Além disso, <b>${cur(C.r2(antigos.reduce((s, x) => s + x.vAntes, 0)))}</b> vencidos de meses passados, de ${antigos.length} aluno${antigos.length === 1 ? '' : 's'}.</span><span style="color:var(--out);font-weight:800">Ver ›</span></button>` : ''}
     <section><h2>Quem deve</h2>
       <div class="chips">${fil('aberto', 'Em aberto')}${fil('vencido', 'Vencidas')}${fil('antigos', 'Meses passados')}${fil('pago', 'Em dia')}${fil('todas', 'Todos')}</div>
@@ -1616,7 +1709,7 @@ function tCobrancas(v) {
         : `<div class="empty"><span>Lance aqui taxas, como a da federação, ajuda de custo ou uniforme. Dá para lançar só para os inscritos de um evento. Escolha para quais grupos, turmas ou alunos cada um vale e o vencimento de cada um.</span></div>`}
     </section>`;
   ligarFaixa(v);
-  ligarPrimeirosPassos(v); ligarPedidosFamilia(v);
+  ligarPrimeirosPassos(v); ligarPedidosFamilia(v); ligarPedidosProf(v);
   if ($('vatlist')) $('vatlist').onclick = () => sheetAtestadosEscola();
   if ($('vpend')) $('vpend').onclick = () => sheetPendencias();
   v.querySelectorAll('[data-vmud]').forEach(b => b.onclick = () => { const f = termosParaVer(), i = f.indexOf(b.dataset.vmud); sheetVerTermo(b.dataset.vmud, i >= 0 ? f.filter(id => id !== b.dataset.vmud) : []); });
@@ -7211,8 +7304,10 @@ function sheetAjustes() {
         : `<div class="sub">Ligue a sua conta do Mercado Pago para receber direto os pagamentos que a escola direcionar para você.</div><button class="btn" id="pmcon">Conectar meu Mercado Pago</button>`}</section>` : ''}
       ${S.prof ? '' : `<section><h2>Privacidade e dados</h2><button type="button" class="linha-botao" id="jprivf"><span class="grow"><b>Baixar meus dados ou pedir exclusão</b><span class="s">Seus dados e os dos seus filhos</span></span><span aria-hidden="true">›</span></button></section>`}
       <div id="jnotasplat"></div>
-      <div class="actions"><button class="btn ghost" id="jtroca">Minhas escolas</button><button class="btn ghost" id="jsair">Sair da conta</button></div><button class="btn ghost" data-fechar>Fechar</button>`, () => {
+      <div class="actions"><button class="btn ghost" id="jtroca">Minhas escolas</button><button class="btn ghost" id="jsair">Sair da conta</button></div>
+      <button type="button" class="link" id="japagar" style="display:block;margin:4px auto 14px;color:var(--muted)">Apagar minha conta</button><button class="btn ghost" data-fechar>Fechar</button>`, () => {
       ligarNotasPlataforma(sheetAjustes);
+      $('japagar').onclick = () => abrirDe(sheetAjustes, sheetApagarConta);
       if ($('jprivf')) $('jprivf').onclick = () => abrirDe(sheetAjustes, sheetPrivFamilia);
       $('jtroca').onclick = () => { fecharSheet(); telaInicio(); }; $('jsair').onclick = () => { fecharSheet(); B.sair(); };
       // no teste, ligar/desligar é simulado; no app de verdade usa o mesmo OAuth da escola
@@ -7223,7 +7318,7 @@ function sheetAjustes() {
   const c = S.cfg, conta = (S.mpc || {}).conta, taxaTot = (0.0099 + (Number(c.mpTaxaApp) || 0.01)) * 100;
   const sp = sitPlano(), pl = S.plano;
   const planoTxt = !pl ? (LOJA() ? 'Situação do plano' : 'Planos, teste grátis e como pagar') : sp.fase === 'teste' ? `Teste grátis · ${sp.restam ? `faltam ${sp.restam} dia${sp.restam > 1 ? 's' : ''}` : 'termina hoje'}` : sp.fase === 'cortesia' ? `Grátis até ${dataBRA(pl.cortesiaAte)}` : sp.fase === 'ativo' ? `Em dia · pago até ${dataBRA(pl.pagoAte)}${pl.cartao ? ' · cartão' : ''}` : sp.fase === 'aviso' ? `Venceu em ${dataBRA(sp.venc)}` : sp.fase === 'leitura' ? 'Atrasado · só leitura' : sp.fase === 'suspensa' ? 'Suspenso' : 'Planos e como pagar';
-  sheet(`<h3>Ajustes da escola</h3>
+  sheet(`<div class="ajt-topo"><h3>Ajustes da escola</h3><button type="button" class="cod-escola" id="jcodesc" aria-label="Código da escola para os professores"><span>Código da escola</span><b class="num">${esc((S.escola || {}).codigoProf || '······')}</b></button></div>
     <section><button type="button" class="linha-botao" id="jplano"><span class="grow"><b>Plano do app</b><span class="s">${esc(planoTxt)}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
     <section><h2>Pix automático</h2>
       ${c.mpConectadoEm ? `<div class="banner ok"><span>Conectado${conta ? ` à conta de <b>${esc(conta.nome)}</b> ${esc(conta.doc || '')}` : ''}.</span></div>
@@ -7289,7 +7384,8 @@ function sheetAjustes() {
     <section><h2>Conta</h2><div class="sub">${esc(EU.nome || '')} · ${esc(EU.email || '')}</div>
       <div id="jnotasplat"></div>
       <div class="actions"><button class="btn ghost" id="jtroca">Minhas escolas</button><button class="btn ghost" id="jsair">Sair da conta</button></div></section>
-    ${(S.escola.dono || (S.escola.admins || [])[0]) === EU.uid ? '<p class="excluir-esc"><a href="#" id="jexcl">Excluir escola</a></p>' : ''}`, () => {
+    ${(S.escola.dono || (S.escola.admins || [])[0]) === EU.uid ? '<p class="excluir-esc"><a href="#" id="jexcl">Excluir escola</a></p>' : ''}<p class="excluir-esc"><a href="#" id="japagaradm">Apagar minha conta</a></p>`, () => {
+    $('japagaradm').onclick = ev => { ev.preventDefault(); abrirDe(sheetAjustes, sheetApagarConta); };
     if ($('jexcl')) $('jexcl').onclick = e => { e.preventDefault(); excluirEscolaPassos(); };
     if ($('jsimv')) { const verJ = ligarSimTaxa('jsim', () => $('jrep').checked); $('jrep').addEventListener('change', verJ); }
     const err = m => $('jerr').textContent = m;
@@ -7306,6 +7402,9 @@ function sheetAjustes() {
     blocoAdms($('jadms'));
     if ($('jformas')) $('jformas').onclick = () => abrirDe(sheetAjustes, sheetFormasEscola);
     $('jplano').onclick = () => abrirDe(sheetAjustes, () => sheetPlano());
+    // código da escola (canto de cima): na primeira vez o app cria; tocando, abre para copiar ou mandar
+    $('jcodesc').onclick = async () => { try { const c = await codigoDaEscola(); abrirDe(sheetAjustes, () => sheetCodigoEscola(c)); } catch (e) { aviso(msgErro(e)); } };
+    if (!(S.escola || {}).codigoProf) codigoDaEscola().then(c => { const b = $('jcodesc'); if (b) b.querySelector('b').textContent = c; }).catch(() => { });
     const acao = (id, a) => { if ($(id)) $(id).onclick = async () => { $(id).disabled = true; try { await mpConta(a); if (a !== 'conectar' || MOCK) sheetAjustes(); } catch (e) { err(msgErro(e)); $(id).disabled = false; } }; };
     acao('mpcon', 'conectar'); acao('mpinfo', 'info'); acao('mpout', 'conectar');
     if ($('mpdes')) $('mpdes').onclick = () => confirmar('Desconectar o Mercado Pago?', 'Os responsáveis não vão conseguir pagar por Pix no app até você conectar de novo. Os pagamentos já feitos continuam registrados.', 'Desconectar', () => mpConta('desconectar'));
@@ -7440,6 +7539,7 @@ async function semearMock() {
     al4: { nome: 'Ana Beatriz Andrade', responsavelId: 'r3', turmas: ['t2'], desc: { pct: 0.5, motivo: 'Atleta destaque' }, nascimento: '2015-06-09' }, al5: { nome: 'Pedro Rocha', responsavelId: 'r4', turmas: ['t5'], nascimento: '2017-01-27' }, al6: { nome: 'Alice Rocha', responsavelId: 'r4', turmas: ['t4'], nascimento: '2022-04-15' } };
   for (const [k, v] of Object.entries(alunas)) { v.inicio = m2; v.ativa = true; v.desc = v.desc || null; await set(`${p}/alunas/${k}`, v); }
   await set(`${p}/pedidosFamilia/uped1`, { nome: 'Rafael Andrade', email: 'rafael@email.com', telefone: '81988887777', cpf: '', rids: ['r3'], em: Date.now() });
+  await set(`${p}/pedidosProf/uprof9`, { nome: 'Marcos Tavares', email: 'marcos.tavares@email.com', telefone: '81977776666', cpf: '', cref: '012345-G/PE', ensina: 'Futsal', em: Date.now() });
   await set(`${p}/grupos/g1`, { nome: 'Equipe competitiva', alunas: ['al1', 'al3', 'al4'] });
   await set(`${p}/grupos/g2`, { nome: 'Vai ao Estadual', alunas: ['al1', 'al4'] });
   await set(`${p}/extras/x1`, { tipo: 'evento', semCobranca: true, tamanhos: { tipo: 'letras', opcoes: ['PP', 'P', 'M', 'G', 'GG'] }, nome: 'Torneio Regional', data: `${mesMais(m, 1)}-06`, dataFim: `${mesMais(m, 1)}-09`, local: 'Caruaru', organizador: 'Federação Pernambucana', valorInscricao: 85, prazo: `${m}-28`, convidados: ['al1', 'al3', 'al4'], origem: { grupos: ['g1'] }, part: { al3: { st: 'inscrito', em: Date.now() - 3 * 864e5, quem: 'escola' }, al4: { st: 'interesse', em: Date.now() - 864e5, quem: 'familia' } }, v: 0, alunas: [], grupos: [], turmas: [] });
