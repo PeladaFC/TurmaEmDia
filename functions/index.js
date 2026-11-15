@@ -50,6 +50,11 @@ exports.profAprovar = PP.profAprovar;
 // apagar a própria conta (qualquer pessoa, até quem ainda não está em nenhuma escola)
 const XC = require('./excluirConta')(db);
 exports.excluirConta = XC.excluirConta;
+// e-mails com a cara do app (confirmar e-mail, trocar senha) e o logo da escola para o e-mail
+const EM = require('./emails')(db, { base: `https://southamerica-east1-${process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || ''}.cloudfunctions.net` });
+exports.mandarConfirmacao = EM.mandarConfirmacao;
+exports.mandarSenha = EM.mandarSenha;
+exports.logoEscola = EM.logoEscola;
 
 const E = require('./espelho')(db);
 exports.espelharProf = E.espelharProf;

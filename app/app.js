@@ -31,8 +31,12 @@ async function backendReal() {
     cadastrar: async (nome, e, s) => { const c = await A.createUserWithEmailAndPassword(auth, e, s).catch(erro); await A.updateProfile(c.user, { displayName: nome }); return c; },
     google: async () => { const p = new A.GoogleAuthProvider();
       try { return await A.signInWithPopup(auth, p); } catch (e) { if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/cancelled-popup-request'].includes(e.code)) return A.signInWithRedirect(auth, p); erro(e); } },
-    reset: e => A.sendPasswordResetEmail(auth, e).catch(erro),
-    verificarEmail: () => auth.currentUser ? A.sendEmailVerification(auth.currentUser).catch(erro) : null,
+    // e-mail bonito do Turma em Dia (servidor); se o envio ainda não estiver configurado, usa o e-mail padrão do Firebase
+    reset: async e => { try { const r = await fetch(URLF('mandarSenha'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e }) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.erro || 'Não deu para mandar o e-mail.'); if (!j.semEnvio) return; } catch (x) { if (/minuto|válido/.test(x.message || '')) throw x; } return A.sendPasswordResetEmail(auth, e).catch(erro); },
+    verificarEmail: async (motivo, eid) => { const u = auth.currentUser; if (!u) return null;
+      try { const t = await u.getIdToken(); const r = await fetch(URLF('mandarConfirmacao'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ motivo: motivo || 'geral', eid: eid || null }) }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.erro || 'Não deu para mandar o e-mail.'); if (!j.semEnvio) return; }
+      catch (x) { if (/minuto/.test(x.message || '')) throw x; }
+      return A.sendEmailVerification(u).catch(erro); },
     recarregar: async () => { if (auth.currentUser) { await auth.currentUser.reload(); await auth.currentUser.getIdToken(true); } },
     // aparelho para os avisos (push) do Firebase Cloud Messaging
     pushToken: async reg => { const M = await import(FB + 'firebase-messaging.js'); if (!(await M.isSupported())) return null; return M.getToken(M.getMessaging(app), { serviceWorkerRegistration: reg }); },
@@ -499,7 +503,7 @@ async function responderConvite(c, aceita) {
   const k = chaveEmail(EU.email);
   if (!MOCK) {
     try { await servidor('adminConvite', { acao: aceita ? 'aceitar' : 'recusar', eid: c.eid }); }
-    catch (e) { if (e.code === 'confirmar-email') { await B.verificarEmail(); confirmar('Confirme o seu e-mail', `Enviamos um link para <b>${esc(EU.email)}</b>. Abra o e-mail e toque no link. Depois entre de novo no app e toque em "Aceitar".`, 'Entendi', () => B.sair()); return; } throw e; }
+    catch (e) { if (e.code === 'confirmar-email') { await B.verificarEmail('admin', c.eid).catch(() => { }); confirmar('Confirme o seu e-mail', `Enviamos um link para <b>${esc(EU.email)}</b>. Abra o e-mail e toque no link. Depois entre de novo no app e toque em "Aceitar".`, 'Entendi', () => B.sair()); return; } throw e; }
     if (aceita) MINHAS[c.eid] = { nome: c.escola, papel: 'admin' };
   } else if (aceita) {
     const e0 = (await B.get('escolas/' + c.eid)) || {};
@@ -544,7 +548,7 @@ function telaInicio() {
     <button type="button" class="link" id="iapagar" style="display:block;margin:18px auto 0;color:var(--muted)">Apagar minha conta</button>
   </div>`;
   RAIZ().querySelectorAll('[data-e]').forEach(li => li.onclick = () => abrirComCartas(li.dataset.e)); // trocar de escola: passa o carteado
-  if ($('ipconf')) $('ipconf').onclick = async () => { await B.verificarEmail(); aviso('Link enviado para ' + (EU.email || 'o seu e-mail')); };
+  if ($('ipconf')) $('ipconf').onclick = async () => { try { await B.verificarEmail('professor'); } catch (e) { return aviso(msgErro(e)); } aviso('Link enviado para ' + (EU.email || 'o seu e-mail')); };
   if ($('ipja')) $('ipja').onclick = async () => { $('ipja').disabled = true; await B.recarregar().catch(() => { }); const r = await vincularProf(); if (r && (r.escolas || []).length) { aviso('Pronto! Agora você entra como professor(a).'); telaInicio(); } else { $('ipja').disabled = false; aviso(PROF_PEND.length ? 'O e-mail ainda não foi confirmado. Abra o link que enviamos.' : 'Não encontramos o cadastro. Fale com a escola.'); } };
   RAIZ().querySelectorAll('[data-aceita-conv],[data-recusa-conv]').forEach(b => b.onclick = async () => { const eid = b.dataset.aceitaConv || b.dataset.recusaConv, c = CONVITES.find(x => x.eid === eid); if (!c) return; b.disabled = true;
     try { await responderConvite(c, !!b.dataset.aceitaConv); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
@@ -5179,7 +5183,7 @@ function sheetConfirmarDono() {
     <div class="err" id="cderr" role="alert"></div>
     <div class="actions"><button class="btn ghost" id="cdlink">Mandar o link</button><button class="btn" id="cdja">Já confirmei</button></div>
     <button class="btn ghost" data-fechar>Fechar</button>`, () => {
-    $('cdlink').onclick = async () => { try { await B.verificarEmail(); aviso('Link enviado para ' + (EU.email || 'o seu e-mail')); } catch (e) { $('cderr').textContent = msgErro(e); } };
+    $('cdlink').onclick = async () => { try { await B.verificarEmail('dono'); aviso('Link enviado para ' + (EU.email || 'o seu e-mail')); } catch (e) { $('cderr').textContent = msgErro(e); } };
     $('cdja').onclick = async () => { $('cdja').disabled = true;
       try { await B.recarregar(); await checarDono(); if (DONO_EST === 'ok') { fecharSheet(); aviso('E-mail confirmado'); sheetPainelDono(); } else { $('cderr').textContent = 'Ainda não aparece como confirmado. Abra o link do e-mail e tente de novo.'; $('cdja').disabled = false; } }
       catch (e) { $('cderr').textContent = msgErro(e); $('cdja').disabled = false; } };
@@ -5293,7 +5297,7 @@ function ligarNotasPlataforma(volta) {
     $('jnfplat').onclick = () => abrirDe(volta, () => sheetPainelDono()); };
   if (NOTAS_PLAT === undefined) { NOTAS_PLAT = null; notasServidor('acesso').then(() => { NOTAS_PLAT = true; mostrar(); }, e => { NOTAS_PLAT = false;
     // dono com e-mail ainda não confirmado: mostra como confirmar
-    const el = $('jnotasplat'); if (el && /Confirme o seu e-mail/.test(e && e.message || '')) { el.innerHTML = '<div class="banner"><span><b>Painel do dono:</b> confirme o seu e-mail para abrir.</span><button id="jverif">Enviar e-mail</button></div>'; $('jverif').onclick = async () => { try { await B.verificarEmail(); aviso('E-mail enviado. Abra o link e depois entre de novo no app.'); } catch (x) { aviso(msgErroTexto(x)); } }; NOTAS_PLAT = undefined; } }); }
+    const el = $('jnotasplat'); if (el && /Confirme o seu e-mail/.test(e && e.message || '')) { el.innerHTML = '<div class="banner"><span><b>Painel do dono:</b> confirme o seu e-mail para abrir.</span><button id="jverif">Enviar e-mail</button></div>'; $('jverif').onclick = async () => { try { await B.verificarEmail('dono'); aviso('E-mail enviado. Abra o link e depois entre de novo no app.'); } catch (x) { aviso(msgErroTexto(x)); } }; NOTAS_PLAT = undefined; } }); }
   else mostrar();
 }
 const fmtDoc = d => d && d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : d && d.length === 14 ? d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '';
