@@ -44,7 +44,7 @@ Leia isto antes de mexer em qualquer coisa. Atualizado em 15/11/2026.
 
 ## Pendências e decisões
 
-1. **Cloud Shell:** depois da última publicação (15/11) é preciso rodar o `instalar.sh`. Confirmar com ele se já rodou; sem isso, código da escola, pedido de professor, apagar conta, tirar da turma e os e-mails novos não funcionam no servidor.
+1. **Cloud Shell:** rodado em 15/11 depois da última publicação (servidor e regras no ar). Rodar de novo só quando `functions/` ou `firestore.rules` mudarem.
 2. **E-mails novos (Resend):** falta ele criar a conta em https://resend.com (com um e-mail que já tem, sem custo), cadastrar o domínio turmaemdia.com.br (linhas no DNS do Registro.br, guiar clique por clique) e rodar `configurar-email.sh` no Cloud Shell com a chave.
 3. **Nome do app no e-mail antigo:** no Firebase, Configurações do projeto → "Nome voltado ao público" = **Turma em Dia** (hoje aparece "project-396673680193"): https://console.firebase.google.com/project/turma-em-dia-57c1e/settings/general
 4. **Lojas (Apple):** o app tem login com Google. Para a App Store, a Apple exige oferecer junto uma opção de login equivalente que proteja a privacidade (o "Entrar com a Apple" atende). Decidir na fase das lojas: incluir "Entrar com a Apple" (precisa da conta de desenvolvedor Apple) ou tirar o Google do app. Por enquanto as mensagens já não citam o Google.
