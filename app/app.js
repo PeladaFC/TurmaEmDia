@@ -1130,6 +1130,8 @@ function sheet(html, montar, aoFechar) {
   SHEET_VOLTAR = PROX_VOLTAR || (antes ? SHEET_VOLTAR : null); PROX_VOLTAR = null; // janela trocada ou redesenhada (ex.: depois de carregar) continua sabendo para onde voltar travarFundo(true);
   // janela nova sobe suave de baixo (a mesma janela redesenhada não anima); o fundo escurece só se não havia janela aberta
   const anima = !(antes && chave && chave === SHEET_CHAVE_ANT);
+  // uma janela seguida de outra: a nova começa na mesma altura da anterior (título no mesmo lugar)
+  const altAntes = antes && anima && !DESK() ? antes.offsetHeight : 0;
   $('overlay').innerHTML = `<div class="sheet-bg${anima && !antes ? ' esc' : ''}" id="sbg"><div class="sheet${anima ? ' sobe' : ''}" role="dialog" aria-modal="true">${html}</div></div>`;
   $('sbg').onclick = e => { if (e.target.id === 'sbg') fecharSheet(); };
   { const sh = $('overlay').querySelector('.sheet.sobe'); if (sh) sh.addEventListener('animationend', () => sh.classList.remove('sobe'), { once: true }); }
@@ -1139,9 +1141,16 @@ function sheet(html, montar, aoFechar) {
   if (rolagem) $('overlay').querySelector('.sheet').scrollTop = rolagem;
   montar && montar($('overlay').querySelector('.sheet'));
   if (anima) focoInicial($('overlay').querySelector('.sheet'));
-  if (rolagem) { const sh = $('overlay').querySelector('.sheet'); if (sh && !sh.scrollTop) sh.scrollTop = rolagem; }
+  if (altAntes) alinharJanela($('overlay').querySelector('.sheet'), altAntes);  if (rolagem) { const sh = $('overlay').querySelector('.sheet'); if (sh && !sh.scrollTop) sh.scrollTop = rolagem; }
 }
 let SHEET_CHAVE = '';
+// mesma altura da janela anterior, com o espaço que sobra antes dos botões do fim. Se a diferença for muito grande, fica do tamanho natural
+function alinharJanela(sh, alt) {
+  if (!sh) return; const nat = sh.offsetHeight;
+  if (nat >= alt || nat < alt * 0.5) return;
+  sh.style.minHeight = alt + 'px';
+  const fim = [...sh.children].filter(x => x.classList.contains('actions')).pop(); if (fim) fim.style.marginTop = 'auto';
+}
 // arrastar a janela para baixo pela alça (ou pelo topo, com a janela no início) fecha, como nos apps do celular
 (function arrastarParaFechar() {
   let sh = null, y0 = 0, t0 = 0, dy = 0, ativo = false;
