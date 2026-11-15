@@ -1084,6 +1084,21 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 .modo-al button{font-size:.95rem;padding:10px}
 .busca-tit{margin:18px 0 8px}
 .tipo-lin{display:inline-block;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:1px 5px;margin-right:6px;vertical-align:2px}
+
+/* Plano do app em destaque nos Ajustes */
+.plano-dest{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:0;border-radius:12px;padding:16px 16px;background:var(--accent);color:#fff;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.plano-dest b{display:block;font-size:1.12rem}
+.plano-dest .s{color:rgba(255,255,255,.88)}
+.plano-ic{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.18);display:grid;place-items:center;flex:none}
+.plano-ic svg{width:22px;height:22px;fill:#fff}
+.plano-ver{font-weight:800;font-size:.86rem;white-space:nowrap;background:rgba(255,255,255,.18);border-radius:20px;padding:6px 10px}
+/* botão do Painel do dono (canto de cima) */
+.btn-dono{width:auto!important;padding:0 10px;gap:6px;display:inline-flex;align-items:center;color:var(--accent);font-weight:800;font-size:.8rem}
+.btn-dono svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
+.btn-dono.falta{color:var(--muted)}
+.ob-topo{position:relative}
+.ob-topo .btn-dono{position:absolute;right:0;top:50%;transform:translateY(-50%)}
+.passos-num{margin:12px 0;padding-left:22px;display:grid;gap:6px}
 </style>
 </head>
 <body>
@@ -1091,11 +1106,11 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 <div id="overlay"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="config.js"></script>
-<script src="regras.js?v=202611150800"></script>
-<script src="qrcode.js?v=202611150800"></script>
-<script src="pdf-simples.js?v=202611150800"></script>
-<script src="scanner.js?v=202611150800"></script>
-<script src="relatorio.js?v=202611150800"></script>
-<script type="module" src="app.js?v=202611150800"></script>
+<script src="regras.js?v=202611150900"></script>
+<script src="qrcode.js?v=202611150900"></script>
+<script src="pdf-simples.js?v=202611150900"></script>
+<script src="scanner.js?v=202611150900"></script>
+<script src="relatorio.js?v=202611150900"></script>
+<script type="module" src="app.js?v=202611150900"></script>
 </body>
 </html>

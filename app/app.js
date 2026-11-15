@@ -5138,6 +5138,43 @@ function sheetCalendario(ano) {
    - a escola baixa as notas dela: Ajustes da escola → Notas fiscais da comissão;
    - a empresa vê o relatório do mês (só e-mails liberados no servidor): Ajustes → Conta → Notas fiscais (empresa). */
 let NOTAS_PLAT; // undefined: ainda não sabe; true/false
+/* Painel do dono no canto de cima, em qualquer tela (até sem escola nenhuma), assim que a pessoa entra.
+   O servidor confere se o e-mail é da empresa. DONO_EST: 'ok' (abre), 'verificar' (falta confirmar o e-mail) ou null. */
+let DONO_EST = null, DONO_VEZ = 0;
+async function checarDono() {
+  const vez = ++DONO_VEZ; DONO_EST = null; NOTAS_PLAT = undefined; colocarBotaoDono();
+  if (!EU) return;
+  try { await notasServidor('acesso'); if (vez !== DONO_VEZ) return; DONO_EST = 'ok'; NOTAS_PLAT = true; }
+  catch (e) { if (vez !== DONO_VEZ) return; NOTAS_PLAT = false; DONO_EST = /Confirme o seu e-mail/.test((e && e.message) || '') ? 'verificar' : null; }
+  colocarBotaoDono();
+}
+function colocarBotaoDono() {
+  const r = RAIZ(); if (!r) return;
+  const tem = r.querySelector('#hdono');
+  if (!DONO_EST || !EU) { if (tem) tem.remove(); return; }
+  if (tem) return;
+  const lugar = r.querySelector('.brand .acts') || r.querySelector('.ob-topo'); if (!lugar) return;
+  const b = document.createElement('button'); b.type = 'button'; b.id = 'hdono'; b.className = 'icon-btn btn-dono' + (DONO_EST === 'verificar' ? ' falta' : '');
+  b.setAttribute('aria-label', 'Painel do dono'); b.title = 'Painel do dono';
+  b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8l4.5 4 4.5-7 4.5 7L21 8l-2 11H5z"/></svg><span>Painel</span>';
+  b.onclick = () => DONO_EST === 'ok' ? sheetPainelDono() : sheetConfirmarDono();
+  lugar.prepend(b);
+}
+new MutationObserver(() => { if (DONO_EST) colocarBotaoDono(); }).observe(document.getElementById('raiz') || document.body, { childList: true, subtree: true });
+function sheetConfirmarDono() {
+  sheet(`<h3>Painel do dono</h3>
+    <div class="sub">Falta só confirmar que o e-mail <b>${esc(EU.email || '')}</b> é seu. É uma vez só.</div>
+    <div class="aviso-lei"><b>Por que confirmar?</b><span>Qualquer pessoa consegue criar uma conta digitando um e-mail que não é dela. Como o painel mostra os dados de todas as escolas, o app só abre depois que o dono do e-mail toca no link que chega na caixa de entrada.</span></div>
+    <ol class="passos-num"><li>Toque em <b>Mandar o link</b>.</li><li>Abra o e-mail (olhe também o lixo eletrônico) e toque no link.</li><li>Volte aqui e toque em <b>Já confirmei</b>.</li></ol>
+    <div class="err" id="cderr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" id="cdlink">Mandar o link</button><button class="btn" id="cdja">Já confirmei</button></div>
+    <button class="btn ghost" data-fechar>Fechar</button>`, () => {
+    $('cdlink').onclick = async () => { try { await B.verificarEmail(); aviso('Link enviado para ' + (EU.email || 'o seu e-mail')); } catch (e) { $('cderr').textContent = msgErro(e); } };
+    $('cdja').onclick = async () => { $('cdja').disabled = true;
+      try { await B.recarregar(); await checarDono(); if (DONO_EST === 'ok') { fecharSheet(); aviso('E-mail confirmado'); sheetPainelDono(); } else { $('cderr').textContent = 'Ainda não aparece como confirmado. Abra o link do e-mail e tente de novo.'; $('cdja').disabled = false; } }
+      catch (e) { $('cderr').textContent = msgErro(e); $('cdja').disabled = false; } };
+  });
+}
 const NF_MOCK = () => (window.__nfMock = window.__nfMock || [
   { gid: 'esc1~escola', eid: 'esc1', rec: 'escola', grupo: 'Escolinha Movimento', qtd: 38, total: 52.4, nome: 'Movimento Esportes Ltda', doc: '11444777000161', tipoDoc: 'CNPJ', email: 'contato@movimento.com' },
   { gid: 'esc1~p1', eid: 'esc1', rec: 'p1', grupo: 'Escolinha Movimento · Juliana Costa', qtd: 9, total: 11.7, nome: 'Juliana Costa', doc: '', tipoDoc: '', email: '' },
@@ -7094,7 +7131,7 @@ function sheetPlano() {
       : ['leitura', 'suspensa'].includes(s.fase) ? `<div class="banner alerta"><span><b>${s.fase === 'leitura' ? 'Só leitura' : 'Suspensa'}</b> · atrasado desde ${dataBRA(s.venc)}. Pague para liberar na hora.</span></div>` : '';
     const precoTxt = v => brl(v).replace(',00', ''), menor = C.PLANOS.find(x => C.cabePlano(x, R.alunos));
     sheet(corpo(`${faixa}
-      ${!p.doc ? `<div class="field"><label for="pldoc">CPF ou CNPJ de quem responde pela escola</label><div class="pl-docrow"><input id="pldoc" inputmode="numeric" placeholder="Só números"><button type="button" class="btn ghost" id="pldocok">Salvar</button></div><span class="s">O teste grátis é um por CPF ou CNPJ.</span></div>` : ''}
+      ${!p.doc ? `<div class="field"><label for="pldoc">CPF ou CNPJ de quem responde pela escola</label><div class="pl-docrow"><input id="pldoc" inputmode="numeric" placeholder="Só números"><button type="button" class="btn ghost" id="pldocok">Salvar</button></div><span class="s">O teste grátis de 30 dias fica ligado a este número: é um por CPF ou CNPJ. Depois de salvo, o número não muda, e outra escola com o mesmo CPF ou CNPJ não ganha um teste novo.</span></div>` : ''}
       <div class="pl-uso"><div class="pl-uso-t"><span>Alunos ativos</span><b class="num">${R.alunos}${pl.ate ? ' de ' + pl.ate : ''}</b></div><div class="pl-barra"><i style="width:${pct}%"></i></div><span class="s">Plano <b>${esc(pl.nome)}</b>, escolhido pela escola.${pl.ate && R.alunos >= Math.ceil(pl.ate * 0.9) ? ` <b style="color:var(--out)">${R.alunos >= pl.ate ? 'Cheio' : 'Quase cheio'}: para cadastrar mais de ${pl.ate} alunos, mude para o ${esc(proxPlano(pl).nome)}.</b>` : ''}</span></div>
       ${menor && menor.id !== pl.id ? `<div class="banner ok pl-lembra"><span>Você tem ${R.alunos} aluno${R.alunos === 1 ? '' : 's'}: o <b>${esc(menor.nome)}</b> atende e custa ${precoTxt(C.r2(pl.mes - menor.mes))} a menos por mês.</span><button type="button" data-pl="${menor.id}">Ver</button></div>` : ''}
       <div class="seg pl-per"><button type="button" data-per="mensal" aria-pressed="${ciclo === 'mensal'}">Mensal</button><button type="button" data-per="anual" aria-pressed="${ciclo === 'anual'}">Anual · 2 meses grátis</button></div>
@@ -7397,7 +7434,7 @@ function sheetAjustes() {
   const sp = sitPlano(), pl = S.plano;
   const planoTxt = !pl ? (LOJA() ? 'Situação do plano' : 'Planos, teste grátis e como pagar') : sp.fase === 'teste' ? `Teste grátis · ${sp.restam ? `faltam ${sp.restam} dia${sp.restam > 1 ? 's' : ''}` : 'termina hoje'}` : sp.fase === 'cortesia' ? `Grátis até ${dataBRA(pl.cortesiaAte)}` : sp.fase === 'ativo' ? `Em dia · pago até ${dataBRA(pl.pagoAte)}${pl.cartao ? ' · cartão' : ''}` : sp.fase === 'aviso' ? `Venceu em ${dataBRA(sp.venc)}` : sp.fase === 'leitura' ? 'Atrasado · só leitura' : sp.fase === 'suspensa' ? 'Suspenso' : 'Planos e como pagar';
   sheet(`<div class="ajt-topo"><h3>Ajustes da escola</h3><button type="button" class="cod-escola" id="jcodesc" aria-label="Código da escola para os professores"><span>Código da escola</span><b class="num">${esc((S.escola || {}).codigoProf || '······')}</b></button></div>
-    <section><button type="button" class="linha-botao" id="jplano"><span class="grow"><b>Plano do app</b><span class="s">${esc(planoTxt)}</span></span><span aria-hidden="true" style="font-weight:800">›</span></button></section>
+    <section><button type="button" class="plano-dest" id="jplano"><span class="plano-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7z"/></svg></span><span class="grow"><b>Plano do app</b><span class="s">${esc(planoTxt)}</span></span><span class="plano-ver">Ver planos ›</span></button></section>
     <section><h2>Pix automático</h2>
       ${c.mpConectadoEm ? `<div class="banner ok"><span>Conectado${conta ? ` à conta de <b>${esc(conta.nome)}</b> ${esc(conta.doc || '')}` : ''}.</span></div>
         ${conta && S.mpc.confirmada === false ? `<div class="sub">É essa a conta que deve receber os pagamentos?</div><div class="actions"><button class="btn ok" id="mpsim">Sim, é essa conta</button><button class="btn ghost" id="mpout">Não, conectar outra</button></div>` : ''}
@@ -7747,6 +7784,7 @@ async function semearMock() {
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
     if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
     if (u) setTimeout(enviarErros, 3000); // erros guardados antes do login
+    DONO_VEZ++; DONO_EST = null; NOTAS_PLAT = undefined; if (u) setTimeout(checarDono, 600); // Painel do dono no canto de cima
     // o site de entrada (turmaemdia.com.br) manda direto para o app quem já entrou neste aparelho
     if (!MOCK) { try { if (u) localStorage.setItem('ted.entrou', '1'); else localStorage.removeItem('ted.entrou'); } catch (e) { } }
     // sem conta (abriu sem login ou saiu da conta): a apresentação do app aparece de novo antes do login
