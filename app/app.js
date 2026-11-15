@@ -900,7 +900,16 @@ function cardPedidosProf() {
       <div class="actions" style="margin-top:8px"><button class="btn ghost btn-mini" data-ppno="${esc(uid)}">Recusar</button><button class="btn btn-mini" data-ppok="${esc(uid)}">Liberar</button></div></div></li>`).join('')}</ul>
     <div class="note">Usou o código da escola. Liberando, a pessoa entra no app como professor(a) e vê só as turmas dela.</div></section>`;
 }
+function cardAvisosEquipe() {
+  const L = Object.entries(S.avisosEq || {}).filter(([, x]) => x && x.tipo === 'tirouDaTurma').sort((a, b) => (b[1].em || 0) - (a[1].em || 0));
+  if (!L.length) return '';
+  return `<section><h2>Avisos da equipe</h2><ul class="list">${L.map(([id, x]) => `<li><div class="grow"><div class="t">${esc(x.por || 'Professor(a)')} tirou ${esc(x.aluno || 'um aluno')} da turma ${esc(x.turma || '')}</div>
+      <span class="s">${esc(dataCurta(x.em))}. ${S.alunas[x.alid] && !(S.alunas[x.alid].turmas || []).length ? 'Ficou sem turma: veja a mensalidade ou cancele a matrícula.' : 'Continua na escola nas outras turmas.'}</span>
+      <div class="actions" style="margin-top:8px">${S.alunas[x.alid] ? `<button class="btn ghost btn-mini" data-aeal="${esc(x.alid)}">Ver aluno(a)</button>` : ''}<button class="btn btn-mini" data-aeok="${esc(id)}">Ok, ciente</button></div></div></li>`).join('')}</ul></section>`;
+}
 function ligarPedidosProf(v) {
+  v.querySelectorAll('[data-aeok]').forEach(b => b.onclick = async () => { b.disabled = true; try { await B.del(`escolas/${S.eid}/avisosEquipe/${b.dataset.aeok}`); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
+  v.querySelectorAll('[data-aeal]').forEach(b => b.onclick = () => sheetPerfilAluno(b.dataset.aeal));
   v.querySelectorAll('[data-ppno]').forEach(b => b.onclick = () => { const uid = b.dataset.ppno, p = (S.pedidosProf || {})[uid] || {};
     confirmar('Recusar o pedido?', `${esc(p.nome || 'A pessoa')} não entra na escola. Ela pode pedir de novo daqui a 7 dias.`, 'Recusar', async () => {
       if (MOCK) await B.del(`escolas/${S.eid}/pedidosProf/${uid}`); else await servidor('profAprovar', { eid: S.eid, uid, ok: false }); aviso('Pedido recusado'); }); });
@@ -1243,7 +1252,7 @@ async function abrirEscola(eid, tab) {
   } else if (admin) {
     OUV.push(col('acordos', 'acordos')); OUV.push(col('contratos', 'contratos')); OUV.push(col('destratos', 'destratos'));
     OUV.push(col('professoras', 'profs')); OUV.push(col('profsPublico', 'profsPub')); OUV.push(col('responsaveis', 'resps')); OUV.push(col('alunas', 'alunas')); OUV.push(col('pagamentos', 'pags'));
-    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('fixas', 'fixas')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidosFamilia', 'pedidosFam')); OUV.push(col('pedidosProf', 'pedidosProf')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
+    if (admin) { OUV.push(B.ouvirDoc(`${p}/config/mp`, d => { S.mpc = d || {}; agendar(); }, () => { })); OUV.push(col('lancamentos', 'lanc')); OUV.push(col('fixas', 'fixas')); OUV.push(col('membros', 'membros')); OUV.push(col('pedidosFamilia', 'pedidosFam')); OUV.push(col('pedidosProf', 'pedidosProf')); OUV.push(col('avisosEquipe', 'avisosEq')); OUV.push(col('pedidos', 'pedidos')); OUV.push(col('saude', 'saude')); OUV.push(col('docsAlunos', 'docs')); }
   } else {
     // a família só vê o nome de cada professor(a) (profsPublico, copiado pelo servidor); telefone e chave Pix ficam com a escola
     OUV.push(col(MOCK ? 'professoras' : 'profsPublico', 'profs'));
@@ -1694,7 +1703,7 @@ function tCobrancas(v) {
   }
   const ext = Object.entries(S.extras).filter(([, x]) => !eventoNovo(x) || pelaEscola(x)).sort((a, b) => String(b[1].venc).localeCompare(String(a[1].venc)));
   const fil = (k, n) => `<button class="pick" data-fl="${k}" aria-pressed="${filtro === k}">${n} <span class="num">${cont[k]}</span></button>`;
-  v.innerHTML = `${cardPrimeirosPassos()}${cardPedidosFamilia()}${cardPedidosProf()}${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}${avisoPendenciasAdm()}
+  v.innerHTML = `${cardPrimeirosPassos()}${cardPedidosFamilia()}${cardPedidosProf()}${cardAvisosEquipe()}${avisoDestratosAdm()}${avisoMudancasTermo()}${mudFx.length ? blocoFaixa(mudFx) : ''}${avisoAtestadosAdm()}${avisoPendenciasAdm()}
     ${antigos.length && filtro !== 'antigos' ? `<button class="banner" data-fl="antigos" style="border:0;text-align:left;width:100%;background:var(--out-soft)"><span>Além disso, <b>${cur(C.r2(antigos.reduce((s, x) => s + x.vAntes, 0)))}</b> vencidos de meses passados, de ${antigos.length} aluno${antigos.length === 1 ? '' : 's'}.</span><span style="color:var(--out);font-weight:800">Ver ›</span></button>` : ''}
     <section><h2>Quem deve</h2>
       <div class="chips">${fil('aberto', 'Em aberto')}${fil('vencido', 'Vencidas')}${fil('antigos', 'Meses passados')}${fil('pago', 'Em dia')}${fil('todas', 'Todos')}</div>
@@ -3048,10 +3057,37 @@ function repetidos() {
   return out;
 }
 const alunasDoResp = rid => porNome(S.alunas).filter(([, a]) => a.responsavelId === rid);
+// ex-aluno: matrícula encerrada (ou a última mensalidade já passou). Fica guardado pelo prazo da lei (5 anos) e pode ser rematriculado
+const exAluno = a => !!a && !a.anonimizadoEm && (a.ativa === false || (!!a.fim && a.fim < mesHoje()));
+const ANOS_GUARDA = 5;
+const saidaDe = a => a.saida || (a.fim ? a.fim + '-28' : null);
+const guardaAte = a => { const s0 = saidaDe(a); if (!s0) return null; const d = new Date(s0 + 'T12:00:00Z'); d.setUTCFullYear(d.getUTCFullYear() + ANOS_GUARDA); return d.toISOString().slice(0, 10); };
+function sheetExAlunos() {
+  const L = porNome(S.alunas).filter(([, a]) => exAluno(a)).sort((x, y) => String(saidaDe(y[1]) || '').localeCompare(String(saidaDe(x[1]) || '')));
+  sheet(`<h3>Ex-alunos</h3>
+    <div class="sub">Alunos com a matrícula encerrada. Ficam guardados por ${ANOS_GUARDA} anos depois da saída, como pede a lei (pagamentos, contrato e termo). Para voltar, rematricule: a família assina um novo contrato.</div>
+    ${L.length ? `<ul class="list">${L.map(([id, a]) => { const r = (S.resps || {})[a.responsavelId] || {}, sd = saidaDe(a), ga = guardaAte(a);
+      return `<li><div class="grow tap" data-exver="${esc(id)}"><div class="t">${esc(a.nome)}</div><span class="s">${r.nome ? 'Responsável: ' + esc(r.nome) + ' · ' : ''}${sd ? `Saiu em ${esc(dataBR(sd))}/${sd.slice(0, 4)}` : 'Saída sem data'}${ga ? ` · guardado até ${esc(dataBR(ga))}/${ga.slice(0, 4)}` : ''}</span></div>
+        <button class="btn ghost btn-mini" data-rematr="${esc(id)}">Rematricular</button></li>`; }).join('')}</ul>` : '<div class="empty"><span>Nenhum ex-aluno.</span></div>'}
+    <button class="btn ghost" data-fechar>Fechar</button>`, sh => {
+    sh.querySelectorAll('[data-exver]').forEach(b => b.onclick = () => abrirDe(sheetExAlunos, () => sheetPerfilAluno(b.dataset.exver, sheetExAlunos)));
+    sh.querySelectorAll('[data-rematr]').forEach(b => b.onclick = () => rematricular(b.dataset.rematr));
+  });
+}
+function rematricular(alid) {
+  const a = S.alunas[alid]; if (!a) return; const mes = mesHoje();
+  confirmar(`Rematricular ${primeiro(a.nome)}?`, `A matrícula volta a valer a partir de ${esc(C.nomeMes(mes))}${(a.turmas || []).length ? '' : '. Depois, escolha a turma em Editar cadastro'}. É um novo contrato: a família recebe no app ${ctPede() ? 'o contrato e ' : ''}o termo de matrícula para assinar de novo. O histórico da matrícula anterior continua guardado.`, 'Rematricular', async () => {
+    await B.set(`escolas/${S.eid}/alunas/${alid}`, { ativa: true, fim: null, saida: null, inicio: mes, matricula: (Number(a.matricula) || 1) + 1, rematriculaEm: Date.now(),
+      matriculasAnteriores: [...(a.matriculasAnteriores || []), { inicio: a.inicio || null, fim: a.fim || null, saida: a.saida || null }] }, { merge: true });
+    aviso(`${primeiro(a.nome)} rematriculado(a)`);
+  });
+}
 function tAlunas(v) {
   const q = (S.busca || '').trim().toLowerCase(), mes = mesHoje();
-  const grupos = porNome(S.resps).map(([rid, r]) => ({ rid, r, al: alunasDoResp(rid) }));
-  const sem = porNome(S.alunas).filter(([, a]) => !a.responsavelId || !S.resps[a.responsavelId]);
+  // ex-alunos ficam fora da lista (estão em "Ex-alunos"); o responsável só com ex-alunos também sai
+  const grupos = porNome(S.resps).map(([rid, r]) => ({ rid, r, al: alunasDoResp(rid).filter(([, a]) => !exAluno(a)) })).filter(g => g.al.length || !alunasDoResp(g.rid).length);
+  const sem = porNome(S.alunas).filter(([, a]) => (!a.responsavelId || !S.resps[a.responsavelId]) && !exAluno(a));
+  const nEx = Object.values(S.alunas).filter(exAluno).length;
   if (sem.length) grupos.push({ rid: '', r: { nome: 'Sem responsável' }, al: sem });
   const vis = grupos.filter(g => !q || String(g.r.nome).toLowerCase().includes(q) || String(g.r.telefone || '').includes(q) || g.al.some(([, a]) => String(a.nome).toLowerCase().includes(q)));
   const reps = repetidos(), nAtivas = Object.values(S.alunas).filter(a => C.ativaNoMes(a, mes)).length;
@@ -3069,9 +3105,10 @@ function tAlunas(v) {
         <li class="resp-cab ${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''}><div class="grow"><div class="label">Responsável</div><div class="resp-l1"><span class="t">${esc(r.nome)}</span>${rid ? `<span class="resp-fone num">– ${esc(foneBR(r.telefone) || 'sem telefone')}</span>` : ''}</div></div>${rid && r.codigo ? `<span class="chip resp-cod">${esc(r.codigo)}</span>` : ''}${rid && S.admin ? waPendencias(al.map(([id]) => id)) : ''}</li>
         ${al.map(([id, a]) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${esc(a.nome)}</div>${linhas(esc([idade(a.nascimento) || 'Sem data de nascimento', catNome(id)].filter(Boolean).join(' · ')) + (catErrada(id) ? ' <span class="fx-pend atraso">Categoria?</span>' : ''), esc(turmasTxt(a) || 'Sem turma'))}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].filter(Boolean).slice(0, 1).join(''))}</li>`; }).join('')}
         ${rid ? `<li class="tap" data-nova="${esc(rid)}" style="min-height:44px"><span class="sub">+ Outro(a) aluno(a) com ${esc(primeiro(r.nome))}</span></li>` : ''}
-      </ul>`).join('') : `<div class="empty">${q ? 'Nada encontrado.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre cada aluno(a) com a turma e o responsável. Se o telefone ou o CPF do responsável já existir, o app sugere agrupar os irmãos.</span>'}</div>`}`;
+      </ul>`).join('') + (S.admin && nEx ? `<button type="button" class="faixa-resumo neutra" id="aexal" style="margin-top:14px"><span class="grow"><b>Ex-alunos (${nEx})</b><span class="s">Matrículas encerradas, guardadas pelo prazo da lei. Dá para rematricular.</span></span><span class="seta" aria-hidden="true">›</span></button>` : '') : `<div class="empty">${q ? 'Nada encontrado.' : '<b>Nenhum aluno cadastrado.</b><span>Cadastre cada aluno(a) com a turma e o responsável. Se o telefone ou o CPF do responsável já existir, o app sugere agrupar os irmãos.</span>'}</div>`}`;
   $('abusca').oninput = e => { S.busca = e.target.value; render(); };
   $('ana').onclick = () => sheetAluna();
+  if ($('aexal')) $('aexal').onclick = () => sheetExAlunos();
   if ($('adocs')) $('adocs').onclick = () => sheetDocsEscola();
   v.querySelectorAll('[data-resp]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; sheetResp(li.dataset.resp); });
   v.querySelectorAll('[data-al]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; S.admin ? sheetPerfilAluno(li.dataset.al) : sheetAluna(li.dataset.al); });
@@ -3449,6 +3486,7 @@ function sheetPerfilAluno(alid, volta) {
   const A = prof ? ((S.pp || {}).alunos || []).find(x => x.id === alid) || {} : null;
   const r = adm ? respDe(alid) : prof ? (A.resp || {}) : {};
   const ts = (prof ? A.turmas || [] : a.turmas || []).map(t => S.turmas[t]).filter(Boolean);
+  const minhasT = prof ? (A.turmas || []).filter(t => S.turmas[t] && C.daTurma(S.turmas[t], S.prof)) : [];
   const gs = prof ? A.grupos || [] : porNome(S.grupos).filter(([, G]) => (G.alunas || []).includes(alid)).map(([, G]) => G.nome);
   const mPend = adm ? msgPendencias([alid]) : null;
   const wa = mPend && mPend.wa ? mPend.wa : (adm || prof) && r.telefone ? waLink(r.telefone, prof ? `Olá, ${primeiro(r.nome || '')}! Aqui é ${primeiro(((S.profs || {})[S.prof] || {}).nome || EU.nome || '')}, professor(a) de ${primeiro(a.nome)} na ${S.escola.nome || 'escola'}.` : `Olá, ${primeiro(r.nome || '')}! Aqui é da ${S.escola.nome || 'escola'}, sobre ${primeiro(a.nome)}.`) : '';
@@ -3491,8 +3529,12 @@ function sheetPerfilAluno(alid, volta) {
     <section class="psec"><div class="psec-cab"><h2>Notas da equipe</h2><button type="button" class="pacao pacao-forte" id="pnova">+ Nota</button></div>
       <div class="pfiltros" id="pfilt"></div>
       <div id="pnotas"></div></section>
-    ${adm && !dtrDe(alid) ? `<button type="button" class="link pcancel" data-dtrnovo="${esc(alid)}">Cancelar a matrícula</button>` : ''}
+    ${adm && !dtrDe(alid) && !exAluno(a) ? `<button type="button" class="link pcancel" data-dtrnovo="${esc(alid)}">Cancelar a matrícula</button>` : ''}
+    ${adm && exAluno(a) ? `<button type="button" class="btn" id="prematr" style="width:100%;margin-bottom:8px">Rematricular</button>` : ''}
+    ${prof && minhasT.length ? `<button type="button" class="link pcancel" id="ptirar">Tirar da minha turma</button>` : ''}
     <button type="button" class="btn ghost" data-fechar>Fechar</button>`, sh => {
+    if ($('prematr')) $('prematr').onclick = () => rematricular(alid);
+    if ($('ptirar')) $('ptirar').onclick = () => abrirDe(eu, () => sheetTirarDaTurma(alid, minhasT));
     if ($('afreq')) freqAlunoHTML(alid).then(h => { if ($('afreq')) $('afreq').innerHTML = h; }).catch(() => { });
     if (volta) SHEET_VOLTAR = volta;
     desenharNotas();
@@ -3515,6 +3557,24 @@ function sheetPerfilAluno(alid, volta) {
   }, () => { if (parar) parar(); });
 }
 
+// professor(a): tira o aluno de uma turma dele. O aluno continua na escola; só a administração exclui ou cancela a matrícula
+function sheetTirarDaTurma(alid, tids) {
+  const a = S.alunas[alid] || {}; let tid = tids.length === 1 ? tids[0] : '';
+  sheet(`<h3>Tirar ${esc(primeiro(a.nome) || 'aluno(a)')} da turma</h3>
+    <div class="sub">${esc(a.nome || '')} sai ${tids.length === 1 ? `da turma <b>${esc((S.turmas[tids[0]] || {}).nome || '')}</b>` : 'da turma que você escolher'} e continua na escola. A administração recebe um aviso. Excluir o aluno ou cancelar a matrícula é só com a administração.</div>
+    ${tids.length > 1 ? `<div class="chips" id="tttur">${tids.map(t => `<button type="button" class="pick" data-tt="${esc(t)}" aria-pressed="false">${esc((S.turmas[t] || {}).nome || 'Turma')}</button>`).join('')}</div>` : ''}
+    <div class="err" id="tterr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn danger" id="ttok">Tirar da turma</button></div>`, sh => {
+    sh.querySelectorAll('[data-tt]').forEach(b => b.onclick = () => { tid = b.dataset.tt; sh.querySelectorAll('[data-tt]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
+    $('ttok').onclick = () => { if (!tid) return $('tterr').textContent = 'Escolha a turma.';
+      duploToque($('ttok'), async () => { $('ttok').disabled = true;
+        try {
+          if (MOCK) await B.set(`escolas/${S.eid}/alunas/${alid}`, { turmas: (a.turmas || []).filter(x => x !== tid) }, { merge: true });
+          else await profServidor('tirarDaTurma', { tid, alid });
+          fecharSheet(); aviso(`${primeiro(a.nome)} saiu da turma`); carregarPainelProf().then(() => render()).catch(() => { });
+        } catch (e) { $('tterr').textContent = msgErro(e); $('ttok').disabled = false; } }, 'Toque de novo para confirmar'); };
+  });
+}
 function sheetNota(alid, n, volta) {
   const a = S.alunas[alid] || {}; let tag = (n && n.tag) || '';
   sheet(`<h3>${n ? 'Editar nota' : 'Nova nota'}</h3><div class="sub">${esc(a.nome || '')}</div>
@@ -5575,6 +5635,7 @@ const PERGUNTAS_SAUDE = [
 // situação do termo de um aluno: falta, vencido (mais de 1 ano), ok; e se precisa de atestado
 function termoDe(alid) {
   const t = S.saude[alid]; if (!t || !t.em) return { st: 'falta' };
+  const al = (S.alunas || {})[alid]; if (al && al.rematriculaEm && t.em < al.rematriculaEm) return { st: 'falta', t }; // rematrícula: termo novo
   const venc = Date.now() - t.em > 365 * 864e5, sim = PERGUNTAS_SAUDE.some(([k]) => (t.respostas || {})[k]);
   const as = situacaoAtestado(t, sim), atest = !!as && as !== 'ok';
   const pend = (t.alteracoes || []).filter(m => (m.mudou || []).length && !m.cienteEm);
@@ -5779,7 +5840,7 @@ CONTRATANTE: {responsavel}, CPF {cpf}, residente em {endereco_responsavel}, What
 
 {cidade}, {data}.`;
 const ctCfg = () => S.contratoCfg || {};
-const ctId = (alid, v) => `${alid}_v${v || ctCfg().versao || 1}`;
+const ctId = (alid, v) => { const m = Number(((S.alunas || {})[alid] || {}).matricula) || 1; return `${alid}_v${v || ctCfg().versao || 1}${m > 1 ? '_m' + m : ''}`; }; // rematrícula: novo contrato
 const ctAssinado = alid => (S.contratos || {})[ctId(alid)] || null;
 const ctUltimo = alid => Object.values(S.contratos || {}).filter(c => c.alid === alid).sort((a, b) => (b.em || 0) - (a.em || 0))[0] || null;
 const ctPede = () => !!(ctCfg().ativo && ctCfg().texto);
@@ -5869,7 +5930,7 @@ function sheetAssinarContrato(alid) {
       if (!$('casok').checked) return err('Marque que leu e aceita o contrato.');
       duploToque($('casbtn'), async () => {
         $('casbtn').disabled = true;
-        try { await B.set(`escolas/${S.eid}/contratos/${ctId(alid)}`, { alid, rid: a.responsavelId || null, versao: c.versao || 1, texto: t, nome, cpf: C.soDigitos(r.cpf), uid: EU.uid, email: EU.email || '', em: Date.now() });
+        try { await B.set(`escolas/${S.eid}/contratos/${ctId(alid)}`, { alid, rid: a.responsavelId || null, versao: c.versao || 1, ...(Number(a.matricula) > 1 ? { matricula: Number(a.matricula) } : {}), texto: t, nome, cpf: C.soDigitos(r.cpf), uid: EU.uid, email: EU.email || '', em: Date.now() });
           aviso('Contrato assinado'); fecharSheet(); }
         catch (e) { err(msgErro(e)); $('casbtn').disabled = false; }
       }, 'Toque de novo para assinar');
@@ -5914,7 +5975,7 @@ function avisoContratos() {
    Sem a assinatura, a escola pode encerrar assim mesmo: fica registrado que a família pediu.
    Cada pedido: escolas/{eid}/destratos/{alid}_{ms}. */
 const MOTIVOS_CANCEL = [['mudanca', 'Mudança de cidade ou bairro'], ['horario', 'Horário'], ['financeiro', 'Financeiro'], ['saude', 'Saúde'], ['outra', 'Outra atividade'], ['outro', 'Outro motivo']];
-const dtrDe = alid => Object.entries(S.destratos || {}).filter(([, d]) => d.alid === alid && d.status !== 'desistiu').sort((a, b) => (b[1].pedidoEm || 0) - (a[1].pedidoEm || 0))[0] || null;
+const dtrDe = alid => Object.entries(S.destratos || {}).filter(([, d]) => d.alid === alid && d.status !== 'desistiu' && (d.pedidoEm || 0) > (Number(((S.alunas || {})[alid] || {}).rematriculaEm) || 0)).sort((a, b) => (b[1].pedidoEm || 0) - (a[1].pedidoEm || 0))[0] || null;
 const isoDia = ms => new Date(ms - 3 * 36e5).toISOString().slice(0, 10);
 const somaDias = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 // o que fica valendo num cancelamento pedido em "pedidoEm" (ms), com ou sem o aviso prévio e a multa
@@ -5985,7 +6046,7 @@ function sheetDestrato(did) {
     ${html}
     ${d.status === 'pedido' ? `<label class="liga"><span class="grow"><b>Dispensar o aviso prévio</b><span class="s">A matrícula acaba hoje, sem cobrar o período do aviso.</span></span><input type="checkbox" role="switch" id="dsaviso" ${semAviso ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
       ${(ctCfg().multaCancel || {}).ativo ? `<label class="liga"><span class="grow"><b>Não cobrar a multa</b><span class="s">Mesmo que o contrato preveja.</span></span><input type="checkbox" role="switch" id="dsmulta" ${semMulta ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>` : ''}
-      <div class="actions"><button class="btn ghost" id="dsrec">Não confirmar</button><button class="btn" id="dsok">Confirmar cancelamento</button></div>` : ''}
+      <div class="actions"><button class="btn ghost" id="dsrec">Não confirmar</button><button class="btn" id="dsok">${semAviso ? 'Confirmar e encerrar' : 'Confirmar cancelamento'}</button></div>` : ''}
     ${d.status === 'confirmado' ? `<div class="actions"><button class="btn ghost" id="dsver">Ver o termo</button><button class="btn" id="dsenc">Encerrar a matrícula</button></div>
       ${d.assinatura ? '' : '<div class="note">A família ainda não assinou. Dá para encerrar assim mesmo: fica registrado que ela pediu pelo app.</div>'}` : ''}
     ${d.status === 'encerrado' ? `<button class="btn ghost" id="dsver" style="width:100%">Ver o termo${d.assinatura ? ' assinado' : ''}</button>` : ''}
@@ -5997,12 +6058,14 @@ function sheetDestrato(did) {
       if ($('dsok')) $('dsok').onclick = () => duploToque($('dsok'), async () => { const { k } = corpo(), dd = { ...d, ultimo: k.ultimo, fim: k.fim, multa: k.multa, totalDevido: k.totalDevido, dispensouAviso: semAviso };
         const ops = [{ op: 'merge', p: `escolas/${S.eid}/destratos/${did}`, d: { status: 'confirmado', confirmadoEm: Date.now(), confirmadoPor: EU.nome || EU.email || '', ultimo: k.ultimo, fim: k.fim, aviso: k.aviso, multa: k.multa, meses: k.meses, totalDevido: k.totalDevido, dispensouAviso: semAviso, termo: termoDestrato(d.alid, dd) } },
           // a última mensalidade é a do fim do aviso: daí em diante o app não cobra mais
-          { op: 'merge', p: `escolas/${S.eid}/alunas/${d.alid}`, d: { fim: k.fim, saida: k.ultimo } }];
+          { op: 'merge', p: `escolas/${S.eid}/alunas/${d.alid}`, d: { fim: k.fim, saida: k.ultimo, ...(semAviso ? { ativa: false } : {}) } }];
+        // aviso prévio dispensado: acaba hoje, então a matrícula já fica encerrada (sem o passo "Encerrar")
+        if (semAviso) Object.assign(ops[0].d, { status: 'encerrado', encerradoEm: Date.now(), encerradoPor: EU.nome || EU.email || '', semAssinatura: !d.assinatura });
         if (k.multa > 0) ops.push({ op: 'set', p: `escolas/${S.eid}/extras/${novoId()}`, d: { tipo: 'taxa', nome: 'Multa de cancelamento', v: k.multa, venc: somaDias(hoje(), 7), alunas: [d.alid], valores: {}, grupos: [], turmas: [], recebedor: 'escola', nota: false, cancelamento: did, criadoEm: Date.now() } });
-        try { await B.lote(ops); aviso('Cancelamento confirmado. A família assina o termo no app.'); setTimeout(() => sheetDestrato(did), 80); } catch (e) { $('dserr').textContent = msgErro(e); } }, 'Toque de novo para confirmar');
+        try { await B.lote(ops); aviso(semAviso ? 'Matrícula encerrada. O aluno foi para Ex-alunos.' : 'Cancelamento confirmado. A família assina o termo no app.'); setTimeout(() => sheetDestrato(did), 80); } catch (e) { $('dserr').textContent = msgErro(e); } }, 'Toque de novo para confirmar');
       if ($('dsenc')) $('dsenc').onclick = () => duploToque($('dsenc'), async () => {
         try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/destratos/${did}`, d: { status: 'encerrado', encerradoEm: Date.now(), encerradoPor: EU.nome || EU.email || '', semAssinatura: !d.assinatura } },
-          { op: 'merge', p: `escolas/${S.eid}/alunas/${d.alid}`, d: { ativa: false, fim: d.fim, saida: d.ultimo } }]); aviso('Matrícula encerrada'); setTimeout(() => sheetDestrato(did), 80); } catch (e) { $('dserr').textContent = msgErro(e); } }, 'Toque de novo para encerrar');
+          { op: 'merge', p: `escolas/${S.eid}/alunas/${d.alid}`, d: { ativa: false, fim: d.fim, saida: d.ultimo } }]); aviso('Matrícula encerrada. O aluno foi para Ex-alunos.'); setTimeout(() => sheetDestrato(did), 80); } catch (e) { $('dserr').textContent = msgErro(e); } }, 'Toque de novo para encerrar');
       if ($('dsver')) $('dsver').onclick = () => abrirDe(() => sheetDestrato(did), () => sheetVerDestrato(did));
     }); };
   desenhar();

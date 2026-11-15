@@ -144,6 +144,21 @@ module.exports = db => {
       }
 
       // aviso da chamada no celular: guarda (ou tira) o aparelho deste professor
+      // tirar um aluno da turma dele: só das turmas do próprio professor; o aluno continua na escola (excluir é só com a administração)
+      if (acao === 'tirarDaTurma') {
+        const { tid, alid } = b;
+        if (!idOk(tid) || !idOk(alid)) throw erro('Pedido inválido.', 400);
+        const t = await ler(`escolas/${eid}/turmas/${tid}`);
+        if (!t || !C.daTurma(t, pid)) throw erro('Esta turma não é sua.', 403);
+        const aref = db.doc(`escolas/${eid}/alunas/${alid}`), a = await ler(aref.path);
+        if (!a || !(a.turmas || []).includes(tid)) throw erro('Este aluno já não está nessa turma.', 404);
+        const quem = { uid: u.uid, nome: P.nome || u.name || 'Professor(a)', em: Date.now() };
+        await aref.set({ turmas: FieldValue.arrayRemove(tid), saidasTurma: FieldValue.arrayUnion({ tid, ...quem }) }, { merge: true });
+        // a administração fica sabendo (a mensalidade pode mudar)
+        await db.collection(`escolas/${eid}/avisosEquipe`).add({ tipo: 'tirouDaTurma', alid, aluno: a.nome || '', tid, turma: t.nome || '', por: quem.nome, porUid: u.uid, em: quem.em, visto: false });
+        return res.json({ ok: true, restam: (a.turmas || []).filter(x => x !== tid).length });
+      }
+
       if (acao === 'push') {
         const tk = String(b.token || ''); if (!tk || tk.length > 400) throw erro('Pedido inválido.', 400);
         const ref = db.doc(`escolas/${eid}/equipe/${u.uid}`), atual = ((await ref.get()).data() || {}).push || [];
