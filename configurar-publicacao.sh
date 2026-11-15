@@ -28,7 +28,11 @@ for R in roles/firebasehosting.admin roles/firebaserules.admin roles/cloudfuncti
          roles/iam.serviceAccountUser roles/artifactregistry.admin roles/cloudbuild.builds.editor \
          roles/cloudscheduler.admin roles/eventarc.admin roles/pubsub.admin roles/serviceusage.serviceUsageConsumer \
          roles/firebaseextensions.viewer; do
-  gcloud projects add-iam-policy-binding "$PROJ" --member="serviceAccount:$SA" --role="$R" --condition=None >/dev/null 2>&1 || falhou "permissão $R" "$R"
+  # conta recém-criada demora alguns segundos para o Google enxergar: tenta até 4 vezes
+  for T in 1 2 3 4; do
+    if gcloud projects add-iam-policy-binding "$PROJ" --member="serviceAccount:$SA" --role="$R" --condition=None >/tmp/perm.log 2>&1; then break; fi
+    if [ "$T" = 4 ]; then falhou "permissão $R: $(tail -1 /tmp/perm.log | cut -c1-150)" "$R"; else sleep 15; fi
+  done
 done
 echo "    feito"
 
