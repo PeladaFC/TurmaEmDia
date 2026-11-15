@@ -93,6 +93,8 @@ function backendMock() {
 /* ================= Utilidades ================= */
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// convite da escola pelo link (turmaemdia.com.br/app/?c=CODIGO): guarda o código até a pessoa entrar na conta
+(() => { try { const c = (new URLSearchParams(location.search).get('c') || '').trim().toUpperCase(); if (/^[A-Z0-9]{6}$/.test(c)) localStorage.setItem('escolinha.codConvite', c); } catch (e) { } })();
 const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) { } } };
 const novoId = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');
 const novoCodigo = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), b => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('');
@@ -455,6 +457,7 @@ function telaLogin(modo = 'entrar') {
     <div class="login-form">
     <a class="login-volta" href="../">‹ Voltar ao site</a>
     <h2 style="margin-top:6px">${modo === 'criar' ? 'Criar conta' : 'Entrar'}</h2>
+    ${ls.get('escolinha.codConvite') ? `<div class="banner ok"><span><b>Você recebeu o convite da escola.</b> ${modo === 'criar' ? 'Crie a sua conta' : 'Entre na sua conta'} (ou use o Google) e os seus filhos aparecem sozinhos.</span></div>` : ''}
     ${modo === 'criar' ? `<div class="field"><label for="lnome">Seu nome</label><input id="lnome" autocomplete="name"></div>` : ''}
     <div class="field"><label for="lmail">E-mail</label><input id="lmail" type="email" autocomplete="email" inputmode="email"></div>
     <div class="field"><label for="lsenha">Senha</label><input id="lsenha" type="password" autocomplete="${modo === 'criar' ? 'new-password' : 'current-password'}"></div>
@@ -3132,12 +3135,13 @@ function tAlunas(v) {
     ${q ? (achR.length || achA.length ? `${achR.length ? `<h2 class="busca-tit">Responsáveis <span class="num">(${achR.length})</span></h2>${achR.map(g => blocoResp(g, true)).join('')}` : ''}
         ${achA.length ? `<h2 class="busca-tit">Alunos <span class="num">(${achA.length})</span></h2><ul class="list">${achA.map(([id, a]) => linhaAl(id, a, true, true)).join('')}</ul>` : ''}` : '<div class="empty">Nada encontrado.</div>')
       : modo === 'aluno' ? (ativos.length ? `<ul class="list">${ativos.map(([id, a]) => linhaAl(id, a, true, false)).join('')}</ul>` : vazio)
-      : (grupos.length ? grupos.map(g => blocoResp(g, false)).join('') : vazio)}
+      : `${S.admin ? '<button type="button" class="add-disc add-largo" id="anresp" style="margin-bottom:12px">+ Responsável</button>' : ''}${grupos.length ? grupos.map(g => blocoResp(g, false)).join('') : vazio}`}
     ${!q && S.admin && nEx ? `<button type="button" class="faixa-resumo neutra" id="aexal" style="margin-top:14px"><span class="grow"><b>Ex-alunos (${nEx})</b><span class="s">Matrículas encerradas, guardadas pelo prazo da lei. Dá para rematricular.</span></span><span class="seta" aria-hidden="true">›</span></button>` : ''}`;
   $('abusca').oninput = e => { S.busca = e.target.value; const pos = e.target.selectionStart; render(); const b = $('abusca'); if (b) { b.focus(); try { b.setSelectionRange(pos, pos); } catch (x) { } } };
   v.querySelectorAll('[data-modoal]').forEach(b => b.onclick = () => { S.modoAl = b.dataset.modoal; ls.set('escolinha.modoAl', S.modoAl); render(); });
   $('ana').onclick = () => sheetAluna();
   if ($('aexal')) $('aexal').onclick = () => sheetExAlunos();
+  if ($('anresp')) $('anresp').onclick = () => sheetNovoResp();
   if ($('adocs')) $('adocs').onclick = () => sheetDocsEscola();
   v.querySelectorAll('[data-resp]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; sheetResp(li.dataset.resp); });
   v.querySelectorAll('[data-al]').forEach(li => li.onclick = e => { if (e.target.closest('[data-nao-abre]')) return; S.admin ? sheetPerfilAluno(li.dataset.al) : sheetAluna(li.dataset.al); });
@@ -3165,7 +3169,10 @@ function juntarResps(a, b) {
 }
 // códigos do responsável: o dele e os que vieram de cadastros agrupados
 const codigosDoResp = r => [...new Set([r.codigo, ...(r.codigosAntigos || [])].filter(Boolean))];
-function convite(r) { return `Olá${r.nome ? ', ' + primeiro(r.nome) : ''}! A ${S.escola.nome || 'escola'} agora recebe as mensalidades e as taxas pelo app. Você vê cada cobrança e escolhe o que pagar, por Pix.\n1. Abra ${LINK_APP}\n2. Crie sua conta (ou entre com Google)\n3. Digite o código: ${r.codigo}`; }
+// link que já entra com o código do responsável (o app liga os filhos sozinho depois do login)
+const linkConvite = r => `${LINK_APP}?c=${r.codigo}`;
+const passosConvite = r => `Toque no link e crie sua conta${r.email ? ` com o e-mail ${r.email}` : ''} (ou entre com o Google):\n${linkConvite(r)}\n\nSe o app pedir um código, é este: ${r.codigo}`;
+function convite(r) { return `Olá${r.nome ? ', ' + primeiro(r.nome) : ''}! Aqui é da ${S.escola.nome || 'escola'}. Agora mensalidades, eventos e documentos ficam no app Turma em Dia, e você paga pelo celular.\n\n${passosConvite(r)}`; }
 // nota fiscal para as famílias: ligada pela escola ou por algum professor?
 const nfFamLigada = () => !!((S.cfg.nfFam || {}).ligado || Object.values((S.admin ? S.profsPub : S.profs) || {}).some(p => p && p.nf && p.nf.ligado));
 const nfModo = () => (S.cfg.nfFam || {}).modo || 'todas';
@@ -3178,7 +3185,7 @@ function avisoNovoAluno(r, rid, aluno) {
   const noApp = !!r.codigo && Object.values(S.membros || {}).some(m => m && m.codigo === r.codigo);
   const oi = `Olá${r.nome ? ', ' + primeiro(r.nome) : ''}! ${primeiro(aluno)} foi cadastrado(a) na ${S.escola.nome || 'escola'}.`;
   return noApp ? { noApp, txt: `${oi} Já aparece no seu app, em Meus filhos: ${LINK_APP}` }
-    : { noApp, txt: `${oi} Pelo app Turma em Dia você acompanha mensalidades, eventos e documentos, e paga por Pix.\n1. Abra ${LINK_APP}\n2. Crie sua conta com seu e-mail (ou entre com Google)\n3. Em "Novo aqui?", digite o código: ${r.codigo}` };
+    : { noApp, txt: `${oi} Pelo app Turma em Dia você acompanha mensalidades, eventos e documentos, e paga pelo celular.\n\n${passosConvite(r)}` };
 }
 function sheetAvisarResp(r, rid, aluno) {
   if (!r.codigo) return;
@@ -3190,6 +3197,59 @@ function sheetAvisarResp(r, rid, aluno) {
     <button type="button" class="btn ghost" data-fechar>Agora não</button>`, () => {
     $('avcop').onclick = () => copiar(txt, 'Mensagem copiada. Cole no WhatsApp do responsável.');
     if ($('avwa')) $('avwa').addEventListener('click', () => setTimeout(fecharSheet, 300));
+  });
+}
+// achar um responsável já cadastrado com o mesmo WhatsApp, e-mail ou CPF
+function respIgual(tel, email, cpf, menos) {
+  const t = C.soDigitos(tel).slice(-8), e = String(email || '').trim().toLowerCase(), c = C.soDigitos(cpf);
+  return Object.entries(S.resps || {}).filter(([id, r]) => id !== menos && r && (
+    (t.length === 8 && C.soDigitos(r.telefone).slice(-8) === t) || (e && String(r.email || '').toLowerCase() === e) || (c.length === 11 && C.soDigitos(r.cpf) === c)));
+}
+function sheetNovoResp() {
+  sheet(`<h3>Novo responsável</h3>
+    <div class="sub">Cadastre o responsável antes do aluno, se quiser. Depois mande o convite pelo WhatsApp: com o link, ele cria a conta e já entra ligado à escola.</div>
+    <div class="field"><label for="nrnome">Nome</label><input id="nrnome" maxlength="60" autocomplete="off"></div>
+    <div class="two"><div class="field"><label for="nrtel">WhatsApp</label><input id="nrtel" inputmode="tel" maxlength="20" placeholder="(81) 99999-9999"></div>
+    <div class="field"><label for="rcpf">CPF <span class="sub">(pode ser depois)</span></label><input id="rcpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00"></div></div>
+    <div class="field"><label for="nrmail">E-mail <span class="sub">(o mesmo que ele vai usar no app)</span></label><input id="nrmail" type="email" maxlength="80" autocapitalize="none"></div>
+    <div class="err" id="nrerr" role="alert"></div>
+    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="nrok">Cadastrar</button></div>`, () => {
+    const salvar = async () => {
+      const nome = $('nrnome').value.trim(), tel = $('nrtel').value.trim(), email = $('nrmail').value.trim().toLowerCase(), cpf = $('rcpf').value.trim(), err = m => $('nrerr').textContent = m;
+      if (!nome) return err('Digite o nome do responsável.');
+      if (!numeroWa(tel) && !email) return err('Coloque o WhatsApp ou o e-mail, para mandar o convite.');
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return err('Esse e-mail não parece certo.');
+      if (C.soDigitos(cpf) && !C.cpfValido(cpf)) return err('Esse CPF não confere. Veja se algum número foi digitado errado.');
+      const iguais = respIgual(tel, email, cpf);
+      const criar = async () => { const r = novoId(), cod = novoCodigo(), d = { nome, telefone: tel, cpf, email, codigo: cod, criadoEm: Date.now() };
+        await B.lote([{ op: 'set', p: `escolas/${S.eid}/responsaveis/${r}`, d }, { op: 'set', p: 'codigos/' + cod, d: { eid: S.eid, rid: r } }]);
+        aviso(`${primeiro(nome)} cadastrado(a)`); sheetConviteResp(r, d); };
+      if (!iguais.length) return criar().catch(e => err(msgErro(e)));
+      const [rid0, r0] = iguais[0];
+      sheet(`<h3>Já existe esse responsável</h3>
+        <div class="sub">Achamos um cadastro com ${C.soDigitos(r0.telefone).slice(-8) === C.soDigitos(tel).slice(-8) && numeroWa(tel) ? 'o mesmo WhatsApp' : String(r0.email || '').toLowerCase() === email && email ? 'o mesmo e-mail' : 'o mesmo CPF'}:</div>
+        <div class="linha-botao" style="cursor:default"><span class="grow"><b>${esc(r0.nome)}</b><span class="s">${esc([foneBR(r0.telefone), r0.email].filter(Boolean).join(' · ') || 'sem contato')} · ${alunasDoResp(rid0).length} aluno(s)</span></span></div>
+        <div class="note">Usando esse cadastro, nada do que já está lá é apagado: só entram os dados que faltam.</div>
+        <div class="actions"><button class="btn ghost" id="nroutro">Criar outro mesmo assim</button><button class="btn" id="nrusar">Usar esse cadastro</button></div>`, () => {
+        $('nroutro').onclick = () => criar().catch(e => aviso(msgErro(e)));
+        $('nrusar').onclick = async () => { const comp = {}; if (!r0.telefone && tel) comp.telefone = tel; if (!r0.email && email) comp.email = email; if (!C.soDigitos(r0.cpf) && cpf) comp.cpf = cpf;
+          try { if (Object.keys(comp).length) await B.set(`escolas/${S.eid}/responsaveis/${rid0}`, comp, { merge: true }); aviso('Cadastro ligado'); sheetConviteResp(rid0, { ...r0, ...comp }); } catch (e) { aviso(msgErro(e)); } };
+      });
+    };
+    $('nrok').onclick = salvar;
+  });
+}
+// depois de cadastrar: mandar o convite já com o link que entra
+function sheetConviteResp(rid, r) {
+  const txt = convite(r), tel = numeroWa(r.telefone);
+  sheet(`<h3>Convidar ${esc(primeiro(r.nome) || 'o responsável')}</h3>
+    <div class="sub">Com o link, ${esc(primeiro(r.nome) || 'ele')} cria a conta e já entra ligado(a) à escola. Os alunos que você cadastrar com este responsável aparecem para ele sozinhos.</div>
+    <div class="note" style="white-space:pre-line">${esc(txt)}</div>
+    <div class="actions">${tel ? `<a class="btn wa-btn" id="cvwa" href="${esc(waLink(r.telefone, txt))}" target="_blank" rel="noopener">${ICO_WA} Enviar no WhatsApp</a>` : ''}<button type="button" class="btn ghost" id="cvcop">Copiar mensagem</button></div>
+    <button type="button" class="btn ghost" id="cval">+ Cadastrar aluno com ${esc(primeiro(r.nome) || 'este responsável')}</button>
+    <button type="button" class="btn ghost" data-fechar>Fechar</button>`, () => {
+    $('cvcop').onclick = () => copiar(txt, 'Mensagem copiada. Cole no WhatsApp do responsável.');
+    $('cval').onclick = () => { fecharSheet(); sheetAluna(null, rid); };
   });
 }
 function sheetResp(rid) {
@@ -3214,6 +3274,8 @@ function sheetResp(rid) {
       const nome = $('rnome').value.trim(); if (!nome) return $('rerr').textContent = 'Digite o nome do responsável.';
       if (!C.soDigitos($('rcpf').value)) return $('rerr').textContent = 'Informe o CPF do responsável. Ele é obrigatório (vai na nota fiscal).';
       if (!C.cpfValido($('rcpf').value)) return $('rerr').textContent = 'Esse CPF não confere. Veja se algum número foi digitado errado.';
+      const dup = respIgual($('rtel').value, $('rmail').value, $('rcpf').value, rid)[0];
+      if (dup && !$('rok').dataset.ciente) { $('rok').dataset.ciente = '1'; return $('rerr').innerHTML = `Já existe <b>${esc(dup[1].nome)}</b> com esse WhatsApp, e-mail ou CPF. Se for a mesma pessoa, use "Agrupar" na lista. Toque em Salvar de novo para salvar assim mesmo.`; }
       try { await B.set(`escolas/${S.eid}/responsaveis/${rid}`, { nome, telefone: $('rtel').value.trim(), cpf: $('rcpf').value.trim(), email: $('rmail').value.trim(), endereco: $('rend').value.trim(), ...($('rnf') && $('rnf').checked !== notaDaFamilia(r) ? { nota: $('rnf').checked ? 'sim' : 'nao' } : {}) }, { merge: true }); fecharSheet(); aviso('Responsável atualizado'); }
       catch (e) { $('rerr').textContent = msgErro(e); }
     };
@@ -7817,6 +7879,9 @@ async function semearMock() {
     vincularProf().then(r => { if (minha !== vez || !r) return; if (((r.escolas || []).length || PROF_PEND.length) && !S) telaInicio(); });
     convitesPara(u).then(c => { CONVITES = c || []; if (minha !== vez || !CONVITES.length) return; if (!S) telaInicio(); else aviso('Você tem um convite para a administração de outra escola. Veja em Ajustes → Minhas escolas.'); }).catch(() => { });
     if (MP_VOLTA && ls.get('escolinha.mpVolta') && MINHAS[ls.get('escolinha.mpVolta')]) { sairAbertura(); return abrirEscola(ls.get('escolinha.mpVolta')); }
+    // veio pelo link do convite da escola: liga os filhos na hora, sem digitar código
+    const codConv = !MOCK && ls.get('escolinha.codConvite');
+    if (codConv) { ls.set('escolinha.codConvite', null); sairAbertura(); try { if (await entrarComCodigo(codConv, m => aviso(m))) { aviso('Pronto! Seus filhos já aparecem aqui.'); return; } } catch (e) { aviso(msgErro(e)); } }
     // uma escola: as cartas viram direto para ela; mais de uma: escolhe na própria abertura
     const ks = Object.keys(MINHAS);
     if (ks.length === 1) return abrirComCartas(ks[0]);
