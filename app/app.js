@@ -1042,9 +1042,19 @@ function travarFundo(on) {
 }
 // "voltar": janela aberta por outra volta para a de origem; senão fecha; sem janela, volta para a aba anterior
 let SHEET_VOLTAR = null, PROX_VOLTAR = null;
-const abrirDe = (pai, filho) => { PROX_VOLTAR = pai; filho(); };
+// abre uma janela por cima de outra (ex.: Ajustes → Categorias). Voltar, Fechar e Salvar levam de volta à de baixo, no mesmo ponto da rolagem
+const ROLAGEM_PAI = new Map();
+const abrirDe = (pai, filho) => { const sh = $('overlay').querySelector('.sheet'); if (sh) ROLAGEM_PAI.set(pai, sh.scrollTop); PROX_VOLTAR = pai; filho(); };
+function voltarSheet() {
+  const v = SHEET_VOLTAR; if (!v) return fecharSheet();
+  const ir = () => { SHEET_SAIR = null; SHEET_VOLTAR = null; const top = ROLAGEM_PAI.get(v); ROLAGEM_PAI.delete(v); v();
+    if (top) requestAnimationFrame(() => { const sh = $('overlay').querySelector('.sheet'); if (sh) sh.scrollTop = top; }); };
+  if (SHEET_SAIR && SHEET_SAIR(ir)) return; ir();
+}
+// depois de salvar numa janela aberta por cima: volta para a de baixo (ou fecha, se não houver)
+function fecharOuVoltar() { SHEET_SAIR = null; if (SHEET_VOLTAR) voltarSheet(); else fecharSheet(true); }
 function voltar() {
-  if ($('overlay').innerHTML) { const v = SHEET_VOLTAR; if (v) { SHEET_VOLTAR = null; v(); } else fecharSheet(); return true; }
+  if ($('overlay').innerHTML) { if (SHEET_VOLTAR) voltarSheet(); else fecharSheet(); return true; }
   if (!S && VOLTA_ESCOLA && MINHAS[VOLTA_ESCOLA] && EU && document.getElementById('ivolta')) { abrirEscola(VOLTA_ESCOLA); return true; }
   if (S && S.hist && S.hist.length) { S.tab = S.hist.pop(); ls.set('escolinha.tab.' + S.papel, S.tab); render(); window.scrollTo(0, 0); return true; }
   return false;
@@ -1110,13 +1120,13 @@ function sheet(html, montar, aoFechar) {
   const antes = $('overlay').querySelector('.sheet'), rolagem = antes && chave && chave === SHEET_CHAVE ? antes.scrollTop : 0, SHEET_CHAVE_ANT = SHEET_CHAVE; SHEET_CHAVE = chave;
   SHEET_SAIR = null;
   if (SHEET_FECHA) { const f = SHEET_FECHA; SHEET_FECHA = null; f(); }
-  SHEET_VOLTAR = PROX_VOLTAR; PROX_VOLTAR = null; travarFundo(true);
+  SHEET_VOLTAR = PROX_VOLTAR || (antes ? SHEET_VOLTAR : null); PROX_VOLTAR = null; // janela trocada ou redesenhada (ex.: depois de carregar) continua sabendo para onde voltar travarFundo(true);
   // janela nova sobe suave de baixo (a mesma janela redesenhada não anima); o fundo escurece só se não havia janela aberta
   const anima = !(antes && chave && chave === SHEET_CHAVE_ANT);
   $('overlay').innerHTML = `<div class="sheet-bg${anima && !antes ? ' esc' : ''}" id="sbg"><div class="sheet${anima ? ' sobe' : ''}" role="dialog" aria-modal="true">${html}</div></div>`;
   $('sbg').onclick = e => { if (e.target.id === 'sbg') fecharSheet(); };
   { const sh = $('overlay').querySelector('.sheet.sobe'); if (sh) sh.addEventListener('animationend', () => sh.classList.remove('sobe'), { once: true }); }
-  $('overlay').querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => fecharSheet());
+  $('overlay').querySelectorAll('[data-fechar]').forEach(b => b.onclick = () => SHEET_VOLTAR ? voltarSheet() : fecharSheet());
   SHEET_FECHA = aoFechar || null;
   JANELA_TECLADO(); // janela nova aberta com o teclado ainda na tela
   if (rolagem) $('overlay').querySelector('.sheet').scrollTop = rolagem;
@@ -1849,7 +1859,7 @@ function sheetModelos(tipo0) {
       rasc[tipo] = $('mtxt').value; if (Object.values(rasc).some(t => !t.trim())) return $('merr').textContent = 'Nenhuma mensagem pode ficar vazia.';
       $('mok').disabled = true;
       const salvar = {}; Object.keys(MODELOS_PADRAO).forEach(k => salvar[k] = rasc[k] === MODELOS_PADRAO[k] ? null : rasc[k]);
-      try { await B.set(`escolas/${S.eid}/config/geral`, { modelos: salvar }, { merge: true }); fecharSheet(); aviso('Mensagens salvas'); } catch (e) { $('merr').textContent = msgErro(e); $('mok').disabled = false; }
+      try { await B.set(`escolas/${S.eid}/config/geral`, { modelos: salvar }, { merge: true }); fecharOuVoltar(); aviso('Mensagens salvas'); } catch (e) { $('merr').textContent = msgErro(e); $('mok').disabled = false; }
     };
     ver();
   });
@@ -3252,7 +3262,7 @@ function sheetCategorias() {
       if (L.some(c => c.de && c.ate && c.de > c.ate)) return err('Em alguma categoria, o "de" está depois do "até".');
       const dup = L.find((c, i) => L.some((d, j) => j < i && d.nome.toLowerCase() === c.nome.toLowerCase())); if (dup) return err(`Há duas categorias "${dup.nome}".`);
       $('ctok').disabled = true;
-      try { await B.set(`escolas/${S.eid}/config/geral`, { categorias: L.map(({ id, nome, de, ate }) => ({ id, nome, de: de || null, ate: ate || null })) }, { merge: true }); aviso('✓ Categorias salvas'); fecharSheet(); }
+      try { await B.set(`escolas/${S.eid}/config/geral`, { categorias: L.map(({ id, nome, de, ate }) => ({ id, nome, de: de || null, ate: ate || null })) }, { merge: true }); aviso('✓ Categorias salvas'); fecharOuVoltar(); }
       catch (e) { err(msgErro(e)); $('ctok').disabled = false; } };
   });
 }
@@ -5621,7 +5631,7 @@ async function sheetNotaFiscal(volta) {
         ...(prof ? { itens: Object.fromEntries((E.meus || []).map(m => [m.id, !!($('nfi_' + m.id) || {}).checked])) } : {}) };
       if (cfg.ligado && amb === 'producao' && c.ambiente !== 'producao') { const ok = await new Promise(r => confirmar('Emitir notas valendo?', 'A partir de agora as notas têm valor fiscal e geram imposto. Fez o teste antes?', 'Sim, valendo', () => r(true))); if (!ok) return; }
       $('nfok').disabled = true;
-      try { await nfServidor('salvar', { cfg }); aviso(cfg.ligado ? 'Nota fiscal ligada' : 'Salvo'); if (volta) volta(); else fecharSheet(); }
+      try { await nfServidor('salvar', { cfg }); aviso(cfg.ligado ? 'Nota fiscal ligada' : 'Salvo'); if (volta) volta(); else fecharOuVoltar(); }
       catch (e) { err(msgErro(e)); $('nfok').disabled = false; }
     };
     $('nflista').onclick = () => abrirDe(() => sheetNotaFiscal(volta), () => sheetNotasEmitidas());
@@ -5959,7 +5969,7 @@ function sheetContratoModelo(volta) {
       if (d.multaCancel.ativo && !(d.multaCancel.pct > 0 && d.multaCancel.pct <= 20)) return $('cterr').textContent = 'A multa de cancelamento vai de 1% a 20%.';
       if (d.multaCancel.ativo && !(d.multaCancel.meses >= 1)) return $('cterr').textContent = 'Informe o período mínimo em meses.';
       await B.set(`escolas/${S.eid}/config/contrato`, { ...d, versao: ver, ...extra, atualizadoEm: Date.now(), atualizadoPor: EU.nome || EU.email || '' }, { merge: true }); };
-    $('ctok').onclick = async () => { $('ctok').disabled = true; try { if (await salvar({}) === undefined) { aviso('Contrato salvo'); volta ? volta() : fecharSheet(); } else $('ctok').disabled = false; } catch (e) { $('cterr').textContent = msgErro(e); $('ctok').disabled = false; } };
+    $('ctok').onclick = async () => { $('ctok').disabled = true; try { if (await salvar({}) === undefined) { aviso('Contrato salvo'); volta ? volta() : fecharOuVoltar(); } else $('ctok').disabled = false; } catch (e) { $('cterr').textContent = msgErro(e); $('ctok').disabled = false; } };
     if ($('ctnova')) $('ctnova').onclick = () => confirmar('Pedir nova assinatura?', 'Todas as famílias vão ver "Assinar o contrato" de novo. Os contratos já assinados continuam guardados.', 'Pedir de novo', async () => {
       try { await salvar({ versao: ver + 1, ativo: true }); aviso('Pronto: as famílias vão assinar a nova versão'); setTimeout(() => sheetContratoModelo(volta), 80); } catch (e) { aviso(msgErro(e)); } });
   });
@@ -6465,7 +6475,7 @@ function sheetTiposDoc(volta) {
       const nomes = lim.map(t => t.nome.toLowerCase()); if (new Set(nomes).size !== nomes.length) return $('tderr').textContent = 'Tem dois documentos com o mesmo nome.';
       const final = lim.map(t => ({ id: t.id || ('d' + novoId().slice(0, 8)), nome: t.nome, meses: Number(t.meses) || 0, familia: t.familia !== false }));
       $('tdok').disabled = true;
-      try { await B.set(`escolas/${S.eid}/config/geral`, { tiposDoc: final }, { merge: true }); S.cfg.tiposDoc = final; fecharSheet(); aviso('Documentos salvos'); if (volta) setTimeout(volta, 60); }
+      try { await B.set(`escolas/${S.eid}/config/geral`, { tiposDoc: final }, { merge: true }); S.cfg.tiposDoc = final; fecharOuVoltar(); aviso('Documentos salvos'); if (volta) setTimeout(volta, 60); }
       catch (e) { $('tderr').textContent = msgErro(e); $('tdok').disabled = false; }
     };
   });
@@ -6867,7 +6877,7 @@ function sheetFormasEscola() {
     $('fok2').onclick = async () => { const l = ler();
       if ([l.taxas.pix, l.taxas.boleto, l.taxas.cartao].some(v => !(v >= 0) || v > 30)) return $('ferr2').textContent = 'Confira as taxas: use números como 4,98.';
       $('fok2').disabled = true;
-      try { await B.set(`escolas/${S.eid}/config/geral`, l, { merge: true }); fecharSheet(); aviso('Formas de pagamento salvas'); } catch (e) { $('ferr2').textContent = msgErro(e); $('fok2').disabled = false; } };
+      try { await B.set(`escolas/${S.eid}/config/geral`, l, { merge: true }); fecharOuVoltar(); aviso('Formas de pagamento salvas'); } catch (e) { $('ferr2').textContent = msgErro(e); $('fok2').disabled = false; } };
   });
 }
 
@@ -7119,9 +7129,10 @@ function telaPlanoParado(v) {
 }
 function sheetPlano() {
   if (LOJA()) return sheetPlanoLoja();
+  const volta = PROX_VOLTAR || SHEET_VOLTAR; // a janela é desenhada de novo depois de carregar: continua voltando para os Ajustes
   let R = null, ciclo = (S.plano && S.plano.ciclo) || 'mensal', pixAberto = false, parar = null, escolha = null;
   const corpo = h => `<h3>Plano da escola</h3>${h}<button class="btn ghost" data-fechar style="width:100%;margin-top:8px">Fechar</button>`;
-  const carregar = async () => { try { R = await chamarPlano({ acao: 'estado' }); ciclo = R.plano.ciclo || ciclo; desenhar(); } catch (e) { sheet(corpo(`<div class="empty"><b>Não deu para abrir o plano.</b><span>${esc(msgErro(e))}</span></div>`)); } };
+  const carregar = async () => { try { R = await chamarPlano({ acao: 'estado' }); ciclo = R.plano.ciclo || ciclo; desenhar(); } catch (e) { (PROX_VOLTAR = volta, sheet)(corpo(`<div class="empty"><b>Não deu para abrir o plano.</b><span>${esc(msgErro(e))}</span></div>`)); } };
   const desenhar = () => {
     const p = R.plano, s = R.situacao, pr = ciclo === 'anual' ? R.anual : R.mensal, pl = pr.plano, lim = pl.ate || Math.max(R.alunos, 1), pct = Math.min(100, Math.round(R.alunos / lim * 100));
     const d = pr.desconto, faixa = s.fase === 'teste' ? `<div class="banner ok"><span><b>Teste grátis</b> · ${s.restam ? `faltam ${s.restam} dia${s.restam > 1 ? 's' : ''} (até ${dataBRA(s.venc)})` : 'termina hoje'}. Tudo liberado.</span></div>`
@@ -7130,7 +7141,7 @@ function sheetPlano() {
       : s.fase === 'aviso' ? `<div class="banner"><span><b>Venceu em ${dataBRA(s.venc)}.</b> Pague até ${dataBRA(C.maisDias(s.venc, 5))} para não ficar só para leitura.</span></div>`
       : ['leitura', 'suspensa'].includes(s.fase) ? `<div class="banner alerta"><span><b>${s.fase === 'leitura' ? 'Só leitura' : 'Suspensa'}</b> · atrasado desde ${dataBRA(s.venc)}. Pague para liberar na hora.</span></div>` : '';
     const precoTxt = v => brl(v).replace(',00', ''), menor = C.PLANOS.find(x => C.cabePlano(x, R.alunos));
-    sheet(corpo(`${faixa}
+    (PROX_VOLTAR = volta, sheet)(corpo(`${faixa}
       ${!p.doc ? `<div class="field"><label for="pldoc">CPF ou CNPJ de quem responde pela escola</label><div class="pl-docrow"><input id="pldoc" inputmode="numeric" placeholder="Só números"><button type="button" class="btn ghost" id="pldocok">Salvar</button></div><span class="s">O teste grátis de 30 dias fica ligado a este número: é um por CPF ou CNPJ. Depois de salvo, o número não muda, e outra escola com o mesmo CPF ou CNPJ não ganha um teste novo.</span></div>` : ''}
       <div class="pl-uso"><div class="pl-uso-t"><span>Alunos ativos</span><b class="num">${R.alunos}${pl.ate ? ' de ' + pl.ate : ''}</b></div><div class="pl-barra"><i style="width:${pct}%"></i></div><span class="s">Plano <b>${esc(pl.nome)}</b>, escolhido pela escola.${pl.ate && R.alunos >= Math.ceil(pl.ate * 0.9) ? ` <b style="color:var(--out)">${R.alunos >= pl.ate ? 'Cheio' : 'Quase cheio'}: para cadastrar mais de ${pl.ate} alunos, mude para o ${esc(proxPlano(pl).nome)}.</b>` : ''}</span></div>
       ${menor && menor.id !== pl.id ? `<div class="banner ok pl-lembra"><span>Você tem ${R.alunos} aluno${R.alunos === 1 ? '' : 's'}: o <b>${esc(menor.nome)}</b> atende e custa ${precoTxt(C.r2(pl.mes - menor.mes))} a menos por mês.</span><button type="button" data-pl="${menor.id}">Ver</button></div>` : ''}
@@ -7181,7 +7192,7 @@ function sheetPlano() {
       };
     }, () => { if (parar) parar(); parar = null; });
   };
-  sheet(corpo('<div class="empty">Carregando…</div>'));
+  (PROX_VOLTAR = volta, sheet)(corpo('<div class="empty">Carregando…</div>'));
   carregar();
 }
 // app da loja: só a situação do plano e o uso (sem preço, pagamento ou troca de plano)
@@ -7605,7 +7616,7 @@ function sheetAparencia() {
     $('ylogox').addEventListener('click', () => { marca = { logo: null, logoPdf: null }; ver(); });
     $('yok').addEventListener('click', async () => {
       $('yok').disabled = true;
-      try { await B.set(`escolas/${S.eid}/config/geral`, { cor, logo: marca.logo, logoPdf: marca.logoPdf }, { merge: true }); PREVIA_MARCA = false; MARCA_ATUAL = ''; fecharSheet(); aviso('Cor e logo salvas'); }
+      try { await B.set(`escolas/${S.eid}/config/geral`, { cor, logo: marca.logo, logoPdf: marca.logoPdf }, { merge: true }); PREVIA_MARCA = false; MARCA_ATUAL = ''; fecharOuVoltar(); aviso('Cor e logo salvas'); }
       catch (e) { $('yerr').textContent = msgErro(e); $('yok').disabled = false; }
     });
     ver();
