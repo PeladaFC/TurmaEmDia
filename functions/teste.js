@@ -793,6 +793,7 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
       r = resp(); await AS.plano(req({ acao: 'donoDesconto', eid: 'e5', pct: 50, motivo: 'parceria' }, dono), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
       assert.strictEqual(prer.auto_recurring.transaction_amount, 19.5);
       const e5 = () => r.body.escolas.find(x => x.eid === 'e5'); assert.strictEqual(e5().valor, 19.5);
+      assert.ok('dono' in e5(), 'o painel traz quem criou a escola');
       r = resp(); await AS.plano(req({ acao: 'donoDesconto', eid: 'e5', valor: '25', ate: '2027-03-01' }, dono), r); assert.strictEqual(e5().valor, 25);
       r = resp(); await AS.plano(req({ acao: 'donoCortesia', eid: 'e5', meses: 3, motivo: 'indicação' }, dono), r);
       assert.strictEqual(e5().cortesiaAte, '2027-03-14'); assert.strictEqual(e5().fase, 'cortesia'); assert.strictEqual(prer.status, 'paused');

@@ -120,7 +120,10 @@ module.exports = (db, P) => {
       if (e.data().encerradaEm) continue; // escola encerrada: não cobra mais o plano
       const x = e.data(), [cfg, p] = await Promise.all([ler(`escolas/${e.id}/config/geral`), ler(`escolas/${e.id}/config/plano`)]);
       const n = await alunosAtivos(e.id), sit = C.situacaoPlano(p, hoje), pr = C.precoPlano(n, (p || {}).ciclo, p, hoje);
-      out.push({ eid: e.id, nome: x.nome || 'Escola', cidade: (cfg || {}).cidade || '', uf: (cfg || {}).uf || '', criadaEm: x.criadaEm || null, alunos: n, pix: !!(cfg || {}).mpConectadoEm,
+      // quem criou a escola (escolas/{eid}.dono): nome e e-mail guardados na criação; o WhatsApp vem do cadastro da pessoa, se tiver
+      const di = (x.adminsInfo || {})[x.dono] || {}, pf = x.dono ? (((await ler(`users/${x.dono}`)) || {}).perfil || {}) : {};
+      const dono = x.dono ? { nome: di.nome || pf.nome || '', email: di.email || pf.email || '', telefone: pf.telefone || '' } : null;
+      out.push({ eid: e.id, nome: x.nome || 'Escola', cidade: (cfg || {}).cidade || '', uf: (cfg || {}).uf || '', criadaEm: x.criadaEm || null, alunos: n, pix: !!(cfg || {}).mpConectadoEm, dono,
         fase: sit.fase, venc: sit.venc || null, atraso: sit.atraso || 0, forma: (p || {}).forma || null, ciclo: (p || {}).ciclo || 'mensal', plano: pr.plano.nome, cheio: pr.cheio, valor: pr.valor,
         desconto: (p || {}).desconto || null, cortesiaAte: (p || {}).cortesiaAte || null, cortesiaMotivo: (p || {}).cortesiaMotivo || '', historico: ((p || {}).historico || []).slice(-6) });
     }

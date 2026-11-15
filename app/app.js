@@ -718,10 +718,11 @@ function telaProfEnviado() {
 // criar escola em 4 passos, como fases de um jogo: nome · vencimento · primeira turma · lista de primeiros passos
 let WZ = null;
 const UF_NOMES = { AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará', DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso', MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará', PB: 'Paraíba', PR: 'Paraná', PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins' };
-// cidades do estado (lista oficial do IBGE); guarda no aparelho. Sem internet: aceita o que for digitado
+// cidades do estado (lista oficial do IBGE, no br.js do app); a cidade só vale se estiver na lista
 const CIDADES = {};
 async function cidadesDoEstado(uf) {
   if (CIDADES[uf]) return CIDADES[uf];
+  try { const l = ((await carregarBR())[uf] || {}).c; if (l && l.length) return CIDADES[uf] = l; } catch (e) { }
   try { const g = JSON.parse(localStorage.getItem('escolinha.cid.' + uf) || 'null'); if (g && g.length) return CIDADES[uf] = g; } catch (e) { }
   try { const r = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`); if (!r.ok) return null;
     const l = (await r.json()).map(m => m.nome).sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -753,13 +754,14 @@ function telaCriarEscola(passo) {
     $('wcid').addEventListener('focus', () => { if (!$('wuf').value) $('werr').textContent = 'Escolha também o estado, ao lado.'; });
     if (WZ.uf) carregar();
     $('wok').onclick = () => {
-      const cid = cidades ? acharCidade(cidades, $('wcid').value) : $('wcid').value.trim();
+      const cid = cidades ? acharCidade(cidades, $('wcid').value) : '';
       Object.assign(WZ, { nome: $('wnome').value.trim(), cidade: cid || $('wcid').value.trim(), uf: $('wuf').value, termos: $('wtermos').checked });
       const err = m => $('werr').textContent = m;
       if (!WZ.nome) return err('Digite o nome da escola.');
       if (!WZ.uf) return err('Escolha o estado da escola.');
       if (!WZ.cidade) return err('Digite a cidade da escola.');
-      if (cidades && !cid) return err(`Não achamos "${$('wcid').value.trim()}" em ${UF_NOMES[WZ.uf]}. Escolha a cidade na lista.`);
+      if (!cidades) return err('Não deu para carregar a lista de cidades. Confira a internet e escolha o estado de novo.');
+      if (!cid) return err(`Não achamos "${$('wcid').value.trim()}" em ${UF_NOMES[WZ.uf]}. Escolha a cidade na lista.`);
       if (!WZ.termos) return err('Para criar a escola, aceite os Termos de uso e a Política de privacidade.');
       telaCriarEscola(2);
     };
@@ -973,18 +975,19 @@ function ligarPrimeirosPassos(v) {
 function sheetCriarEscola() {
   sheet(`<h3>Criar escola</h3>
     <div class="field"><label for="cnome">Nome da escola</label><input id="cnome" maxlength="60" placeholder="Ex.: Escolinha Movimento"></div>
-    <div class="two"><div class="field"><label for="ccid">Cidade</label><input id="ccid" maxlength="60" placeholder="Ex.: Recife" autocomplete="address-level2"></div>
-    <div class="field"><label for="cuf">Estado</label><select id="cuf"><option value="">Escolha</option>${UFS.map(u => `<option>${u}</option>`).join('')}</select></div></div>
+    <div class="two"><div class="field"><label for="cuf">Estado</label><select id="cuf"><option value="">Escolha</option>${UFS.map(u => `<option>${u}</option>`).join('')}</select></div>
+    <div class="field"><label for="ccid">Cidade</label><select id="ccid" disabled><option value="">Escolha o estado</option></select></div></div>
     <div class="two"><div class="field"><label for="cvenc">Vencimento (dia do mês)</label><input id="cvenc" type="number" min="1" max="28" value="10"></div>
     <div class="field"><label for="cloc">Local (opcional)</label><input id="cloc" maxlength="60" placeholder="Ex.: Unidade Centro"></div></div>
     <div class="note">Depois você cadastra as turmas, os grupos e os alunos.</div>
     <label class="check aceite"><input type="checkbox" id="ctermos"><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>. A escola é responsável pelos dados que cadastrar.</span></label>
     <div class="err" id="cerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="cok">Criar</button></div>`, () => {
+    ligarEstadoCidade('cuf', 'ccid', '');
     $('cok').onclick = async () => {
       const nome = $('cnome').value.trim(), venc = Number($('cvenc').value), loc = $('cloc').value.trim();
       if (!nome) return $('cerr').textContent = 'Digite o nome da escola.';
-      const cidade = $('ccid').value.trim(), uf = $('cuf').value; if (!cidade || !uf) return $('cerr').textContent = 'Diga a cidade e o estado da escola.';
+      const cidade = $('ccid').value.trim(), uf = $('cuf').value; if (!cidade || !uf) return $('cerr').textContent = 'Escolha o estado e a cidade da escola.';
       if (!(venc >= 1 && venc <= 28)) return $('cerr').textContent = 'O vencimento vai do dia 1 ao 28.';
       if (!$('ctermos').checked) return $('cerr').textContent = 'Para criar a escola, aceite os Termos de uso e a Política de privacidade.';
       $('cok').disabled = true;
@@ -7350,16 +7353,17 @@ async function sheetEscolasDono(recarregar) {
     catch (e) { sheet(casca(`<div class="empty"><b>Não deu para carregar.</b><span>${esc(msgErro(e))}</span></div>`), () => ligarAbasDono()); return; }
   }
   const lista = () => { const q = DONO_F.q.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-    return DONO_ESC.filter(e => (!q || `${e.nome} ${e.cidade} ${e.uf}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(q))
+    return DONO_ESC.filter(e => (!q || `${e.nome} ${e.cidade} ${e.uf} ${(e.dono || {}).nome || ''} ${(e.dono || {}).email || ''}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(q))
       && (DONO_F.sit === 'todas' || (DONO_F.sit === 'atraso' ? ['aviso', 'leitura', 'suspensa'].includes(e.fase) : DONO_F.sit === 'beneficio' ? !!(e.desconto || e.cortesiaAte) : e.fase === DONO_F.sit))); };
   const cartao = e => { const [ft, cls] = FASE_TXT[e.fase] || ['', ''], d = e.desconto;
     return `<li class="nf-card dono-esc"><div class="grow"><div class="nf-lin"><b>${esc(e.nome)}</b><span class="chip ${cls}">${ft}</span></div>
       <span class="s">${esc([e.cidade, e.uf].filter(Boolean).join(' · ') || 'Sem cidade')} · ${e.alunos} aluno${e.alunos === 1 ? '' : 's'} · ${e.pix ? 'Pix ligado' : 'sem Pix'}</span>
+      <span class="s dono-quem">👤 Criada por ${e.dono && (e.dono.nome || e.dono.email) ? `<b>${esc(e.dono.nome || e.dono.email)}</b>${e.dono.nome && e.dono.email ? ' · ' + esc(e.dono.email) : ''}${e.dono.telefone ? ` · <span style="white-space:nowrap">${esc(e.dono.telefone)}</span>` : ''}` : 'quem criou não está registrado'}</span>
       <span class="s">Plano ${esc(e.plano)} ${e.ciclo === 'anual' ? 'anual' : 'mensal'}: ${d ? `<s>${brl(e.cheio)}</s> <b>${brl(e.valor)}</b>` : `<b>${brl(e.valor)}</b>`}${e.forma === 'cartao' ? ' · no cartão' : ''}${e.venc ? ` · vence ${dataBRA(e.venc)}` : ''}</span>
       ${e.cortesiaAte ? `<span class="s dono-ben">🎁 Grátis até ${dataBRA(e.cortesiaAte)}${e.cortesiaMotivo ? ' · ' + esc(e.cortesiaMotivo) : ''}</span>` : ''}
       ${d ? `<span class="s dono-ben">🏷️ Desconto ${d.valor != null ? brl(d.valor) + ' por mês' : d.pct + '%'}${d.ate ? ' até ' + dataBRA(d.ate) : ', sem prazo'}${d.motivo ? ' · ' + esc(d.motivo) : ''}</span>` : ''}
       <div class="actions dono-acoes"><button type="button" class="btn ghost btn-mini" data-dcort="${esc(e.eid)}">Meses grátis</button><button type="button" class="btn ghost btn-mini" data-ddesc="${esc(e.eid)}">Desconto</button></div></div></li>`; };
-  sheet(casca(`<div class="field" style="margin:8px 0"><input type="search" id="dqe" value="${esc(DONO_F.q)}" placeholder="Nome ou cidade da escola" aria-label="Procurar escola"></div>
+  sheet(casca(`<div class="field" style="margin:8px 0"><input type="search" id="dqe" value="${esc(DONO_F.q)}" placeholder="Escola, cidade ou quem criou" aria-label="Procurar escola"></div>
     <div class="seg" style="margin-bottom:10px;flex-wrap:wrap">${[['todas', 'Todas'], ['teste', 'Teste'], ['ativo', 'Em dia'], ['atraso', 'Atrasadas'], ['beneficio', 'Com benefício']].map(([v, t]) => `<button type="button" data-dsit="${v}" aria-pressed="${DONO_F.sit === v}">${t}</button>`).join('')}</div>
     <div class="sub" id="dqn" style="margin-bottom:8px"></div><ul class="list" id="dql"></ul>`), sh => {
     ligarAbasDono(); $('dcods').onclick = () => sheetCodigosDono();
@@ -7468,7 +7472,7 @@ async function mockCodigos(b) {
 }
 async function mockDono(b) {
   const h = hoje(), base = [['e1', 'Escolinha Movimento', 'Recife', 'PE', 64, { testeAte: C.maisDias(h, 23) }], ['e2', 'Ballet Arte', 'Olinda', 'PE', 28, { testeAte: '2026-08-01', pagoAte: C.maisDias(h, 12), forma: 'cartao' }], ['e3', 'Escola de Futebol Craques do Amanhã', 'Recife', 'PE', 132, { testeAte: '2026-09-01', pagoAte: C.maisDias(h, -9) }], ['e4', 'Judô Kids', 'Caruaru', 'PE', 18, { testeAte: '2026-06-01', pagoAte: C.maisDias(h, -40) }]];
-  for (const [eid, nome, cidade, uf, alunos, p] of base) if (!MOCK_DONO[eid]) MOCK_DONO[eid] = { eid, nome, cidade, uf, alunos, pix: eid !== 'e4', ciclo: 'mensal', ...p };
+  for (const [eid, nome, cidade, uf, alunos, p] of base) if (!MOCK_DONO[eid]) MOCK_DONO[eid] = { eid, nome, cidade, uf, alunos, pix: eid !== 'e4', ciclo: 'mensal', dono: eid === 'e4' ? null : { nome: 'Ana Souza', email: 'ana@exemplo.com', telefone: '(81) 99999-0000' }, ...p };
   const x = MOCK_DONO[b.eid];
   if (b.acao === 'donoCortesia') { const bs = [h, x.testeAte || '', x.pagoAte || '', x.cortesiaAte || ''].sort().pop(); x.cortesiaAte = C.maisMeses(bs, b.meses); x.cortesiaMotivo = b.motivo || ''; }
   if (b.acao === 'donoTirarCortesia') { x.cortesiaAte = null; x.cortesiaMotivo = ''; }

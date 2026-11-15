@@ -40,6 +40,8 @@ Leia isto antes de mexer em qualquer coisa. Atualizado em 15/11/2026.
 - **Painel do dono:** botão "Painel" no canto de cima de todas as telas, para o e-mail do dono, assim que entra. Precisa do e-mail confirmado (o app explica e tem "Já confirmei").
 - **Ajustes:** cada item abre por cima e Voltar/Fechar/Salvar voltam aos Ajustes no mesmo ponto. "Plano do app" em destaque.
 - **E-mails com a cara do app** (`functions/emails.js`): confirmar e-mail (professor, convite de administração, Painel do dono) e trocar senha, com logo do app, logo e cor da escola e um botão. Enviados pelo Resend; **sem a chave configurada, o app usa o e-mail padrão do Firebase**.
+- **Cidade da escola:** ao criar a escola (assistente e janela "Criar escola"), a cidade só vale se for escolhida na lista oficial (br.js); não aceita cidade digitada errada.
+- **Painel do dono → Escolas:** cada escola mostra quem a criou (nome, e-mail e WhatsApp do cadastro); a busca também acha pelo nome ou e-mail de quem criou.
 - **Termos e Privacidade:** versão 2, sem trechos a preencher; contato pelotafc.app@gmail.com; foro Recife/PE; a taxa de 1% citada sem destaque (ele pediu discrição).
 
 ## Pendências e decisões
