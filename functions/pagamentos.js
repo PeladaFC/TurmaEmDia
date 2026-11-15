@@ -32,10 +32,10 @@ function agoraRecife() { return new Date(Date.now() - 3 * 3600e3); }
 const hojeRecife = () => agoraRecife().toISOString().slice(0, 10);
 function isoRecife(ms) { const d = new Date(ms - 3 * 3600e3); return d.toISOString().slice(0, 19) + '.000-03:00'; }
 const idOk = x => typeof x === 'string' && /^[A-Za-z0-9_-]{1,60}$/.test(x);
-// só volta para o próprio app (GitHub Pages, domínio próprio cadastrado, ou teste local)
+// só volta para o próprio app (domínio próprio, endereços do Firebase Hosting do projeto, GitHub Pages enquanto existir, ou teste local)
 function voltaOk(u, extras) {
   try { const x = new URL(u); if (x.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(x.hostname)) return true;
-    if (x.protocol !== 'https:') return false; if (/\.github\.io$/.test(x.hostname) || ['turmaemdia.com.br', 'www.turmaemdia.com.br'].includes(x.hostname)) return true;
+    if (x.protocol !== 'https:') return false; if (/\.github\.io$/.test(x.hostname) || ['turmaemdia.com.br', 'www.turmaemdia.com.br', 'turma-em-dia-57c1e.web.app', 'turma-em-dia-57c1e.firebaseapp.com'].includes(x.hostname)) return true;
     return (extras || []).some(h => x.hostname === h); } catch (e) { return false; }
 }
 

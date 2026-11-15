@@ -1,0 +1,86 @@
+# Turma em Dia · publica no Firebase sozinho quando a branch main muda (quando o Felipe diz "Publique").
+# - Site e app (Firebase Hosting): sempre.
+# - Servidor (functions/) e regras do banco (firestore.rules): só quando mudaram.
+# - Dá para rodar à mão em GitHub → Actions → "Publicar no Firebase" → Run workflow (publica tudo).
+# Entra no Google sem senha guardada: a federação de identidade só aceita este repositório (configurar-publicacao.sh).
+name: Publicar no Firebase
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tudo:
+        description: "Publicar também o servidor e as regras, mesmo sem mudança"
+        type: boolean
+        default: true
+
+concurrency:
+  group: publicar
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJ: turma-em-dia-57c1e
+  FB: npx --yes firebase-tools@latest
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: O que mudou
+        id: mudou
+        run: |
+          ANTES="${{ github.event.before }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.tudo }}" = "true" ]; then SERV=sim
+          elif [ -z "$ANTES" ] || [ "$ANTES" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$ANTES" 2>/dev/null; then SERV=sim
+          elif git diff --name-only "$ANTES" "${{ github.sha }}" | grep -qE '^(functions/|firestore\.rules$|firebase\.json$)'; then SERV=sim
+          else SERV=nao; fi
+          echo "servidor=$SERV" >> "$GITHUB_OUTPUT"
+          echo "Servidor e regras: $SERV"
+
+      - name: Testes do servidor
+        run: node functions/teste.js
+
+      - name: Entrar no Google (sem senha guardada)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/396673680193/locations/global/workloadIdentityPools/github/providers/github
+          service_account: github-publicar@turma-em-dia-57c1e.iam.gserviceaccount.com
+
+      - name: Publicar o site e o app
+        run: $FB deploy --only hosting --project "$PROJ" --non-interactive
+
+      - name: Instalar o que o servidor usa
+        if: steps.mudou.outputs.servidor == 'sim'
+        run: cd functions && npm install --omit=dev --no-audit --no-fund --loglevel=error
+
+      - name: Publicar o servidor e as regras
+        if: steps.mudou.outputs.servidor == 'sim'
+        run: |
+          if $FB deploy --only functions,firestore:rules --project "$PROJ" --force --non-interactive; then exit 0; fi
+          echo "O Google recusou alguma parte. Publicando uma função por vez..."
+          sleep 30
+          FALHAS=""
+          $FB deploy --only firestore:rules --project "$PROJ" --force --non-interactive || FALHAS="regras"
+          for f in $(cd functions && node -e "console.log(Object.keys(require('./index.js')).join(' '))"); do
+            echo "· $f"
+            $FB deploy --only "functions:$f" --project "$PROJ" --force --non-interactive || { sleep 20; $FB deploy --only "functions:$f" --project "$PROJ" --force --non-interactive || FALHAS="$FALHAS $f"; }
+          done
+          if [ -n "$FALHAS" ]; then echo "::error::Não foi possível publicar:$FALHAS"; exit 1; fi
+
+      - name: Limpar cópias antigas do servidor (evita custo de armazenamento)
+        if: steps.mudou.outputs.servidor == 'sim'
+        run: $FB functions:artifacts:setpolicy --project "$PROJ" --location southamerica-east1 --days 1 --force || true
