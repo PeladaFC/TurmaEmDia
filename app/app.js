@@ -46,11 +46,11 @@ async function backendReal() {
     set: (p, d, o) => F.setDoc(ref(p), d, o && o.merge ? { merge: true } : {}).catch(erro),
     tirar: (p, campo) => F.updateDoc(ref(p), { [campo]: F.deleteField() }).catch(erro),
     del: p => F.deleteDoc(ref(p)).catch(erro),
-    ouvirDoc: (p, cb, err) => F.onSnapshot(ref(p), s => cb(s.exists() ? s.data() : null), e => err && err(e)),
+    ouvirDoc: (p, cb, err) => F.onSnapshot(ref(p), s => cb(s.exists() ? s.data() : null), e => { ondeErro(e, p); if (err) err(e); else console.warn(e); }),
     ultimos: async (p, campo, n) => (await F.getDocs(F.query(F.collection(fs, p), F.orderBy(campo, 'desc'), F.limit(n))).catch(erro)).docs.map(d => ({ id: d.id, data: d.data() })),
     meus: async (p, campo, v) => (await F.getDocs(F.query(F.collection(fs, p), F.where(campo, '==', v))).catch(erro)).docs.map(d => d.id),
     onde: async (p, campo, op, v) => (await F.getDocs(F.query(F.collection(fs, p), F.where(campo, op, v))).catch(erro)).docs.map(d => ({ id: d.id, data: d.data() })),
-    ouvirCol: (p, cb, err, onde) => F.onSnapshot(onde ? F.query(F.collection(fs, p), F.where(onde[0], '==', onde[1])) : F.collection(fs, p), s => cb(lista(s)), e => err && err(e)),
+    ouvirCol: (p, cb, err, onde) => F.onSnapshot(onde ? F.query(F.collection(fs, p), F.where(onde[0], '==', onde[1])) : F.collection(fs, p), s => cb(lista(s)), e => { ondeErro(e, p + (onde ? ` (${onde[0]})` : '')); if (err) err(e); else console.warn(e); }),
     lote: async ops => { const b = F.writeBatch(fs); for (const o of ops) { if (o.op === 'del') b.delete(ref(o.p)); else b.set(ref(o.p), o.d, o.op === 'merge' ? { merge: true } : {}); } await b.commit().catch(erro); }
   };
 }
@@ -129,7 +129,8 @@ const msgErro = e => { try { if (e && ((e.code && !ERROS_ESPERADOS.has(e.code)) 
    O mesmo erro da mesma pessoa vai no máximo uma vez a cada 10 minutos: no aparelho e no banco (o id do documento inclui
    o intervalo de 10 minutos e as regras só deixam criar, nunca sobrescrever). No máximo 30 registros por abertura do app.
    Some sozinho depois de 90 dias (expiraEm, com a rotina diária do servidor). */
-const VERSAO_APP = '2026.10.28';
+// versão = o número que o index.html coloca no endereço do app.js (?v=...), trocado a cada publicação
+const VERSAO_APP = (() => { try { return new URL(import.meta.url).searchParams.get('v') || 'sem-versao'; } catch (x) { return 'sem-versao'; } })();
 const DEZ_MIN = 10 * 60 * 1000;
 const ERR_IGNORA = /ResizeObserver loop|^Script error\.?$|Load failed|Failed to fetch|NetworkError|AbortError|operation was aborted|Sem conexão com o servidor/i;
 let TELA_SHEET = '', ULTIMA_ACAO = '', ERROS_FILA = [], ERR_N = 0, ERR_ENVIANDO = false; const ERR_MEM = {};
@@ -147,6 +148,8 @@ document.addEventListener('click', e => {
     ULTIMA_ACAO = (el.id ? '#' + el.id : dat ? `[data-${dat.replace(/[A-Z]/g, m => '-' + m.toLowerCase())}]` : el.tagName.toLowerCase() + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/)[0] : '')).slice(0, 80);
   } catch (x) { }
 }, true);
+// erro de "ouvir" o banco (ex.: permissão negada): acrescenta ao texto qual caminho foi recusado, para o registro dizer onde foi
+function ondeErro(e, caminho) { try { if (e && !e._onde) { e._onde = 1; e.message = `${e.message || ''} (ao ouvir ${caminho})`; } } catch (x) { } }
 function registrarErro(err, origem) {
   try {
     if (!err || ERR_ENVIANDO) return;
