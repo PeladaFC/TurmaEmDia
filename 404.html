@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Página não encontrada · Turma em Dia</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#3A2B1C">
+<link rel="icon" type="image/png" href="/app/icon-192.png">
+<link rel="apple-touch-icon" href="/app/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,800;1,900&family=Barlow:wght@400;600&family=Bricolage+Grotesque:opsz,wght@12..96,800&display=swap">
+<!-- Página que o Firebase mostra quando o endereço não existe (link errado ou antigo). Caminhos sempre a partir da raiz (/). -->
+<style>
+:root{--cacau:#3A2B1C;--areia:#E9D9C2;--marrom:#8B6B47;--verde:#34C759;
+  --f-titulo:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;--f-texto:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;--f-marca:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--cacau);color:#fff;font-family:var(--f-texto);font-size:20px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  display:flex;align-items:center;justify-content:center;padding:32px 24px}
+main{max-width:560px;width:100%}
+.marca{display:inline-flex;align-items:center;gap:12px;text-decoration:none;color:#fff;font-family:var(--f-marca);font-weight:800;font-size:1.5rem;letter-spacing:-.01em}
+.marca svg{width:48px;height:48px;flex:none}
+h1{font-family:var(--f-titulo);font-style:italic;font-weight:900;text-transform:uppercase;line-height:.95;letter-spacing:-.01em;font-size:clamp(2.6rem,11vw,4.6rem);margin:44px 0 18px}
+h1 span{color:var(--areia);display:block}
+p{margin:0 0 34px;color:rgba(255,255,255,.82);font-size:1.15rem}
+.botoes{display:flex;flex-wrap:wrap;gap:14px}
+.bt{display:inline-flex;align-items:center;justify-content:center;min-height:58px;padding:0 34px;text-decoration:none;
+  font-family:var(--f-titulo);font-style:italic;font-weight:800;text-transform:uppercase;letter-spacing:.04em;font-size:1.3rem;
+  clip-path:polygon(14px 0,100% 0,calc(100% - 14px) 100%,0 100%);transition:transform .15s ease,filter .15s ease}
+.bt:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.bt-claro{background:var(--areia);color:var(--cacau)}
+.bt-marrom{background:var(--marrom);color:#fff}
+:focus-visible{outline:3px solid var(--verde);outline-offset:3px}
+@media (max-width:420px){.bt{flex:1 1 100%}}
+</style>
+</head>
+<body>
+<main>
+  <a class="marca" href="/" aria-label="Turma em Dia, início">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="4" y="9" width="56" height="51" rx="15" fill="#8B6B47"/><rect x="17" y="3" width="7" height="14" rx="3.5" fill="#8B6B47" stroke="#3A2B1C" stroke-width="3"/><rect x="40" y="3" width="7" height="14" rx="3.5" fill="#8B6B47" stroke="#3A2B1C" stroke-width="3"/><path d="M19 36.5l9 9 17-18" fill="none" stroke="#34C759" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Turma em Dia
+  </a>
+  <h1>Página não <span>encontrada.</span></h1>
+  <p>O endereço pode estar digitado errado ou o link é antigo. Escolha para onde quer ir:</p>
+  <div class="botoes">
+    <a class="bt bt-claro" href="/">Ir para o site</a>
+    <a class="bt bt-marrom" href="/app/">Abrir o app</a>
+  </div>
+</main>
+</body>
+</html>
