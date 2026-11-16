@@ -25,7 +25,8 @@
       "*.sh",
       "*.md",
       "CNAME",
-      "firestore.rules"
+      "firestore.rules",
+      "testes/**"
     ],
     "headers": [
       {

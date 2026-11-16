@@ -24,6 +24,7 @@ Leia isto antes de mexer em qualquer coisa. Atualizado em 15/11/2026.
 - Firebase: projeto `turma-em-dia-57c1e`, região `southamerica-east1`. Login com e-mail/senha e Google.
 - Servidor: `functions/` (ver tabela no `README.md`). Regras do banco: `firestore.rules`.
 - Testes: `node functions/teste.js` (precisa passar antes de salvar). Prévia sem Firebase: `app/index.html?mock=1` num servidor local; `window.__mock.trocar('admin@teste.com' | 'professor@teste.com' | 'familia@teste.com')`.
+- **Varredura de erros** (16/11): `testes/` (não vai para o site). `bash testes/preparar.sh`, depois `(cd /tmp/tt && python3 -m http.server 8766 &)` e `python3 /tmp/tt/varrer.py tudo`: abre o modo de teste com as regras de leitura do banco imitadas (`testes/regras-mock.js`) e percorre as abas, fichas, botões e Ajustes como administração, professor, responsável e uma conta com os três papéis em escolas diferentes, trocando entre elas. Leituras negadas de `convitesProf`, `convitesAdm`, `professoras` (família/professor) e `segredos` são só do modo de teste (no app de verdade passam pelo servidor). Se mudar as regras do banco, atualizar o `regras-mock.js`.
 - Ao mudar o app, trocar o número de versão `v=2026…` em `app/index.html` (força o celular a baixar a versão nova).
 
 ## O que já está pronto (resumo)
@@ -42,6 +43,7 @@ Leia isto antes de mexer em qualquer coisa. Atualizado em 15/11/2026.
 - **E-mails com a cara do app** (`functions/emails.js`): confirmar e-mail (professor, convite de administração, Painel do dono) e trocar senha, com logo do app, logo e cor da escola e um botão. Enviados pelo Resend; **sem a chave configurada, o app usa o e-mail padrão do Firebase**.
 - **Cidade da escola:** ao criar a escola (assistente e janela "Criar escola"), a cidade só vale se for escolhida na lista oficial (br.js); não aceita cidade digitada errada.
 - **Painel do dono → Escolas:** cada escola mostra quem a criou (nome, e-mail e WhatsApp do cadastro); a busca também acha pelo nome ou e-mail de quem criou.
+- **Ligação com o banco que se refaz sozinha** (16/11): se o banco cortar as ligações da escola aberta com "sem permissão" (iPhone com o app instalado voltando do segundo plano), o app renova o login, confere o acesso e religa tudo sem fechar a tela (`ouvirEscola`/`reouvir` em `app/app.js`); se a pessoa perdeu o acesso de verdade, avisa e volta para Minhas escolas. O registro de erros agora diz qual caminho foi recusado ("ao ouvir …") e a versão real do app.
 - **Termos e Privacidade:** versão 2, sem trechos a preencher; contato pelotafc.app@gmail.com; foro Recife/PE; a taxa de 1% citada sem destaque (ele pediu discrição).
 
 ## Pendências e decisões

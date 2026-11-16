@@ -1253,26 +1253,14 @@ function erroPerto(alvo, msg) {
   else alvo.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 /* ================= Abrir uma escola ================= */
-async function abrirEscola(eid, tab) {
-  pararOuvintes(); fecharSheet();
-  RAIZ().innerHTML = `<div class="wrap" style="padding-top:40px"><div class="empty">Abrindo a escola…</div></div>`;
-  let escola;
-  try { escola = await B.get('escolas/' + eid); } catch (e) { escola = null; }
-  if (!escola) { aviso('Você não tem mais acesso a essa escola.'); delete MINHAS[eid]; return telaInicio(); }
-  const admin = (escola.admins || []).includes(EU.uid);
-  // escola criada sem terminar o cadastro do cartão: volta para esse passo
-  let prof = null;
-  // professor(a) com acesso ao app: o servidor criou escolas/{eid}/equipe/{uid} quando ele(a) entrou com o e-mail cadastrado
-  if (!admin) { const eq = await B.get(`escolas/${eid}/equipe/${EU.uid}`).catch(() => null); if (eq && eq.pid) prof = eq.pid; }
-  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['pturmas', 'palunos', 'pfin'], f: ['pagar', 'feventos', 'filhas'] }[papel];
-  ls.set('escolinha.ultima', eid);
-  S = { eid, admin, prof, papel, escola, mes: mesHoje(), tab: tab || ls.get('escolinha.tab.' + papel) || ABAS_OK[0],
-    cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, fixas: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, docs: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
-  if (!ABAS_OK.includes(S.tab)) S.tab = ABAS_OK[0];
+// Liga a escola aberta ao banco (tudo que a tela mostra, ao vivo). Separado de abrirEscola para poder religar sem
+// recarregar a tela (ver reouvir).
+function ouvirEscola(eid) {
+  const admin = S.admin, prof = S.prof;
   const p = `escolas/${eid}`;
-  const col = (nome, chave, onde) => B.ouvirCol(`${p}/${nome}`, docs => { S[chave] = Object.fromEntries(docs.map(d => [d.id, d.data])); S.carregado.add(chave); agendar(); }, e => console.warn(nome, e), onde);
-  OUV.push(B.ouvirDoc(p, d => { if (d) { S.escola = d; agendar(); } }));
-  OUV.push(B.ouvirDoc(`${p}/config/geral`, d => { S.cfg = d || {}; S.cfgOk = true; agendar(); }));
+  const col = (nome, chave, onde) => B.ouvirCol(`${p}/${nome}`, docs => { S[chave] = Object.fromEntries(docs.map(d => [d.id, d.data])); S.carregado.add(chave); agendar(); }, e => { console.warn(nome, e); reouvir(eid, e); }, onde);
+  OUV.push(B.ouvirDoc(p, d => { if (d) { S.escola = d; agendar(); } }, e => { console.warn('escola', e); reouvir(eid, e); }));
+  OUV.push(B.ouvirDoc(`${p}/config/geral`, d => { S.cfg = d || {}; S.cfgOk = true; agendar(); }, e => { console.warn('config/geral', e); reouvir(eid, e); }));
   // plano do app (teste, pago até, bloqueio por atraso): só o servidor grava
   OUV.push(B.ouvirDoc(`${p}/config/plano`, d => { S.plano = d || null; agendar(); }, () => { S.plano = null; }));
   if (!prof || admin) OUV.push(B.ouvirDoc(`${p}/config/contrato`, d => { S.contratoCfg = d || {}; agendar(); }, () => { }));
@@ -1315,6 +1303,50 @@ async function abrirEscola(eid, tab) {
     }, () => { }));
     OUV.push(() => { Object.values(porRid).flat().forEach(f => f()); Object.values(porAluna).forEach(f => f()); });
   }
+}
+// O banco cortou a ligação com "sem permissão". Acontece sobretudo no iPhone com o app instalado: o app volta do
+// segundo plano e reconecta antes de renovar o login; o banco recusa e para de mandar as mudanças (a tela fica parada).
+// Aqui: renova o login, confere se a pessoa ainda tem acesso à escola e religa tudo, sem fechar a tela nem a janela aberta.
+// No máximo 3 vezes a cada 10 minutos (se for falta de acesso de verdade, não fica tentando).
+let REOUVIR = { eid: null, n: 0, em: 0, t: null };
+function reouvir(eid, e) {
+  const cod = String((e && e.code) || '').replace(/^firestore\//, '');
+  if (cod !== 'permission-denied' && cod !== 'unauthenticated') return;
+  if (!S || S.eid !== eid || REOUVIR.t) return;
+  const agora = Date.now();
+  if (REOUVIR.eid !== eid || agora - REOUVIR.em > 10 * 60 * 1000) REOUVIR = { eid, n: 0, em: agora, t: null };
+  if (REOUVIR.n >= 3) return;
+  REOUVIR.n++;
+  REOUVIR.t = setTimeout(async () => {
+    REOUVIR.t = null;
+    if (!S || S.eid !== eid || !EU) return;
+    try { await B.recarregar(); } catch (x) { }
+    let escola = null; try { escola = await B.get('escolas/' + eid); } catch (x) { escola = null; }
+    if (!S || S.eid !== eid || !EU) return;
+    if (!escola) { pararOuvintes(); S = null; aviso('Você não tem mais acesso a essa escola.'); delete MINHAS[eid]; return telaInicio(); }
+    // mudou o papel (ex.: saiu da administração): abre de novo, do jeito certo para o papel novo
+    const admin = (escola.admins || []).includes(EU.uid);
+    if (admin !== S.admin) return abrirEscola(eid);
+    pararOuvintes(); ouvirEscola(eid);
+  }, 1200 * REOUVIR.n);
+}
+async function abrirEscola(eid, tab) {
+  pararOuvintes(); fecharSheet();
+  RAIZ().innerHTML = `<div class="wrap" style="padding-top:40px"><div class="empty">Abrindo a escola…</div></div>`;
+  let escola;
+  try { escola = await B.get('escolas/' + eid); } catch (e) { escola = null; }
+  if (!escola) { aviso('Você não tem mais acesso a essa escola.'); delete MINHAS[eid]; return telaInicio(); }
+  const admin = (escola.admins || []).includes(EU.uid);
+  // escola criada sem terminar o cadastro do cartão: volta para esse passo
+  let prof = null;
+  // professor(a) com acesso ao app: o servidor criou escolas/{eid}/equipe/{uid} quando ele(a) entrou com o e-mail cadastrado
+  if (!admin) { const eq = await B.get(`escolas/${eid}/equipe/${EU.uid}`).catch(() => null); if (eq && eq.pid) prof = eq.pid; }
+  const papel = admin ? 'a' : prof ? 'p' : 'f', ABAS_OK = { a: ['cobr', 'alunas', 'turmas', 'eventos', 'fin'], p: ['pturmas', 'palunos', 'pfin'], f: ['pagar', 'feventos', 'filhas'] }[papel];
+  ls.set('escolinha.ultima', eid);
+  S = { eid, admin, prof, papel, escola, mes: mesHoje(), tab: tab || ls.get('escolinha.tab.' + papel) || ABAS_OK[0],
+    cfg: {}, mpc: {}, locais: {}, turmas: {}, grupos: {}, resps: {}, alunas: {}, extras: {}, pags: {}, lanc: {}, fixas: {}, membros: {}, profs: {}, acordos: {}, vinc: {}, pedidos: {}, saude: {}, docs: {}, eu: null, carregado: new Set(), sel: null, sug: [], anoRef: null };
+  if (!ABAS_OK.includes(S.tab)) S.tab = ABAS_OK[0];
+  ouvirEscola(eid);
   if (MINHAS[eid] && MINHAS[eid].nome !== escola.nome) B.set('users/' + EU.uid, { escolas: { [eid]: { nome: escola.nome } } }, { merge: true }).catch(() => { });
   render();
   if (admin && MP_VOLTA && ls.get('escolinha.mpVolta') === eid) { ls.set('escolinha.mpVolta', null); setTimeout(() => { aviso(MP_VOLTA === 'ok' ? 'Mercado Pago conectado! Confira se é a conta certa.' : 'Não deu para conectar o Mercado Pago. Tente de novo.'); if (MP_VOLTA === 'ok') sheetAjustes(); }, 600); }
