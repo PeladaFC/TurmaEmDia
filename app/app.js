@@ -1998,7 +1998,7 @@ function sheetCobrancaAluna(alid) {
         const emitir = $('fnf') && $('fnf').checked, ks = marcados().map(i => i.k);
         try { await B.set(`escolas/${S.eid}/pagamentos/${alid}`, up, { merge: true }); aviso('Pagamento registrado'); setTimeout(desenhar, 60);
           if (emitir) setTimeout(async () => { try { const r = await nfServidor('baixa', { alid, chaves: ks }), v = Object.values(r.res || {});
-            aviso(v.includes('ok') ? 'Pagamento registrado e nota fiscal emitida' : v.includes('sem_dados') ? 'Pagamento registrado. A nota espera o CPF do responsável' : v.includes('erro') ? 'Pagamento registrado. A nota não saiu: veja em Notas emitidas' : 'Pagamento registrado'); }
+            aviso(v.includes('ok') ? 'Pagamento registrado e nota fiscal emitida' : v.includes('sem_dados') ? 'Pagamento registrado. A nota espera o CPF do responsável' : v.includes('aguardando') ? 'Pagamento registrado. Vai na nota do mês, no dia 1º' : v.includes('erro') ? 'Pagamento registrado. A nota não saiu: veja em Notas emitidas' : 'Pagamento registrado'); }
             catch (e) { aviso('Pagamento registrado. A nota não saiu: ' + msgErro(e)); } }, 250); }
         catch (e) { $('ferr').textContent = msgErro(e); $('fdin').disabled = false; }
       };
@@ -5567,7 +5567,7 @@ async function sheetPainelDono(recarregar) {
 const SERVICOS_NF = [['060401', '06.04.01', 'Esportes, dança, ginástica, natação, lutas e atividades físicas', 'O mais comum para escolinha de futebol, vôlei, natação, ballet, judô…'],
   ['080201', '08.02.01', 'Ensino e instrução (cursos livres)', 'Para quando a escola é registrada como curso ou ensino.']];
 const REGIMES_NF = [['mei', 'MEI'], ['simples', 'Simples'], ['normal', 'Outro']];
-const ST_NF = { ok: ['Emitida', 'ok'], emitindo: ['Emitindo…', 'esp'], pendente: ['Aguardando o Emissor', 'esp'], erro: ['Não saiu', 'erro'], sem_dados: ['Falta CPF', 'erro'], cancelada: ['Cancelada', ''] };
+const ST_NF = { ok: ['Emitida', 'ok'], emitindo: ['Emitindo…', 'esp'], pendente: ['Aguardando o Emissor', 'esp'], erro: ['Não saiu', 'erro'], sem_dados: ['Falta CPF', 'erro'], cancelada: ['Cancelada', ''], aguardando: ['Vai na nota do mês', 'esp'], agrupada: ['Na nota do mês', ''] };
 const fmtCnpj = x => { const d = C.soDigitos(x).slice(0, 14), p = [d.slice(0, 2), d.slice(2, 5), d.slice(5, 8), d.slice(8, 12), d.slice(12)];
   return p[0] + (p[1] ? '.' + p[1] : '') + (p[2] ? '.' + p[2] : '') + (p[3] ? '/' + p[3] : '') + (p[4] ? '-' + p[4] : ''); };
 async function nfServidor(acao, d = {}) {
@@ -5626,6 +5626,7 @@ async function nfMockEmitir(rec, nid, rid, itens, origem) {
     const f = i.enc && i.enc.base > 0 ? i.enc.base / (i.enc.base + (i.enc.multa || 0) + (i.enc.juros || 0)) : 1; valor = C.r2(valor + C.r2(i.v * f)); (porAl[a.nome || ''] = porAl[a.nome || ''] || []).push(i.desc); }
   const lin = Object.entries(porAl).map(([n, l]) => `${n}: ${l.join(', ')}`);
   if (!(valor > 0)) return 'sem_itens';
+  if (cfg.agrupar === 'mes' && origem !== 'mes') { await B.set(`${p}/notasFamilia/${nid}`, { rec, rid, origem, data: hoje(), mes: hoje().slice(0, 7), valor, itens: lin, status: 'aguardando', motivo: 'Entra na nota do mês, emitida no dia 1º.' }); return 'aguardando'; }
   const ok = C.cpfValido(r.cpf);
   await B.set(`${p}/notasFamilia/${nid}`, { rec, rid, origem, data: hoje(), valor, itens: lin, status: ok ? 'ok' : 'sem_dados', motivo: ok ? null : 'Falta o CPF certo ou o nome do responsável. Corrija o cadastro e toque em "Tentar de novo".', tomador: { nome: r.nome || '', cpf: C.soDigitos(r.cpf) }, chave: ok ? 'TESTE' + Date.now() : null, ambiente: 'restrita' });
   return ok ? 'ok' : 'sem_dados';
@@ -5655,10 +5656,11 @@ function ajudaNF(prof) {
       <li>Escolha o <b>tipo de empresa</b> e o <b>código do serviço</b>.</li>
       <li>Se não for MEI, toque em <b>Buscar na prefeitura</b> para preencher a alíquota do ISS, e coloque o percentual de tributos que o contador informar.</li>
       <li>Deixe em <b>Teste</b> primeiro: as notas saem sem valor fiscal, para conferir. Quando estiver tudo certo, mude para <b>Valendo</b>.</li>
+      <li>Em <b>Quando emitir</b>, escolha <b>A cada pagamento</b> (uma nota por Pix ou dinheiro) ou <b>Uma por mês</b> (no dia 1º, uma nota por família com tudo o que ela pagou no mês anterior). Decida com o contador.</li>
       <li>Ligue <b>Emitir notas automaticamente</b> e salve.</li>
       <li>${prof ? 'Em <b>O que leva nota</b>, ligue as suas turmas (e taxas ou eventos) que levam nota. Quem decide é você, não a escola.' : 'Ligue o <b>Emitir nota fiscal</b> nas turmas (e nas taxas e eventos que levam nota). Nas turmas em que o dinheiro cai para um professor, quem decide é ele.'}</li></ol>
     <h4>Depois de ligado</h4><ul>
-      <li><b>Pix pelo app</b>: a nota sai sozinha quando o pagamento entra.</li>
+      <li><b>Pix pelo app</b>: a nota sai sozinha quando o pagamento entra (ou, em "Uma por mês", entra na nota do dia 1º).</li>
       <li><b>Dinheiro</b>: com a nota ligada, "Recebi em dinheiro" também emite. A caixinha "Emitir nota fiscal" já vem marcada; desmarque se não quiser naquela vez.</li>
       <li>Cada <b>turma, taxa e evento</b> tem o seu liga/desliga "Emitir nota fiscal", que começa <b>desligado</b>. Ligue só no que leva nota (as mensalidades, por exemplo). Uniforme, taxa da federação e outros repasses: deixe desligado, para não pagar imposto à toa.</li>
       <li>Escolha <b>todas as famílias</b> ou <b>só quem pedir</b>. A família pede ou dispensa no app, e ${prof ? 'a escola' : 'você'} também pode mudar no cadastro do responsável.</li>
@@ -5678,7 +5680,7 @@ async function sheetNotaFiscal(volta) {
   sheet(casca('<div class="empty">Carregando…</div>'), ligarAjuda);
   let E; try { E = await nfServidor('estado'); } catch (e) { return sheet(casca(`<div class="banner"><span>${esc(e.message)}</span></div><button class="btn ghost" data-fechar>Fechar</button>`), ligarAjuda); }
   const c = E.cfg, cert = E.cert, serv0 = SERVICOS_NF.some(([k]) => k === c.cTribNac) ? c.cTribNac : c.cTribNac ? 'outro' : '060401';
-  let regime = c.regime || '', modo = c.modo || 'todas', amb = c.ambiente || 'restrita', serv = serv0;
+  let regime = c.regime || '', modo = c.modo || 'todas', amb = c.ambiente || 'restrita', serv = serv0, agr = c.agrupar === 'mes' ? 'mes' : 'pagamento';
   const vencer = cert && cert.validade && cert.validade - Date.now() < 30 * 864e5;
   sheet(casca(`<div class="sub">${prof ? 'Notas da sua parte (as turmas em que a mensalidade cai para você), com o seu CNPJ e o seu certificado. Sem certificado, nada é emitido.' : 'A nota sai sozinha no nome da escola quando a família paga, e a família baixa no app.'}</div>
     ${c.ligado ? `<div class="banner ok"><span><b>Ligada</b>${amb === 'restrita' ? ' · em teste (sem valor fiscal)' : ' · valendo'}. As notas saem sozinhas.</span></div>` : E.falta.length ? `<div class="banner"><span><b>Desligada.</b> Para ligar, falta: ${esc(E.falta.join(', '))}.</span></div>` : ''}
@@ -5704,9 +5706,11 @@ async function sheetNotaFiscal(volta) {
       ${(E.meus || []).length ? E.meus.map(m => ligaNota('nfi_' + m.id, m.nota, m.tipo === 'turma' ? 'Mensalidade da turma' : m.tipo === 'taxa' ? 'Taxa' : 'Inscrição do evento').replace('<b>Emitir nota fiscal</b>', `<b>${esc(m.nome)}</b>`)).join('') : '<div class="note">Nenhuma turma ou cobrança cai para você ainda.</div>'}</div>` : ''}
     <div class="field"><span class="lb">Emitir para</span><div class="opcoes" id="nfmodo">${[['todas', 'Todas'], ['pedido', 'Só quem pedir']].map(([k, n]) => `<button type="button" class="pick" data-md="${k}" aria-pressed="${modo === k}">${n}</button>`).join('')}</div>
       <div class="note" id="nfmodonota"></div></div>
+    <div class="field"><span class="lb">Quando emitir</span><div class="opcoes" id="nfagr">${[['pagamento', 'A cada pagamento'], ['mes', 'Uma por mês']].map(([k, n]) => `<button type="button" class="pick" data-ag="${k}" aria-pressed="${agr === k}">${n}</button>`).join('')}</div>
+      <div class="note" id="nfagrnota"></div></div>
     <div class="field"><span class="lb">Ambiente</span><div class="opcoes" id="nfamb">${[['restrita', 'Teste'], ['producao', 'Valendo']].map(([k, n]) => `<button type="button" class="pick" data-am="${k}" aria-pressed="${amb === k}">${n}</button>`).join('')}</div>
       <div class="note" id="nfambnota"></div></div>
-    <label class="liga"><span class="grow"><b>Emitir notas automaticamente</b><span class="s">Quando o Pix entra e quando a escola registra pagamento em dinheiro.</span></span><input type="checkbox" role="switch" id="nfligado" ${c.ligado ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
+    <label class="liga"><span class="grow"><b>Emitir notas automaticamente</b><span class="s"><em style="font-style:normal;font-weight:700">Ligado:</em> o app emite as notas sozinho, sem ninguém entrar no site do governo. Vale para o Pix pago pelo app e para o dinheiro que ${prof ? 'você' : 'a escola'} registrar, na hora ou no dia 1º, conforme o "Quando emitir" acima.<br><em style="font-style:normal;font-weight:700">Desligado:</em> o app não emite nada; as notas ficam por sua conta no site nfse.gov.br.</span></span><input type="checkbox" role="switch" id="nfligado" ${c.ligado ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>
     <div class="err" id="nferr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="nfok">Salvar</button></div>
     <button type="button" class="linha-botao" id="nflista"><span class="grow"><b>Notas emitidas</b><span class="s">Baixar o PDF, tentar de novo ou cancelar</span></span><span aria-hidden="true" style="font-weight:800">›</span></button>`), s => {
@@ -5716,10 +5720,12 @@ async function sheetNotaFiscal(volta) {
     verReg();
     s.querySelectorAll('[data-rg]').forEach(b => b.onclick = () => { regime = b.dataset.rg; verReg(); });
     const notas = () => { $('nfmodonota').textContent = modo === 'pedido' ? 'Emite só para quem pedir no app, ou para quem você marcar no cadastro do responsável.' : 'Emite para todas, menos para quem dispensar no app ou você desmarcar no cadastro do responsável.';
+      $('nfagrnota').textContent = agr === 'mes' ? 'No dia 1º, sai uma nota para cada família com tudo o que ela pagou no mês anterior. Combine com o contador.' : 'Sai uma nota na hora, a cada Pix ou pagamento em dinheiro.';
       $('nfambnota').textContent = amb === 'producao' ? 'As notas têm valor fiscal e geram imposto.' : 'As notas saem sem valor fiscal, só para conferir. Comece por aqui.'; };
     notas();
     s.querySelectorAll('[data-md]').forEach(b => b.onclick = () => { modo = b.dataset.md; s.querySelectorAll('[data-md]').forEach(x => x.setAttribute('aria-pressed', x.dataset.md === modo)); notas(); });
     s.querySelectorAll('[data-am]').forEach(b => b.onclick = () => { amb = b.dataset.am; s.querySelectorAll('[data-am]').forEach(x => x.setAttribute('aria-pressed', x.dataset.am === amb)); notas(); });
+    s.querySelectorAll('[data-ag]').forEach(b => b.onclick = () => { agr = b.dataset.ag; s.querySelectorAll('[data-ag]').forEach(x => x.setAttribute('aria-pressed', x.dataset.ag === agr)); notas(); });
     s.querySelectorAll('[name=nfs]').forEach(r => r.onchange = () => { serv = r.value; $('nfcod').hidden = serv !== 'outro'; if (serv === 'outro') $('nfcod').focus(); });
     $('nfcnpj').oninput = () => { const v = fmtCnpj($('nfcnpj').value); if (v !== $('nfcnpj').value) $('nfcnpj').value = v; };
     $('nfarq').onchange = () => { const f = $('nfarq').files[0]; $('nfarqn').textContent = f ? f.name : 'Escolher o arquivo'; };
@@ -5741,7 +5747,7 @@ async function sheetNotaFiscal(volta) {
     };
     $('nfok').onclick = async () => {
       const cod = codigo(); if (serv === 'outro' && !/^\d{6}$/.test(cod)) return err('O código do serviço tem 6 números, como 060401.');
-      const cfg = { cnpj: $('nfcnpj').value, regime, cTribNac: cod, aliqIss: $('nfiss').value, pTrib: $('nftrib').value, im: $('nfim').value, descricao: $('nfdesc').value, modo, ambiente: amb, ligado: $('nfligado').checked,
+      const cfg = { cnpj: $('nfcnpj').value, regime, cTribNac: cod, aliqIss: $('nfiss').value, pTrib: $('nftrib').value, im: $('nfim').value, descricao: $('nfdesc').value, modo, agrupar: agr, ambiente: amb, ligado: $('nfligado').checked,
         ...(prof ? { itens: Object.fromEntries((E.meus || []).map(m => [m.id, !!($('nfi_' + m.id) || {}).checked])) } : {}) };
       if (cfg.ligado && amb === 'producao' && c.ambiente !== 'producao') { const ok = await new Promise(r => confirmar('Emitir notas valendo?', 'A partir de agora as notas têm valor fiscal e geram imposto. Fez o teste antes?', 'Sim, valendo', () => r(true))); if (!ok) return; }
       $('nfok').disabled = true;

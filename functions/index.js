@@ -85,6 +85,8 @@ exports.notaComissao = N.notaComissao;
 exports.rotinaDiaria = onSchedule({ schedule: '0 10 * * *', timeZone: 'America/Recife', maxInstances: 1, memory: '512MiB', timeoutSeconds: 540 }, async () => {
   const hoje = new Date(Date.now() - 3 * 36e5).toISOString().slice(0, 10);
   try { await N.interno.tarefaDiaria(hoje); } catch (e) { logger.error('nota fiscal', e.message); }
+  // notas das famílias em "Uma por mês": fecha o mês que acabou (uma nota por família)
+  try { await NF.interno.fecharMeses(hoje); } catch (e) { logger.error('nota do mês', e.message); }
   // plano das escolas: cartões, Pix e bloqueio por atraso
   try { await AS.interno.diario(); } catch (e) { logger.error('plano', e.message); }
   try { await EX.interno.limpar(); } catch (e) { logger.error('limpar escolas encerradas', e.message); }

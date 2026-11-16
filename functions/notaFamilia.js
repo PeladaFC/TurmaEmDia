@@ -13,6 +13,8 @@
    Quando emite:
    - Pix aprovado (mpWebhook) → uma nota por Pix, na hora;
    - recebido em dinheiro, com "Emitir nota fiscal" marcado → o app pede logo depois de registrar.
+   Se quem emite escolheu "Uma por mês" (cfg.agrupar = 'mes'), cada pagamento fica guardado como "aguardando"
+   e, no dia 1º (rotina diária, fecharMeses), sai uma nota por família com tudo o que ela pagou no mês anterior.
    Só entra o que tem nota ligada (cada turma, taxa e evento tem o seu liga/desliga) e só para a família que
    quer nota (se quem emite escolheu "só quem pedir") ou que não recusou (se escolheu "todas").
    Sem certificado ou com a nota desligada, não emite nada. */
@@ -103,7 +105,7 @@ module.exports = (db, PAG, op = {}) => {
       cTribNac: C.soDigitos(b.cTribNac).slice(0, 6), cNBS: C.soDigitos(b.cNBS).slice(0, 9) || null,
       aliqIss: b.regime === 'mei' ? null : n(b.aliqIss), pTrib: b.regime === 'mei' ? null : n(b.pTrib),
       descricao: String(b.descricao || '').trim().slice(0, 200),
-      modo: b.modo === 'pedido' ? 'pedido' : 'todas', ambiente: b.ambiente === 'producao' ? 'producao' : 'restrita',
+      modo: b.modo === 'pedido' ? 'pedido' : 'todas', agrupar: b.agrupar === 'mes' ? 'mes' : 'pagamento', ambiente: b.ambiente === 'producao' ? 'producao' : 'restrita',
       serie: /^\d{1,4}$/.test(String(b.serie || '')) ? String(b.serie) : (antes.serie || '1'), em: Date.now()
     };
     if (o.aliqIss != null && !(o.aliqIss >= 2 && o.aliqIss <= 5)) throw erro('A alíquota do ISS fica entre 2% e 5%.', 400);
@@ -204,10 +206,25 @@ module.exports = (db, PAG, op = {}) => {
     if (cfg.modo === 'pedido' && r.nota !== 'sim') return 'nao_pediu';
     const m = await montar(eid, rec, itens || [], cfg);
     if (!(m.valor > 0)) return 'sem_itens';
+    // "Uma por mês": guarda o pagamento; a nota da família sai no dia 1º (fecharMeses)
+    if (cfg.agrupar === 'mes') {
+      const ref = notaRef(eid, nid), d0 = data || hojeRecife();
+      const novo = await db.runTransaction(async tx => {
+        const s = await tx.get(ref); if (s.exists && s.data().status !== 'erro') return false;
+        tx.set(ref, { rec, rid: rid || null, origem, data: d0, mes: d0.slice(0, 7), valor: m.valor, itens: m.linhas, status: 'aguardando', motivo: 'Entra na nota do mês, emitida no dia 1º.', criadaEm: Date.now(), em: Date.now() });
+        return true;
+      });
+      return novo ? 'aguardando' : 'pulou';
+    }
+    return emitirNota(eid, rec, cfg, nid, { rid, origem, data, valor: m.valor, linhas: m.linhas, r });
+  }
+  // monta a nota (de um pagamento ou do mês) e envia ao Emissor Nacional
+  async function emitirNota(eid, rec, cfg, nid, { rid, origem, data, valor, linhas, r, extraDoc }) {
     const escola = (await ler(`escolas/${eid}`)) || {}, geral = (await ler(`escolas/${eid}/config/geral`)) || {};
     const extra = cfg.descricao ? cfg.descricao + '. ' : '';
+    const m = { valor, linhas };
     const n = {
-      rec, rid: rid || null, origem, data: data || hojeRecife(), valor: m.valor, itens: m.linhas,
+      ...(extraDoc || {}), rec, rid: rid || null, origem, data: data || hojeRecife(), valor: m.valor, itens: m.linhas,
       descricao: `${extra}${m.linhas.join('; ')}. ${escola.nome || ''}`.replace(/\s+/g, ' ').trim().slice(0, 1000),
       tomador: { nome: String(r.nome || '').trim(), cpf: C.soDigitos(r.cpf), email: String(r.email || '').trim() }, ambiente: cfg.ambiente || 'restrita'
     };
@@ -261,11 +278,45 @@ module.exports = (db, PAG, op = {}) => {
     }
     return out;
   }
+  // "Uma por mês": todo dia (para não perder o dia 1º se a rotina falhar) fecha os meses que já acabaram:
+  // uma nota por família (e por quem emite) com tudo o que ficou "aguardando" naquele mês
+  const fimDoMes = mes => { const [a, m] = mes.split('-').map(Number); return new Date(Date.UTC(a, m, 0)).toISOString().slice(0, 10); };
+  async function fecharMeses(hoje = hojeRecife()) {
+    const mesAtual = hoje.slice(0, 7), out = { notas: 0 };
+    for (const e of (await db.collection('escolas').get()).docs) {
+      if ((e.data() || {}).encerradaEm) continue;
+      const q = await db.collection(`escolas/${e.id}/notasFamilia`).where('status', '==', 'aguardando').get();
+      const grupos = {};
+      for (const d of q.docs) { const x = d.data(); if (!x.mes || x.mes >= mesAtual) continue; (grupos[`${x.rec}|${x.rid || ''}|${x.mes}`] = grupos[`${x.rec}|${x.rid || ''}|${x.mes}`] || []).push(d); }
+      for (const [k, docs] of Object.entries(grupos)) {
+        const [rec, rid, mes] = k.split('|');
+        try {
+          const cfg = (await ler(`escolas/${e.id}/segredos/nfseCfg_${rec}`)) || {};
+          if (!cfg.ligado || !(await ler(certPath(e.id, rec)))) continue; // desligou ou tirou o certificado: espera
+          const r = rid ? (await ler(`escolas/${e.id}/responsaveis/${rid}`)) || {} : {};
+          const itens = [], porAl = {};
+          let valor = 0;
+          for (const d of docs) { const x = d.data(); valor = C.r2(valor + (Number(x.valor) || 0));
+            for (const l of x.itens || []) { const i = l.indexOf(': '), n = i > 0 ? l.slice(0, i) : '', t = i > 0 ? l.slice(i + 2) : l; (porAl[n] = porAl[n] || []).push(t); } }
+          for (const [n, l] of Object.entries(porAl)) itens.push(n ? `${n}: ${l.join(', ')}` : l.join(', '));
+          // pagamento que chegou depois de a nota do mês sair (Pix atrasado): vai numa nota complementar
+          const base = `mes_${mes}_${rid || 'x'}_${rec}`.slice(0, 130), [a, m] = mes.split('-');
+          let nid = base;
+          for (let i = 2; i < 20; i++) { const ja = await ler(`escolas/${e.id}/notasFamilia/${nid}`); if (!ja || ja.status === 'erro' || ja.status === 'sem_dados') break; nid = `${base}_${i}`; }
+          const res = await emitirNota(e.id, rec, cfg, nid, { rid, origem: 'mes', data: fimDoMes(mes), valor, linhas: [`Pagamentos de ${C.MESES[Number(m) - 1]} de ${a}`, ...itens], r, extraDoc: { mes, partes: docs.map(d => d.id) } });
+          if (res === 'pulou') continue; // outra rotina está emitindo agora: fica para amanhã
+          for (const d of docs) await d.ref.set({ status: 'agrupada', notaMes: nid, motivo: null, em: Date.now() }, { merge: true });
+          out.notas++;
+        } catch (x) { logger.error('nota do mês', e.id, k, x.message); }
+      }
+    }
+    return out;
+  }
   // tenta de novo o que não foi (rede caiu, CPF corrigido, certificado instalado depois)
   async function retentar(eid, rec, nid) {
     const ref = notaRef(eid, nid), d = await ler(`escolas/${eid}/notasFamilia/${nid}`);
     if (!d || d.rec !== rec) throw erro('Nota não encontrada.', 404);
-    if (d.status === 'ok' || d.status === 'cancelada') return d.status;
+    if (d.status === 'ok' || d.status === 'cancelada' || d.status === 'aguardando' || d.status === 'agrupada') return d.status;
     const cfg = (await ler(`escolas/${eid}/segredos/nfseCfg_${rec}`)) || {}, geral = (await ler(`escolas/${eid}/config/geral`)) || {};
     if (d.status === 'pendente') {
       const Cl = await cliente(eid, rec, cfg), its = await Cl.replayPendingEvents();
@@ -358,5 +409,5 @@ module.exports = (db, PAG, op = {}) => {
     } catch (e) { if (!e.http) logger.error(e); res.status(e.http || 500).json({ erro: e.http ? e.message : 'Algo deu errado. Tente de novo.', codigo: e.codigo || null }); }
   });
 
-  return { notaFiscal, interno: { aposPix, aposBaixa, emitir, montar, parametros, falta, estado } };
+  return { notaFiscal, interno: { aposPix, aposBaixa, emitir, fecharMeses, montar, parametros, falta, estado } };
 };

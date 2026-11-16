@@ -670,6 +670,24 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     r = await nf({ acao: 'cancelar', nid: 'pix_c1', motivo: 'Emitida por engano' }, 'ok:adm8'); assert.strictEqual(r.body.status, 'cancelada');
     assert.strictEqual(await NF.interno.aposPix('e8', 'c1', { rec: 'escola', rids: ['r1'], itens: [] }), 'sem_itens');
   });
+  await t('nota "uma por mês": guarda cada pagamento e, no dia 1º, emite uma nota por família com a soma', async () => {
+    S.set('escolas/e8/segredos/nfseCfg_escola', { ...S.get('escolas/e8/segredos/nfseCfg_escola'), agrupar: 'mes' });
+    const it = (alid, v, desc) => [{ k: 'x:x2:' + alid + v, tipo: 'x', alid, xid: 'x2', v, desc }];
+    const n0 = EMITIDAS.length;
+    assert.strictEqual(await NF.interno.emitir('e8', 'escola', { nid: 'm1', rid: 'r1', itens: it('a1', 60, 'Copa'), origem: 'pix', data: '2026-11-05' }), 'aguardando');
+    assert.strictEqual(await NF.interno.emitir('e8', 'escola', { nid: 'm2', rid: 'r1', itens: it('a1', 40, 'Festival'), origem: 'dinheiro', data: '2026-11-20' }), 'aguardando');
+    assert.strictEqual(EMITIDAS.length, n0); // nada emitido ainda
+    await NF.interno.fecharMeses('2026-11-25'); assert.strictEqual(EMITIDAS.length, n0); // o mês não acabou
+    await NF.interno.fecharMeses('2026-12-01');
+    assert.strictEqual(EMITIDAS.length, n0 + 1); assert.strictEqual(EMITIDAS.at(-1).valores.vServ, 100);
+    assert.ok(/novembro de 2026/.test(EMITIDAS.at(-1).servico.descricao) && /Copa, Festival/.test(EMITIDAS.at(-1).servico.descricao));
+    assert.strictEqual(S.get('escolas/e8/notasFamilia/m1').status, 'agrupada'); assert.strictEqual(S.get('escolas/e8/notasFamilia/mes_2026-11_r1_escola').status, 'ok');
+    // Pix de novembro que chegou atrasado: nota complementar
+    assert.strictEqual(await NF.interno.emitir('e8', 'escola', { nid: 'm3', rid: 'r1', itens: it('a1', 10, 'Taxa'), origem: 'pix', data: '2026-11-30' }), 'aguardando');
+    await NF.interno.fecharMeses('2026-12-02'); assert.strictEqual(EMITIDAS.length, n0 + 2); assert.strictEqual(S.get('escolas/e8/notasFamilia/mes_2026-11_r1_escola_2').valor, 10);
+    await NF.interno.fecharMeses('2026-12-03'); assert.strictEqual(EMITIDAS.length, n0 + 2); // nunca duas vezes
+    S.set('escolas/e8/segredos/nfseCfg_escola', { ...S.get('escolas/e8/segredos/nfseCfg_escola'), agrupar: 'pagamento' });
+  });
 
   /* ---------- cartão e boleto das famílias; plano da escola ---------- */
   await t('formas: valor do cartão e do boleto com a taxa repassada; sem repasse, o valor cheio', () => {
