@@ -2566,11 +2566,12 @@ const convidadosDe = x => eventoNovo(x) ? (x.convidados || []).filter(id => S.al
 const eventosAtivos = () => Object.entries(S.extras).filter(([, x]) => eventoNovo(x) && x.data).sort((a, b) => a[1].data.localeCompare(b[1].data));
 
 // quadros para escolher atletas: todos, inscritos/interessados de cada evento (só nas taxas), grupos e turmas
-function quadrosDe(selA, comEventos, foco) {
+// eventos: só os que ainda não acabaram (decisão dele, 17/11); o evento escolhido e os já usados na taxa continuam
+function quadrosDe(selA, comEventos, foco, manter) {
   const ativos = porNome(S.alunas).filter(([id, a]) => (C.ativaNoMes(a, mesHoje()) && !a.anonimizadoEm) || selA.has(id)).map(([id]) => id);
   const q = [['todos', 'Todos os alunos', ativos]];
-  if (comEventos) { const lim = isoDe(new Date(Date.now() - 90 * 864e5));
-    for (const [xid, x] of eventosAtivos().filter(([, x]) => fimDe(x) >= lim)) { const cv = convidadosDe(x);
+  if (comEventos) { const hoje = isoDe(new Date()), usado = xid => manter && ['ei:', 'ev:', 'en:', 'es:'].some(p => manter.has(p + xid));
+    for (const [xid, x] of eventosAtivos().filter(([xid, x]) => fimDe(x) >= hoje || xid === foco || usado(xid))) { const cv = convidadosDe(x);
       // evento escolhido na taxa: todas as respostas, cada uma no seu quadro
       if (xid === foco) { const por = st => cv.filter(id => (partDe(x, id) || 'sem') === st), fam = modoInsc(x) === 'familia';
         q.push(['ei:' + xid, `Vão · inscrição confirmada · ${x.nome}`, por('inscrito')], ['ev:' + xid, `Vão · ${fam ? 'falta confirmar a inscrição' : 'falta inscrever'} · ${x.nome}`, por('interesse')],
@@ -2683,7 +2684,7 @@ function sheetExtra(xid, op = {}) {
   const pre = op.pre || {};
   const selA = new Set(x ? [...C.alvoExtra(x, S.alunas, S.grupos)] : pre.ids || []), vals = { ...((x && x.valores) || {}) };
   const o0 = (x && x.origem) || x || {}, usados = new Set([...(o0.todos ? ['todos'] : []), ...(o0.grupos || []).map(g => 'g:' + g), ...(o0.turmas || []).map(t => 't:' + t), ...(o0.eventos || []), ...(pre.quadro ? [pre.quadro] : [])]);
-  let evento = x ? x.evento || null : pre.evento || null, quadros = quadrosDe(selA, true, evento);
+  let evento = x ? x.evento || null : pre.evento || null, quadros = quadrosDe(selA, true, evento, usados);
   const padrao = () => parseValor(($('xval') || {}).value || '') || 0;
   const evsTaxa = eventosAtivos().filter(([id, e]) => id === evento || fimDe(e) >= isoDe(new Date()));
   sheet(`<h3>${ed ? (legado ? 'Editar cobrança do evento' : 'Editar taxa') : 'Lançar'}</h3>
@@ -2727,7 +2728,7 @@ function sheetExtra(xid, op = {}) {
     let sel = seletorAtletas($('xquadros'), opSel());
     // taxa de um evento: os quadros desse evento vêm primeiro e quem já confirmou a inscrição (ou, se ninguém, quem disse que vai) já vem marcado
     const escolherEvento = (marcar) => {
-      const e = evento && S.extras[evento]; quadros = quadrosDe(selA, true, evento);
+      const e = evento && S.extras[evento]; quadros = quadrosDe(selA, true, evento, usados);
       if (e) { const doEv = quadros.filter(([k]) => k.slice(3) === evento), resto = quadros.filter(([k]) => k.slice(3) !== evento); quadros = [...doEv, ...resto];
         // já vem marcado quem confirmou a inscrição; se ninguém confirmou, quem disse que vai
         const pre_ = doEv[0] && doEv[0][2].length ? doEv[0] : doEv[1];
@@ -6750,7 +6751,7 @@ function sheetJuntarDocs(op = {}) {
         ${faltam.length ? `<span class="s">Faltam ${faltam.length}: ${esc(nomes(faltam))}. Na lista da primeira página aparece "falta".</span>` : '<span class="s">Todos os documentos estão no app.</span>'}
         ${vencidos.length ? `<span class="s" style="color:var(--out);font-weight:700">Vencidos: ${esc(nomes(vencidos))}.</span>` : ''}</div>`;
     };
-    const sel = seletorAtletas($('jdquadros'), { quadros: quadrosDe(selA, true, op.evento), selA, usados, aoMudar: resumo });
+    const sel = seletorAtletas($('jdquadros'), { quadros: quadrosDe(selA, true, op.evento, usados), selA, usados, aoMudar: resumo });
     sel.desenhar();
     sh.querySelectorAll('[data-jt]').forEach(b => b.onclick = () => { const t = b.dataset.jt; selT.has(t) ? selT.delete(t) : selT.add(t); b.setAttribute('aria-pressed', selT.has(t)); resumo(); });
     sh.querySelectorAll('[data-jc]').forEach(b => b.onclick = () => { const k = b.dataset.jc; selC.has(k) ? selC.delete(k) : selC.add(k); b.setAttribute('aria-pressed', selC.has(k)); limparPronto(); });
