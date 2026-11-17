@@ -297,6 +297,23 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'un1', alid: 'a4', tam: 'M' }, 'ok:outro'), r); assert.ok(r.code >= 400);
     S.delete('escolas/e1/extras/un1');
   });
+  await t('taxa de uniforme com quantidade: a família escolhe quantos e o valor multiplica; depois de pago não muda', async () => {
+    assert.strictEqual(C.valorExtra({ v: 80, qtd: true, tamEsc: { a1: { t: 'M', q: 2 } } }, 'a1'), 160);
+    assert.strictEqual(C.valorExtra({ v: 80, qtd: true, valores: { a1: 70 }, tamEsc: { a1: { q: 3 } } }, 'a1'), 210);
+    assert.strictEqual(C.valorExtra({ v: 80, tamEsc: { a1: { t: 'M', q: 2 } } }, 'a1'), 80); // sem quantidade ligada, vale 1
+    assert.strictEqual(C.valorExtra({ v: 80, qtd: true }, 'a1'), 80);
+    S.set('escolas/e1/extras/un2', { tipo: 'taxa', nome: 'Uniforme', v: 80, venc: '2026-11-15', alunas: ['a1'], grupos: [], turmas: [], qtd: true, tamanhos: { tipo: 'letras', opcoes: ['P', 'M', 'G'] } });
+    const A = require('./acoes')(db);
+    let r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'un2', alid: 'a1', qtd: 2 }, 'ok:mae'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'un2', alid: 'a1', tam: 'G' }, 'ok:mae'), r); assert.strictEqual(r.code, 200, JSON.stringify(r.body));
+    assert.deepStrictEqual([S.get('escolas/e1/extras/un2').tamEsc.a1.t, S.get('escolas/e1/extras/un2').tamEsc.a1.q], ['G', 2]);
+    assert.strictEqual(C.valorExtra(S.get('escolas/e1/extras/un2'), 'a1'), 160);
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'un2', alid: 'a1', qtd: 50 }, 'ok:mae'), r); assert.strictEqual(r.code, 400);
+    const pg = S.get('escolas/e1/pagamentos/a1'); S.set('escolas/e1/pagamentos/a1', { ...(pg || {}), extras: { ...((pg || {}).extras || {}), un2: { s: 'pago', v: 160 } } });
+    r = resp(); await A.eventoResposta(req({ eid: 'e1', xid: 'un2', alid: 'a1', qtd: 3 }, 'ok:mae'), r); assert.strictEqual(r.code, 409);
+    if (pg) S.set('escolas/e1/pagamentos/a1', pg); else S.delete('escolas/e1/pagamentos/a1');
+    S.delete('escolas/e1/extras/un2');
+  });
   await t('evento em que a família se inscreve: ela confirma "Já fiz a inscrição" e pode desfazer só o que ela confirmou', async () => {
     S.set('escolas/e1/extras/ev2', { tipo: 'evento', cobranca: 'familia', semCobranca: true, nome: 'Festival', data: '2026-11-20', convidados: ['a1'], alunas: [], part: {} });
     const A = require('./acoes')(db);

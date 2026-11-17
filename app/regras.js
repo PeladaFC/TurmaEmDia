@@ -86,8 +86,10 @@
   const rateioCada = (total, n) => n > 0 ? Math.ceil(Math.round(Number(total) * 100) / n) / 100 : 0;
   // valor de cada participante: total ÷ participantes, ou fixo por aluno (convite com valor por aluno: rateio.porAluno)
   const rateioValor = (x, n) => x.rateio.porAluno ? r2(x.rateio.porAluno) : rateioCada(x.rateio.total, n);
+  // taxa de uniforme fora de evento com "a família escolhe a quantidade" (qtd): o valor é o de cada uniforme × a quantidade pedida
+  const qtdDe = (x, alid) => x && x.qtd && !x.rateio ? Math.max(1, Math.min(20, Math.floor(Number((((x.tamEsc || {})[alid]) || {}).q) || 1))) : 1;
   const valorExtra = (x, alid) => x && x.rateio && !x.rateio.fechadoEm ? rateioValor(x, rateioParticipantes(x).length)
-    : r2(x && x.valores && x.valores[alid] != null ? x.valores[alid] : (x || {}).v);
+    : r2((x && x.valores && x.valores[alid] != null ? x.valores[alid] : (x || {}).v) * qtdDe(x, alid));
   // alunas que uma cobrança extra alcança: grupos + turmas + avulsas
   function alvoExtra(x, alunas, grupos) {
     if (x.rateio && !x.rateio.fechadoEm) return new Set(rateioFechado(x) ? rateioParticipantes(x) : []);
@@ -146,7 +148,7 @@
       if (((pag.extras || {})[xid] || {}).s === 'acordo') continue;
       const p = stPag((pag.extras || {})[xid]);
       if (!p && !alvoExtra(x, d.alunas, d.grupos).has(alid)) continue;
-      itens.push({ k: `x:${xid}:${alid}`, tipo: 'x', alid, xid, mes: String(x.venc || '').slice(0, 7), desc: x.nome || TIPOS_EXTRA[x.tipo] || 'Cobrança extra', detalhe: TIPOS_EXTRA[x.tipo] || 'Extra', tipoExtra: x.tipo, v: p ? r2(p.v) : valorExtra(x, alid), total: valorExtra(x, alid), partes: p ? null : { [recDe(x)]: valorExtra(x, alid) }, venc: x.venc, pago: p });
+      itens.push({ k: `x:${xid}:${alid}`, tipo: 'x', alid, xid, mes: String(x.venc || '').slice(0, 7), desc: (x.nome || TIPOS_EXTRA[x.tipo] || 'Cobrança extra') + (qtdDe(x, alid) > 1 ? ` (${qtdDe(x, alid)} unidades)` : ''), detalhe: TIPOS_EXTRA[x.tipo] || 'Extra', tipoExtra: x.tipo, v: p ? r2(p.v) : valorExtra(x, alid), total: valorExtra(x, alid), partes: p ? null : { [recDe(x)]: valorExtra(x, alid) }, venc: x.venc, pago: p });
     }
     // acordos: as cobranças atrasadas viram parcelas, cada uma com o seu vencimento
     for (const [aid, A] of Object.entries(d.acordos || {})) {
@@ -352,5 +354,5 @@
     r.alerta = !!(itens.length || r.detalhes || r.alergias || r.remedios || r.semPrimeiros);
     return r;
   }
-  return { SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, rateioValor, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, temInfo, prazoEmMs, prazoPassou, freqAluno };
+  return { qtdDe, SAUDE_CURTA, saudeProfessor, TAXAS_PADRAO, taxasDe, valorForma, PLANOS, planoPara, planoDe, cabePlano, difDias, maisMeses, maisDias, descontoPlano, precoPlano, situacaoPlano, vencAluna, cpfValido, emiteNota, repassaItem, baseRepasse, recDe, partesMens, partesAcordo, idadeNoAno, todasIdades, cabe, faixaTxt, MESES, TIPOS_EXTRA, r2, pad, mesValido, nomeMes, mesMais, stPag, soDigitos, telNorm, ativaNoMes, baseAluna, aplicaAjuste, mensalidade, vencMens, alvoExtra, valorExtra, rateioFechado, rateioParticipantes, rateioCada, rateioValor, itensAluna, itensComEncargos, comEncargos, MULTA_MAX, JUROS_MAX, chaveEnc, status, lerChave, valorPix, chaveItens, painelProfessor, profsTurma, daTurma, DIAS_SEM, chaveChamada, temInfo, prazoEmMs, prazoPassou, freqAluno };
 });

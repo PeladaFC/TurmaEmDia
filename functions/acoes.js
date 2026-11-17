@@ -67,19 +67,30 @@ module.exports = db => {
     return { ok: true };
   });
 
-  async function responderEvento(u, { eid, xid, alid, st, tam }) {
-    if (!idOk(eid) || !idOk(xid) || !idOk(alid) || (tam == null && !['interesse', 'nao', 'inscrito'].includes(st)) || (tam != null && typeof tam !== 'string')) throw erro('Pedido inválido.', 400);
+  async function responderEvento(u, { eid, xid, alid, st, tam, qtd }) {
+    if (qtd != null && !(Number.isInteger(qtd) && qtd >= 1 && qtd <= 20)) throw erro('Escolha de 1 a 20 unidades.', 400);
+    const soQtd = tam == null && qtd != null;
+    if (!idOk(eid) || !idOk(xid) || !idOk(alid) || (tam == null && !soQtd && !['interesse', 'nao', 'inscrito'].includes(st)) || (tam != null && typeof tam !== 'string')) throw erro('Pedido inválido.', 400);
     const a = await ler(`escolas/${eid}/alunas/${alid}`);
     if (!a || !a.responsavelId || !(await db.doc(`escolas/${eid}/membros/${u.uid}/vinculos/${a.responsavelId}`).get()).exists) throw erro('Você só pode responder pelos seus filhos.', 403);
     const ref = db.doc(`escolas/${eid}/extras/${xid}`);
-    // taxa ou evento com uniforme: a família escolhe o tamanho de cada filho, entre os da tabela que a escola montou
-    if (tam != null) {
+    // taxa ou evento com uniforme: a família escolhe o tamanho de cada filho, entre os da tabela que a escola montou,
+    // e, na taxa com quantidade (qtd), quantos uniformes quer (até pagar: depois de pago a quantidade não muda)
+    if (tam != null || soQtd) {
       await db.runTransaction(async t => {
         const x = (await t.get(ref)).data();
         if (!x || !['taxa', 'evento', 'competicao'].includes(x.tipo) || !x.tamanhos) throw erro('Aqui não se escolhe tamanho.', 404);
         if (!(x.alunas || []).includes(alid) && !(x.convidados || []).includes(alid)) throw erro('Esta taxa não é para este aluno.', 403);
-        if (!(x.tamanhos.opcoes || []).includes(tam)) throw erro('Escolha um dos tamanhos da lista.', 400);
-        t.update(ref, { [`tamEsc.${alid}`]: { t: tam, em: Date.now(), por: u.uid, quem: 'familia' } });
+        if (tam != null && !(x.tamanhos.opcoes || []).includes(tam)) throw erro('Escolha um dos tamanhos da lista.', 400);
+        const atual = ((x.tamEsc || {})[alid]) || {}, comQtd = x.qtd && !x.rateio && x.tipo === 'taxa';
+        if (soQtd && !comQtd) throw erro('Nesta taxa não se escolhe a quantidade.', 400);
+        if (comQtd && qtd != null && qtd !== (Number(atual.q) || 1)) {
+          const pag = (await t.get(db.doc(`escolas/${eid}/pagamentos/${alid}`))).data() || {};
+          if (C.stPag((pag.extras || {})[xid])) throw erro('Esta taxa já foi paga. Para mudar a quantidade, fale com a escola.', 409);
+        }
+        const novo = { t: tam != null ? tam : (atual.t || null), em: Date.now(), por: u.uid, quem: 'familia' };
+        if (comQtd) novo.q = qtd != null ? qtd : (Number(atual.q) || 1);
+        t.update(ref, { [`tamEsc.${alid}`]: novo });
       });
       return { ok: true };
     }
