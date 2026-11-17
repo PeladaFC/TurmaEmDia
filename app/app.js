@@ -5552,7 +5552,7 @@ async function sheetNotasPlataforma(mes, editar) {
   });
 }
 // abas do painel do dono: visão geral e notas fiscais
-const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Geral</button><button type="button" data-dono="escolas" aria-pressed="${at === 'escolas'}">Escolas</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas</button><button type="button" data-dono="avisos" aria-pressed="${at === 'avisos'}">Avisos</button><button type="button" data-dono="erros" aria-pressed="${at === 'erros'}">Erros</button></div>`;
+const abasDono = at => `<div class="seg seg-dono" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Visão geral</button><button type="button" data-dono="escolas" aria-pressed="${at === 'escolas'}">Escolas</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas fiscais</button><button type="button" data-dono="avisos" aria-pressed="${at === 'avisos'}">Comunicados</button><button type="button" data-dono="erros" aria-pressed="${at === 'erros'}">Erros</button></div>`;
 function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; ({ geral: sheetPainelDono, escolas: () => sheetEscolasDono(true), notas: sheetNotasPlataforma, avisos: sheetAvisosDono, erros: sheetErros })[b.dataset.dono](); }); }
 // registro técnico de erros, agrupado pelo tipo de erro (só o dono da plataforma lê: regras do Firestore)
 const topN = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${k} (${v})`).join(', ') || '—';
@@ -5667,15 +5667,15 @@ async function lerMidiaAviso(f) {
   throw new Error('Escolha uma foto ou um vídeo.');
 }
 async function sheetAvisosDono() {
-  const desenhar = (corpo, ligar) => sheet(`${abasDono('avisos')}<h3>Avisos do app</h3><div class="sub">Aparecem por cima de tudo quando a pessoa abre o app. "Importante" só some quando a pessoa marca que está ciente.</div>
-    <button type="button" class="btn" id="avnovo">+ Aviso</button>${corpo}<button class="btn ghost" data-fechar>Fechar</button>`,
+  const desenhar = (corpo, ligar) => sheet(`${abasDono('avisos')}<h3>Comunicados</h3><div class="sub">Avisos e divulgação (novidades do app, campeonatos, propagandas). Aparecem por cima de tudo quando a pessoa abre o app. "Importante" só some quando a pessoa marca que está ciente.</div>
+    <button type="button" class="btn" id="avnovo">+ Comunicado</button>${corpo}<button class="btn ghost" data-fechar>Fechar</button>`,
     sh => { ligarAbasDono(); $('avnovo').onclick = () => abrirDe(sheetAvisosDono, () => sheetAvisoForm(null)); ligar && ligar(sh); });
   desenhar('<div class="empty">Carregando…</div>');
   let lista; try { lista = await B.ultimos('avisosApp', 'criadoEm', 100); }
   catch (e) { return desenhar(`<div class="banner"><span>${e.code === 'permission-denied' ? 'Sem permissão. As regras novas do banco entram no ar com o próximo "Publique".' : 'Não consegui carregar os avisos. Tente de novo.'}</span></div>`); }
   const est = a => a.ativo === false ? ['Pausado', ''] : a.fim && a.fim < hojeIso() ? ['Encerrado', ''] : a.inicio && a.inicio > hojeIso() ? ['Começa ' + dataBR(a.inicio), 'esp'] : ['No ar', 'ok'];
   const para = a => (a.para || []).map(p => ({ admin: 'Escolas', professora: 'Professores', familia: 'Famílias' })[p]).filter(Boolean).join(', ');
-  desenhar(!lista.length ? '<div class="empty"><span>Nenhum aviso ainda. Toque em "+ Aviso".</span></div>' : `<ul class="list">${lista.map(({ id, data: a }) => { const [st, c] = est(a);
+  desenhar(!lista.length ? '<div class="empty"><span>Nenhum comunicado ainda. Toque em "+ Comunicado".</span></div>' : `<ul class="list">${lista.map(({ id, data: a }) => { const [st, c] = est(a);
     return `<li class="nf-card"><div class="grow"><div class="nf-lin"><b>${esc(a.titulo)}</b><span class="chip ${c === 'ok' ? 'pago' : c === 'esp' ? 'aberto' : ''}">${st}</span></div>
       <span class="s">${a.tipo === 'importante' ? 'Importante' : 'Novidade'} · para ${esc(para(a) || '—')}${a.midia ? ` · com ${a.midia.tipo === 'video' ? 'vídeo' : 'imagem'}` : ''}${a.fim ? ` · até ${dataBR(a.fim)}` : ''}</span>
       <div class="nf-acoes"><button type="button" class="btn btn-mini" data-avver="${esc(id)}">${a.tipo === 'importante' ? 'Quem está ciente' : 'Quem viu'}</button><button type="button" class="btn ghost btn-mini" data-aved="${esc(id)}">Editar</button><button type="button" class="btn ghost btn-mini" data-avpa="${esc(id)}">${a.ativo === false ? 'Pôr no ar' : 'Pausar'}</button><button type="button" class="btn ghost btn-mini" data-avdel="${esc(id)}">Apagar</button></div></div></li>`; }).join('')}</ul>`, sh => {
@@ -5686,7 +5686,7 @@ async function sheetAvisosDono() {
     sh.querySelectorAll('[data-avdel]').forEach(b => b.onclick = () => duploToque(b, async () => { const id = b.dataset.avdel, a = A[id]; b.disabled = true;
       try { const cs = await B.ultimos(`avisosApp/${id}/cientes`, 'em', 5000).catch(() => []);
         const ops = [...cs.map(c => ({ op: 'del', p: `avisosApp/${id}/cientes/${c.id}` })), ...Array.from({ length: (a.midia && a.midia.partes) || 0 }, (_, i) => ({ op: 'del', p: `avisosApp/${id}/partes/${i}` })), { op: 'del', p: 'avisosApp/' + id }];
-        for (let i = 0; i < ops.length; i += 400) await B.lote(ops.slice(i, i + 400)); aviso('Aviso apagado'); sheetAvisosDono(); } catch (e) { aviso(msgErro(e)); b.disabled = false; } }, 'Toque de novo para apagar'));
+        for (let i = 0; i < ops.length; i += 400) await B.lote(ops.slice(i, i + 400)); aviso('Comunicado apagado'); sheetAvisosDono(); } catch (e) { aviso(msgErro(e)); b.disabled = false; } }, 'Toque de novo para apagar'));
   });
 }
 async function sheetCientes(id, a) {
@@ -5701,8 +5701,8 @@ async function sheetCientes(id, a) {
 }
 function sheetAvisoForm(id, a0) {
   const a = a0 || { tipo: 'novidade', para: ['admin'] }; let midia = a.midia ? { ...a.midia, antiga: true } : null, tirouMidia = false;
-  sheet(`<h3>${id ? 'Editar aviso' : 'Novo aviso'}</h3>
-    <div class="seg" id="avtipo"><button type="button" data-avt="novidade" aria-pressed="${a.tipo !== 'importante'}">Novidade</button><button type="button" data-avt="importante" aria-pressed="${a.tipo === 'importante'}">Importante</button></div>
+  sheet(`<h3>${id ? 'Editar comunicado' : 'Novo comunicado'}</h3>
+    <div class="seg" id="avtipo"><button type="button" data-avt="novidade" aria-pressed="${a.tipo !== 'importante'}">Novidade ou divulgação</button><button type="button" data-avt="importante" aria-pressed="${a.tipo === 'importante'}">Importante</button></div>
     <span class="s" id="avtiposub"></span>
     <div class="field"><label for="avtit">Título</label><input id="avtit" maxlength="80" value="${esc(a.titulo || '')}" placeholder="Ex.: Mudou a forma de emitir nota fiscal"></div>
     <div class="field"><label for="avtxt">Texto</label><textarea id="avtxt" rows="5" maxlength="1500" placeholder="Explique em poucas linhas.">${esc(a.texto || '')}</textarea></div>
@@ -5749,7 +5749,7 @@ function sheetAvisoForm(id, a0) {
           for (let i = 0; i < n; i++) await B.set(`avisosApp/${aid}/partes/${i}`, { d: midia.dados.slice(i * AV_PARTE, (i + 1) * AV_PARTE) });
           md = { tipo: midia.tipo, mime: midia.mime, partes: n, tam: Math.round(midia.dados.length * 0.75) }; }
         await B.set('avisosApp/' + aid, { ...d, midia: md, ativo: id ? a.ativo !== false : true, criadoEm: (a0 && a0.criadoEm) || Date.now(), editadoEm: Date.now() });
-        aviso(id ? 'Aviso salvo' : 'Aviso no ar'); SHEET_VOLTAR = null; sheetAvisosDono(); }
+        aviso(id ? 'Comunicado salvo' : 'Comunicado no ar'); SHEET_VOLTAR = null; sheetAvisosDono(); }
       catch (e) { $('averr').textContent = msgErro(e); b.disabled = false; b.textContent = id ? 'Salvar' : 'Pôr no ar'; } };
   });
 }
