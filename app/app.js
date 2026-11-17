@@ -1029,6 +1029,38 @@ let TRAVA_Y = 0;
   const vv = window.visualViewport;
   if (vv) { let alto = vv.height; vv.addEventListener('resize', () => { if (vv.height > alto + 80) ajustar(); alto = vv.height; }); }
 })();
+// Barra de baixo (Pendências, Alunos…) "subindo" no iPhone: às vezes, depois do teclado ou ao voltar do segundo plano,
+// o iPhone erra a altura da tela e a barra fica no meio, com um espaço em branco embaixo. Este vigia confere a posição
+// a cada segundo (e quando o app volta à frente); se a barra não estiver colada no fundo, primeiro pede ao iPhone para
+// redesenhar e, se não adiantar, empurra a barra de volta para baixo. Quando a tela volta ao normal, tira o empurrão.
+(function vigiarBarra() {
+  const vv = window.visualViewport;
+  const app = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  let desloc = 0, tentou = 0;
+  const fundo = () => {
+    // no app instalado a tela tem sempre a altura da tela do aparelho (em pé); no navegador, a altura visível
+    const deitado = window.matchMedia && matchMedia('(orientation: landscape)').matches;
+    const tela = app() && !deitado ? Math.max(screen.height, screen.width) : 0;
+    return Math.max(window.innerHeight, document.documentElement.clientHeight, vv ? vv.height + vv.offsetTop : 0, tela);
+  };
+  const conferir = () => {
+    const nav = document.querySelector('nav.tabs'), b = document.body;
+    if (!nav || document.hidden || DESK()) return;
+    const ae = document.activeElement;
+    if (b.classList.contains('digitando') || b.classList.contains('travado') || (ae && ae.matches && ae.matches('input,textarea,select,[contenteditable="true"]'))) return;
+    const r = nav.getBoundingClientRect(); if (!r.height) return;
+    const natural = r.bottom - desloc, falta = fundo() - natural;
+    if (falta > 4) {
+      if (!tentou) { tentou = 1; b.style.transform = 'translateZ(0)'; requestAnimationFrame(() => { b.style.transform = ''; window.scrollTo(window.scrollX, window.scrollY); }); return; }
+      if (Math.abs(falta - desloc) > 1) { desloc = falta; nav.style.transform = `translateY(${desloc}px)`; }
+    } else if (desloc) { desloc = 0; tentou = 0; nav.style.transform = ''; }
+    else tentou = 0;
+  };
+  setInterval(conferir, 1000);
+  ['pageshow', 'focus', 'orientationchange'].forEach(ev => window.addEventListener(ev, () => setTimeout(conferir, 350)));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { setTimeout(conferir, 350); setTimeout(conferir, 1200); } });
+  if (vv) vv.addEventListener('resize', () => setTimeout(conferir, 400));
+})();
 let JANELA_TECLADO = () => { };
 // iPhone: com o teclado aberto, a área visível encolhe e o Safari "empurra" a página para cima (a janela dava uma pancada).
 // A janela aberta acompanha só a parte visível da tela: fica parada, logo acima do teclado, e só o teclado sobe.
@@ -3161,7 +3193,7 @@ function tAlunas(v) {
   const achA = q ? ativos.filter(([, a]) => semAc(a.nome).includes(qs)) : [];
   const vazio = '<div class="empty"><b>Nenhum aluno cadastrado.</b><span>Cadastre cada aluno(a) com a turma e o responsável. Se o telefone ou o CPF do responsável já existir, o app sugere agrupar os irmãos.</span></div>';
   // uma linha de aluno (na lista de alunos mostra o responsável; na busca, a etiqueta "Aluno(a)")
-  const linhaAl = (id, a, comResp, rotulo) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes); return `<li class="tap" data-al="${esc(id)}" style="${at ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${rotulo ? '<span class="tipo-lin">Aluno(a)</span>' : ''}${esc(a.nome)}</div>${linhas(esc([idade(a.nascimento) || 'Sem data de nascimento', catNome(id)].filter(Boolean).join(' · ')) + (catErrada(id) ? ' <span class="fx-pend atraso">Categoria?</span>' : ''), esc(turmasTxt(a) || 'Sem turma'), comResp ? `Responsável: <b>${esc(((S.resps || {})[a.responsavelId] || {}).nome || 'sem responsável')}</b>` : '')}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : '<span class="chip">Inativo(a)</span>', (() => { if (!at || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!at || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].filter(Boolean).slice(0, 1).join(''))}</li>`; };
+  const linhaAl = (id, a, comResp, rotulo) => { const m = C.mensalidade(S.alunas, id, mes, S.turmas, S.cfg), at = C.ativaNoMes(a, mes), fut = !at && !!a.inicio && a.inicio > mes && a.ativa !== false && !a.fim; return `<li class="tap" data-al="${esc(id)}" style="${at || fut ? '' : 'opacity:.55'}">${avatarAluno(id, a.nome)}<div class="grow"><div class="t">${rotulo ? '<span class="tipo-lin">Aluno(a)</span>' : ''}${esc(a.nome)}</div>${linhas(esc([idade(a.nascimento) || 'Sem data de nascimento', catNome(id)].filter(Boolean).join(' · ')) + (catErrada(id) ? ' <span class="fx-pend atraso">Categoria?</span>' : ''), esc(turmasTxt(a) || 'Sem turma'), comResp ? `Responsável: <b>${esc(((S.resps || {})[a.responsavelId] || {}).nome || 'sem responsável')}</b>` : '')}</div>${valorCol(m ? brl(m.v) : '—', [mudancasFaixa(id).length ? '<span class="chip vencido">Faixa etária</span>' : '', at ? '' : fut ? `<span class="chip" title="Matrícula começa em ${C.nomeMes(a.inicio)} de ${a.inicio.slice(0, 4)}">Começa ${C.nomeMes(a.inicio).slice(0, 3)}${a.inicio.slice(0, 4) !== mes.slice(0, 4) ? '/' + a.inicio.slice(2, 4) : ''}</span>` : '<span class="chip">Inativo(a)</span>', (() => { if (!(at || fut) || a.anonimizadoEm) return ''; const x = termoDe(id); return x.pend && x.pend.length ? '<span class="chip vencido">Termo mudou</span>' : x.atest ? '<span class="chip vencido">Falta atestado</span>' : x.st !== 'ok' ? '<span class="chip aberto">Sem termo</span>' : ''; })(), (() => { if (!(at || fut) || a.anonimizadoEm || !S.admin) return ''; const pd = piorDoc(id); return pd === 'vencido' ? '<span class="chip vencido">Documento vencido</span>' : pd === 'vence' ? '<span class="chip vencido">Documento vencendo</span>' : ''; })()].filter(Boolean).slice(0, 1).join(''))}</li>`; };
   const blocoResp = ({ rid, r, al }, rotulo) => `<ul class="list">
         <li class="resp-cab ${rid ? 'tap' : ''}" ${rid ? `data-resp="${esc(rid)}"` : ''}><div class="grow"><div class="label">${rotulo ? 'Responsável · perfil' : 'Responsável'}</div><div class="resp-l1"><span class="t">${esc(r.nome)}</span>${rid ? `<span class="resp-fone num">– ${esc(foneBR(r.telefone) || 'sem telefone')}</span>` : ''}</div>${rid && rotulo ? `<div class="s">${al.length ? `${al.length} dependente${al.length === 1 ? '' : 's'}` : 'Nenhum aluno ativo'}</div>` : ''}</div>${rid && r.codigo ? `<span class="chip resp-cod">${esc(r.codigo)}</span>` : ''}${rid && S.admin ? waPendencias(al.map(([id]) => id)) : ''}</li>
         ${al.map(([id, a]) => linhaAl(id, a, false, false)).join('')}

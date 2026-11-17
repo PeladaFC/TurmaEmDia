@@ -44,6 +44,8 @@ Leia isto antes de mexer em qualquer coisa. Atualizado em 15/11/2026.
 - **Cidade da escola:** ao criar a escola (assistente e janela "Criar escola"), a cidade só vale se for escolhida na lista oficial (br.js); não aceita cidade digitada errada.
 - **Painel do dono → Escolas:** cada escola mostra quem a criou (nome, e-mail e WhatsApp do cadastro); a busca também acha pelo nome ou e-mail de quem criou.
 - **Ligação com o banco que se refaz sozinha** (16/11): se o banco cortar as ligações da escola aberta com "sem permissão" (iPhone com o app instalado voltando do segundo plano), o app renova o login, confere o acesso e religa tudo sem fechar a tela (`ouvirEscola`/`reouvir` em `app/app.js`); se a pessoa perdeu o acesso de verdade, avisa e volta para Minhas escolas. O registro de erros agora diz qual caminho foi recusado ("ao ouvir …") e a versão real do app.
+- **Barra de baixo no lugar** (17/11): um vigia (`vigiarBarra` em `app/app.js`) confere a cada segundo, e quando o app volta à frente, se a barra de abas está colada no fundo da tela; se o iPhone a deixar "subida", pede para redesenhar e, se não adiantar, empurra a barra de volta (e tira o empurrão quando a tela volta ao normal). Não age com teclado aberto, janela aberta ou no computador.
+- **Aluno com início futuro** (17/11): na lista de alunos aparece "Começa jan/27" (sem ficar apagado), em vez de "Inativo(a)"; continua mostrando termo/atestado pendente.
 - **Termos e Privacidade:** versão 2, sem trechos a preencher; contato pelotafc.app@gmail.com; foro Recife/PE; a taxa de 1% citada sem destaque (ele pediu discrição).
 
 ## Pendências e decisões
