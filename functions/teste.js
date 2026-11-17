@@ -107,6 +107,13 @@ const req = (body, token, query) => ({ method: 'POST', body, query: query || {},
     assert.strictEqual(C.mensalidade(alunas, 'a6', '2026-10', turmas, cfg).v, 0);
     assert.strictEqual(C.mensalidade(alunas, 'a7', '2026-10', turmas, cfg).v, 150);
   });
+  await t('taxa ligada à matrícula: inclusa não vira cobrança; à parte usa o vencimento de quem entrou', () => {
+    const ex = { ...extras, u1: { tipo: 'taxa', nome: 'Uniforme', v: 0, venc: '2026-10-01', alunas: ['a1'], matriculaLig: { modo: 'incluso' } },
+      u2: { tipo: 'taxa', nome: 'Agasalho', v: 90, venc: '2026-10-01', alunas: ['a1'], vencs: { a1: '2026-10-28' }, matriculaLig: { modo: 'cobrar' } } };
+    const its = C.itensAluna({ ...d(), extras: ex }, 'a1', H);
+    assert.ok(!its.some(i => i.xid === 'u1'), 'inclusa não aparece como cobrança');
+    const u2 = its.find(i => i.xid === 'u2'); assert.strictEqual(u2.v, 90); assert.strictEqual(u2.venc, '2026-10-28');
+  });
   await t('itens da aluna: mensalidades em aberto desde o início + extras por grupo, turma e avulsa', () => {
     assert.deepStrictEqual(C.itensAluna(d(), 'a1', H).map(i => [i.k, i.v, i.venc]), [['m:2026-09:a1', 240, '2026-09-10'], ['m:2026-10:a1', 240, '2026-10-10'], ['x:x1:a1', 85, '2026-10-25']]);
     assert.deepStrictEqual(C.itensAluna(d(), 'a2', H).map(i => i.k), ['m:2026-09:a2', 'm:2026-10:a2', 'x:x2:a2', 'x:x3:a2']);
