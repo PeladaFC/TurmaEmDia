@@ -2685,7 +2685,7 @@ function sheetExtra(xid, op = {}) {
   const o0 = (x && x.origem) || x || {}, usados = new Set([...(o0.todos ? ['todos'] : []), ...(o0.grupos || []).map(g => 'g:' + g), ...(o0.turmas || []).map(t => 't:' + t), ...(o0.eventos || []), ...(pre.quadro ? [pre.quadro] : [])]);
   let evento = x ? x.evento || null : pre.evento || null, quadros = quadrosDe(selA, true, evento);
   const padrao = () => parseValor(($('xval') || {}).value || '') || 0;
-  const evsTaxa = eventosAtivos().filter(([id, e]) => id === evento || fimDe(e) >= isoDe(new Date(Date.now() - 90 * 864e5)));
+  const evsTaxa = eventosAtivos().filter(([id, e]) => id === evento || fimDe(e) >= isoDe(new Date(Date.now() - 7 * 864e5)));
   sheet(`<h3>${ed ? (legado ? 'Editar cobrança do evento' : 'Editar taxa') : 'Lançar'}</h3>
     ${ed ? '' : `<div class="seg">${TIPOS_LANCAR.map(([k, n]) => `<button type="button" data-t="${k}" aria-pressed="${k === 'taxa'}">${n}</button>`).join('')}</div>`}
     <div class="field"><label for="xnome">Descrição</label><input id="xnome" maxlength="60" value="${esc(x ? x.nome : pre.nome || '')}" placeholder="Ex.: Ajuda de custo, uniforme, taxa da federação"></div>
