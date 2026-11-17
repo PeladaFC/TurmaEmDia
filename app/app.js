@@ -5552,8 +5552,8 @@ async function sheetNotasPlataforma(mes, editar) {
   });
 }
 // abas do painel do dono: visão geral e notas fiscais
-const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Visão geral</button><button type="button" data-dono="escolas" aria-pressed="${at === 'escolas'}">Escolas</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas fiscais</button><button type="button" data-dono="erros" aria-pressed="${at === 'erros'}">Erros</button></div>`;
-function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; ({ geral: sheetPainelDono, escolas: () => sheetEscolasDono(true), notas: sheetNotasPlataforma, erros: sheetErros })[b.dataset.dono](); }); }
+const abasDono = at => `<div class="seg" style="margin-bottom:4px"><button type="button" data-dono="geral" aria-pressed="${at === 'geral'}">Geral</button><button type="button" data-dono="escolas" aria-pressed="${at === 'escolas'}">Escolas</button><button type="button" data-dono="notas" aria-pressed="${at === 'notas'}">Notas</button><button type="button" data-dono="avisos" aria-pressed="${at === 'avisos'}">Avisos</button><button type="button" data-dono="erros" aria-pressed="${at === 'erros'}">Erros</button></div>`;
+function ligarAbasDono() { document.querySelectorAll('#overlay [data-dono]').forEach(b => b.onclick = () => { if (b.getAttribute('aria-pressed') === 'true') return; ({ geral: sheetPainelDono, escolas: () => sheetEscolasDono(true), notas: sheetNotasPlataforma, avisos: sheetAvisosDono, erros: sheetErros })[b.dataset.dono](); }); }
 // registro técnico de erros, agrupado pelo tipo de erro (só o dono da plataforma lê: regras do Firestore)
 const topN = (o, n) => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${k} (${v})`).join(', ') || '—';
 const dataHoraErro = ms => new Date(ms).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -5590,6 +5590,167 @@ async function sheetErros() {
       // apagar pede um segundo toque
       if (b.dataset.ok !== '1') { b.dataset.ok = '1'; b.textContent = `Toque de novo para apagar ${g.ids.length}`; setTimeout(() => { if (b.isConnected) { b.dataset.ok = ''; b.textContent = 'Apagar'; } }, 4000); return; }
       b.disabled = true; try { for (let i = 0; i < g.ids.length; i += 400) await B.lote(g.ids.slice(i, i + 400).map(id => ({ op: 'del', p: 'erros/' + id }))); aviso('Erros apagados'); sheetErros(); } catch (e) { aviso('Não deu para apagar. Tente de novo.'); b.disabled = false; } });
+  });
+}
+/* ================= Avisos do app (Painel do dono → Avisos) =================
+   O dono escreve o aviso (texto, imagem ou vídeo curto, botão com link) e escolhe para quem vai.
+   Ao abrir o app, aparece por cima de tudo. "Importante": só some marcando "Li e estou ciente" (cada pessoa,
+   cada administradora). "Novidade": "Agora não" ou "Entendi". "Agora não"/"Deixar para depois" volta na próxima abertura.
+   Banco: avisosApp/{id} (aviso), avisosApp/{id}/partes/{n} (a imagem ou o vídeo em pedaços),
+   avisosApp/{id}/cientes/{uid} (quem marcou), users/{uid}.avisosLidos (para não mostrar de novo). */
+const AV_PARTE = 700000, AV_VIDEO_MAX = 6 * 1048576, AV_PARA = [['admin', 'Escolas (cada administradora)'], ['professora', 'Professores'], ['familia', 'Famílias']];
+const AV_ADIADOS = new Set(); let AV_FILA = [], AV_ABERTO = false, AV_VEZ = 0;
+const hojeIso = () => isoDe(new Date());
+const avNoAr = a => a && a.ativo !== false && (!a.fim || a.fim >= hojeIso()) && (!a.inicio || a.inicio <= hojeIso());
+const meusPapeis = () => new Set(Object.values(MINHAS).map(e => e && e.papel).filter(Boolean));
+async function midiaDoAviso(id, a) {
+  if (!a.midia || !a.midia.partes) return null;
+  const ps = await Promise.all(Array.from({ length: a.midia.partes }, (_, i) => B.get(`avisosApp/${id}/partes/${i}`)));
+  const b64 = ps.map(p => (p && p.d) || '').join(''), bin = atob(b64), u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([u8], { type: a.midia.mime || (a.midia.tipo === 'video' ? 'video/mp4' : 'image/jpeg') }));
+}
+const htmlMidiaAv = (a, url) => !url ? '' : a.midia.tipo === 'video'
+  ? `<video class="av-midia" src="${url}" autoplay muted loop playsinline controls></video>` : `<img class="av-midia" src="${url}" alt="">`;
+// procura os avisos no ar para quem entrou (chamado logo depois de entrar na conta)
+async function checarAvisos() {
+  const vez = ++AV_VEZ; if (!EU || !B.onde) return;
+  let lista; try { lista = await B.onde('avisosApp', 'ativo', '==', true); } catch (e) { return; }
+  if (vez !== AV_VEZ || !EU) return;
+  const papeis = meusPapeis(), lidos = (USR && USR.avisosLidos) || {};
+  AV_FILA = lista.filter(({ id, data: a }) => avNoAr(a) && !lidos[id] && !AV_ADIADOS.has(id) && (a.para || []).some(p => papeis.has(p) && !(p === 'familia' && a.tipo === 'importante')))
+    .sort((x, y) => (x.data.tipo === 'importante' ? 0 : 1) - (y.data.tipo === 'importante' ? 0 : 1) || (x.data.criadoEm || 0) - (y.data.criadoEm || 0));
+  mostrarProxAviso();
+}
+async function mostrarProxAviso() {
+  if (AV_ABERTO || !AV_FILA.length) return;
+  const { id, data: a } = AV_FILA.shift(); AV_ABERTO = true;
+  const url = await midiaDoAviso(id, a).catch(() => null);
+  abrirAviso(a, url, async acao => {
+    if (acao === 'depois') AV_ADIADOS.add(id);
+    else if (!a.previa) {
+      const em = Date.now(); USR.avisosLidos = { ...(USR.avisosLidos || {}), [id]: em };
+      B.set('users/' + EU.uid, { avisosLidos: { [id]: em } }, { merge: true }).catch(() => { });
+      const papeis = [...meusPapeis()].filter(p => (a.para || []).includes(p));
+      B.set(`avisosApp/${id}/cientes/${EU.uid}`, { em, nome: (EU.nome || '').slice(0, 80), email: (EU.email || '').slice(0, 120), papeis, escolas: Object.entries(MINHAS).filter(([, e]) => e && papeis.includes(e.papel)).map(([, e]) => String(e.nome || '').slice(0, 80)).slice(0, 10) }).catch(() => { });
+    }
+    if (url) URL.revokeObjectURL(url);
+    AV_ABERTO = false; setTimeout(mostrarProxAviso, 300);
+  });
+}
+// a janela do aviso: por cima de tudo, só fecha pelos botões
+function abrirAviso(a, url, fim) {
+  const imp = a.tipo === 'importante', el = document.createElement('div');
+  el.className = 'av-bg'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+  el.innerHTML = `<div class="av-caixa">
+      ${a.previa ? '<span class="av-previa">Prévia · só você está vendo</span>' : ''}
+      <span class="av-tag ${imp ? 'imp' : ''}">${imp ? 'Aviso importante' : 'Novidade'}</span>
+      <h3>${esc(a.titulo)}</h3>
+      ${htmlMidiaAv(a, url)}
+      ${a.texto ? `<div class="av-texto">${esc(a.texto).replace(/\n/g, '<br>')}</div>` : ''}
+      ${a.botao && a.botao.link ? `<button type="button" class="btn ghost" id="avlink">${esc(a.botao.texto || 'Saiba mais')}</button>` : ''}
+      ${imp ? `<label class="av-ciente"><input type="checkbox" id="avck"><span>Li e estou ciente</span></label>` : ''}
+      <div class="actions"><button type="button" class="btn ghost" id="avdep">${imp ? 'Mais tarde' : 'Agora não'}</button><button type="button" class="btn" id="avok" ${imp ? 'disabled' : ''}>${imp ? 'Confirmar' : 'Entendi'}</button></div></div>`;
+  document.body.appendChild(el); travarFundo(true);
+  const sair = acao => { el.remove(); if (!$('overlay').querySelector('.sheet')) travarFundo(false); fim(acao); };
+  if (imp) el.querySelector('#avck').onchange = e => { el.querySelector('#avok').disabled = !e.target.checked; };
+  el.querySelector('#avdep').onclick = () => sair('depois');
+  el.querySelector('#avok').onclick = () => sair('ok');
+  if (el.querySelector('#avlink')) el.querySelector('#avlink').onclick = () => window.open(a.botao.link, '_blank', 'noopener');
+}
+// imagem: reduzida no celular (até 1400 px); vídeo: como veio (até 6 MB)
+async function lerMidiaAviso(f) {
+  if (/^image\//.test(f.type)) { const c = await abrirImagem(f, 1400); let url = ''; for (const q of [0.82, 0.72, 0.6, 0.5]) { url = c.toDataURL('image/jpeg', q); if (url.length * 0.75 <= 450000) break; } return { tipo: 'img', mime: 'image/jpeg', dados: url.split(',')[1] }; }
+  if (/^video\//.test(f.type) || /\.(mp4|mov|m4v|webm)$/i.test(f.name || '')) {
+    if (f.size > AV_VIDEO_MAX) throw new Error(`Esse vídeo tem ${kb(f.size)}. O limite é ${kb(AV_VIDEO_MAX)}: use um vídeo mais curto (até uns 15 segundos).`);
+    const u = await lerDataUrl(f); return { tipo: 'video', mime: f.type || 'video/mp4', dados: u.split(',')[1] }; }
+  throw new Error('Escolha uma foto ou um vídeo.');
+}
+async function sheetAvisosDono() {
+  const desenhar = (corpo, ligar) => sheet(`${abasDono('avisos')}<h3>Avisos do app</h3><div class="sub">Aparecem por cima de tudo quando a pessoa abre o app. "Importante" só some quando a pessoa marca que está ciente.</div>
+    <button type="button" class="btn" id="avnovo">+ Aviso</button>${corpo}<button class="btn ghost" data-fechar>Fechar</button>`,
+    sh => { ligarAbasDono(); $('avnovo').onclick = () => abrirDe(sheetAvisosDono, () => sheetAvisoForm(null)); ligar && ligar(sh); });
+  desenhar('<div class="empty">Carregando…</div>');
+  let lista; try { lista = await B.ultimos('avisosApp', 'criadoEm', 100); }
+  catch (e) { return desenhar(`<div class="banner"><span>${e.code === 'permission-denied' ? 'Sem permissão. As regras novas do banco entram no ar com o próximo "Publique".' : 'Não consegui carregar os avisos. Tente de novo.'}</span></div>`); }
+  const est = a => a.ativo === false ? ['Pausado', ''] : a.fim && a.fim < hojeIso() ? ['Encerrado', ''] : a.inicio && a.inicio > hojeIso() ? ['Começa ' + dataBR(a.inicio), 'esp'] : ['No ar', 'ok'];
+  const para = a => (a.para || []).map(p => ({ admin: 'Escolas', professora: 'Professores', familia: 'Famílias' })[p]).filter(Boolean).join(', ');
+  desenhar(!lista.length ? '<div class="empty"><span>Nenhum aviso ainda. Toque em "+ Aviso".</span></div>' : `<ul class="list">${lista.map(({ id, data: a }) => { const [st, c] = est(a);
+    return `<li class="nf-card"><div class="grow"><div class="nf-lin"><b>${esc(a.titulo)}</b><span class="chip ${c === 'ok' ? 'pago' : c === 'esp' ? 'aberto' : ''}">${st}</span></div>
+      <span class="s">${a.tipo === 'importante' ? 'Importante' : 'Novidade'} · para ${esc(para(a) || '—')}${a.midia ? ` · com ${a.midia.tipo === 'video' ? 'vídeo' : 'imagem'}` : ''}${a.fim ? ` · até ${dataBR(a.fim)}` : ''}</span>
+      <div class="nf-acoes"><button type="button" class="btn btn-mini" data-avver="${esc(id)}">${a.tipo === 'importante' ? 'Quem está ciente' : 'Quem viu'}</button><button type="button" class="btn ghost btn-mini" data-aved="${esc(id)}">Editar</button><button type="button" class="btn ghost btn-mini" data-avpa="${esc(id)}">${a.ativo === false ? 'Pôr no ar' : 'Pausar'}</button><button type="button" class="btn ghost btn-mini" data-avdel="${esc(id)}">Apagar</button></div></div></li>`; }).join('')}</ul>`, sh => {
+    const A = Object.fromEntries(lista.map(x => [x.id, x.data]));
+    sh.querySelectorAll('[data-aved]').forEach(b => b.onclick = () => abrirDe(sheetAvisosDono, () => sheetAvisoForm(b.dataset.aved, A[b.dataset.aved])));
+    sh.querySelectorAll('[data-avver]').forEach(b => b.onclick = () => abrirDe(sheetAvisosDono, () => sheetCientes(b.dataset.avver, A[b.dataset.avver])));
+    sh.querySelectorAll('[data-avpa]').forEach(b => b.onclick = async () => { b.disabled = true; try { await B.set('avisosApp/' + b.dataset.avpa, { ativo: A[b.dataset.avpa].ativo === false }, { merge: true }); sheetAvisosDono(); } catch (e) { aviso(msgErro(e)); b.disabled = false; } });
+    sh.querySelectorAll('[data-avdel]').forEach(b => b.onclick = () => duploToque(b, async () => { const id = b.dataset.avdel, a = A[id]; b.disabled = true;
+      try { const cs = await B.ultimos(`avisosApp/${id}/cientes`, 'em', 5000).catch(() => []);
+        const ops = [...cs.map(c => ({ op: 'del', p: `avisosApp/${id}/cientes/${c.id}` })), ...Array.from({ length: (a.midia && a.midia.partes) || 0 }, (_, i) => ({ op: 'del', p: `avisosApp/${id}/partes/${i}` })), { op: 'del', p: 'avisosApp/' + id }];
+        for (let i = 0; i < ops.length; i += 400) await B.lote(ops.slice(i, i + 400)); aviso('Aviso apagado'); sheetAvisosDono(); } catch (e) { aviso(msgErro(e)); b.disabled = false; } }, 'Toque de novo para apagar'));
+  });
+}
+async function sheetCientes(id, a) {
+  const imp = a.tipo === 'importante';
+  sheet(`<h3>${imp ? 'Quem está ciente' : 'Quem viu'}</h3><div class="sub">${esc(a.titulo)}</div><div class="empty">Carregando…</div>`);
+  let cs; try { cs = await B.ultimos(`avisosApp/${id}/cientes`, 'em', 5000); } catch (e) { cs = null; }
+  const P = { admin: 'Administração', professora: 'Professor(a)', familia: 'Família' };
+  sheet(`<h3>${imp ? 'Quem está ciente' : 'Quem viu'}</h3><div class="sub">${esc(a.titulo)}</div>
+    ${cs == null ? '<div class="banner"><span>Não consegui carregar. Tente de novo.</span></div>' : `<span class="s">${cs.length} pessoa${cs.length === 1 ? '' : 's'} ${imp ? 'marcaram "Li e estou ciente"' : 'tocaram em "Entendi"'}.</span>
+    ${cs.length ? `<ul class="list">${cs.map(({ data: c }) => `<li><div class="grow"><div class="t">${esc(c.nome || c.email || 'Sem nome')}</div><span class="s">${esc((c.papeis || []).map(p => P[p] || p).join(', '))}${(c.escolas || []).length ? ' · ' + esc(c.escolas.join(', ')) : ''}</span><span class="s">${new Date(c.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${c.email && c.nome ? ' · ' + esc(c.email) : ''}</span></div></li>`).join('')}</ul>` : ''}`}
+    <button type="button" class="btn ghost" data-fechar>Voltar</button>`);
+}
+function sheetAvisoForm(id, a0) {
+  const a = a0 || { tipo: 'novidade', para: ['admin'] }; let midia = a.midia ? { ...a.midia, antiga: true } : null, tirouMidia = false;
+  sheet(`<h3>${id ? 'Editar aviso' : 'Novo aviso'}</h3>
+    <div class="seg" id="avtipo"><button type="button" data-avt="novidade" aria-pressed="${a.tipo !== 'importante'}">Novidade</button><button type="button" data-avt="importante" aria-pressed="${a.tipo === 'importante'}">Importante</button></div>
+    <span class="s" id="avtiposub"></span>
+    <div class="field"><label for="avtit">Título</label><input id="avtit" maxlength="80" value="${esc(a.titulo || '')}" placeholder="Ex.: Mudou a forma de emitir nota fiscal"></div>
+    <div class="field"><label for="avtxt">Texto</label><textarea id="avtxt" rows="5" maxlength="1500" placeholder="Explique em poucas linhas.">${esc(a.texto || '')}</textarea></div>
+    <div class="field"><span class="lb">Imagem ou vídeo (opcional)</span><div id="avmid"></div><input type="file" id="avarq" accept="image/*,video/mp4,video/quicktime,video/webm" hidden><span class="sub">Vídeo: até 6 MB (uns 15 segundos). Prefira MP4, que abre em iPhone e Android.</span><span class="err" id="avmerr"></span></div>
+    <div class="field"><label for="avbtx">Botão com link (opcional)</label><input id="avbtx" maxlength="30" value="${esc((a.botao || {}).texto || '')}" placeholder="Ex.: Saiba mais, Inscreva-se"></div>
+    <div class="field"><label for="avblk">Link do botão</label><input id="avblk" inputmode="url" maxlength="300" value="${esc((a.botao || {}).link || '')}" placeholder="https://"></div>
+    <div class="field"><span class="lb">Para quem?</span><div id="avpara">${AV_PARA.map(([k, n]) => `<label class="liga liga-mini" data-avp="${k}"><span class="grow"><b>${n}</b></span><input type="checkbox" role="switch" value="${k}" ${(a.para || []).includes(k) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
+    <div class="two"><div class="field"><label for="avini">Começa em</label><input id="avini" type="date" value="${esc(a.inicio || hojeIso())}"></div><div class="field"><label for="avfim">Sai do ar em (opcional)</label><input id="avfim" type="date" value="${esc(a.fim || '')}"></div></div>
+    <span class="err" id="averr"></span>
+    <button type="button" class="btn ghost" id="avprev">Ver como fica</button>
+    <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="avsal">${id ? 'Salvar' : 'Pôr no ar'}</button></div>`, sh => {
+    let tipo = a.tipo === 'importante' ? 'importante' : 'novidade';
+    const verTipo = () => { sh.querySelectorAll('[data-avt]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.avt === tipo)));
+      $('avtiposub').textContent = tipo === 'importante' ? 'Só some quando a pessoa marca "Li e estou ciente" ("Mais tarde" faz voltar na próxima abertura). Cada administradora marca a sua. Famílias não recebem aviso importante.' : 'A pessoa toca em "Entendi" ou "Agora não" (volta na próxima vez que abrir o app).';
+      const fam = sh.querySelector('[data-avp="familia"]'); fam.hidden = tipo === 'importante'; };
+    sh.querySelectorAll('[data-avt]').forEach(b => b.onclick = () => { tipo = b.dataset.avt; verTipo(); }); verTipo();
+    const verMid = () => { $('avmid').innerHTML = midia ? `<div class="ev-link"><span class="grow"><b>${midia.tipo === 'video' ? 'Vídeo' : 'Imagem'}</b><span class="s">${midia.antiga ? 'já salvo' : kb(Math.round(midia.dados.length * 0.75))}</span></span><button type="button" class="link" id="avmtroca">Trocar</button><button type="button" class="link arq-exc" id="avmtira">Tirar</button></div>` : '<button type="button" class="btn ghost btn-mini" id="avmadd">+ Imagem ou vídeo</button>';
+      if ($('avmadd')) $('avmadd').onclick = () => $('avarq').click();
+      if ($('avmtroca')) $('avmtroca').onclick = () => $('avarq').click();
+      if ($('avmtira')) $('avmtira').onclick = () => { midia = null; tirouMidia = true; verMid(); }; };
+    verMid();
+    $('avarq').onchange = async () => { const f = $('avarq').files[0]; $('avarq').value = ''; $('avmerr').textContent = ''; if (!f) return;
+      try { $('avmerr').textContent = 'Preparando…'; midia = await lerMidiaAviso(f); tirouMidia = true; $('avmerr').textContent = ''; verMid(); } catch (e) { $('avmerr').textContent = e.message; } };
+    const ler = () => { const titulo = $('avtit').value.trim(), texto = $('avtxt').value.trim(), btx = $('avbtx').value.trim(), blk = $('avblk').value.trim();
+      const para = [...sh.querySelectorAll('#avpara input:checked')].map(c => c.value).filter(p => !(tipo === 'importante' && p === 'familia'));
+      if (!titulo) throw new Error('Escreva o título.');
+      if (!texto && !midia) throw new Error('Escreva o texto ou ponha uma imagem/vídeo.');
+      if (!para.length) throw new Error('Escolha para quem vai o aviso.');
+      if (blk && !/^https:\/\/[^\s]+\.[^\s]+/i.test(blk)) throw new Error('O link do botão precisa começar com https://');
+      const ini = $('avini').value || hojeIso(), fim = $('avfim').value || null;
+      if (fim && fim < ini) throw new Error('A data de saída é antes da data de começo.');
+      return { titulo, texto, tipo, para, inicio: ini, fim, botao: blk ? { texto: btx || 'Saiba mais', link: blk } : null }; };
+    $('avprev').onclick = () => { $('averr').textContent = ''; let d; try { d = ler(); } catch (e) { return $('averr').textContent = e.message; }
+      const url = midia && midia.dados ? URL.createObjectURL(new Blob([bytesDeDataUrl('x,' + midia.dados)], { type: midia.mime })) : null;
+      const mostrar = u => abrirAviso({ ...d, midia, previa: true }, u, () => { if (u) URL.revokeObjectURL(u); });
+      if (url || !midia) mostrar(url); else midiaDoAviso(id, a).then(mostrar).catch(() => mostrar(null)); };
+    $('avsal').onclick = async () => { $('averr').textContent = ''; let d; try { d = ler(); } catch (e) { return $('averr').textContent = e.message; }
+      const b = $('avsal'); b.disabled = true; b.textContent = 'Salvando…';
+      try { const aid = id || novoId(), ops = [];
+        let md = midia && midia.antiga ? a.midia : null;
+        if (tirouMidia && a.midia && a.midia.partes) for (let i = 0; i < a.midia.partes; i++) ops.push({ op: 'del', p: `avisosApp/${aid}/partes/${i}` });
+        if (ops.length) await B.lote(ops);
+        if (midia && midia.dados) { const n = Math.ceil(midia.dados.length / AV_PARTE);
+          for (let i = 0; i < n; i++) await B.set(`avisosApp/${aid}/partes/${i}`, { d: midia.dados.slice(i * AV_PARTE, (i + 1) * AV_PARTE) });
+          md = { tipo: midia.tipo, mime: midia.mime, partes: n, tam: Math.round(midia.dados.length * 0.75) }; }
+        await B.set('avisosApp/' + aid, { ...d, midia: md, ativo: id ? a.ativo !== false : true, criadoEm: (a0 && a0.criadoEm) || Date.now(), editadoEm: Date.now() });
+        aviso(id ? 'Aviso salvo' : 'Aviso no ar'); SHEET_VOLTAR = null; sheetAvisosDono(); }
+      catch (e) { $('averr').textContent = msgErro(e); b.disabled = false; b.textContent = id ? 'Salvar' : 'Pôr no ar'; } };
   });
 }
 const REG_ORDEM = ['Nordeste', 'Sudeste', 'Sul', 'Centro-Oeste', 'Norte', 'Sem cidade informada'];
@@ -7992,6 +8153,7 @@ async function semearMock() {
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
     if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
     if (u) setTimeout(enviarErros, 3000); // erros guardados antes do login
+    AV_VEZ++; AV_FILA = []; AV_ABERTO = false; document.querySelectorAll('.av-bg').forEach(e => e.remove()); if (u) setTimeout(checarAvisos, 4000); // avisos do app (Painel do dono → Avisos)
     DONO_VEZ++; DONO_EST = null; NOTAS_PLAT = undefined; if (u) setTimeout(checarDono, 600); // Painel do dono no canto de cima
     // o site de entrada (turmaemdia.com.br) manda direto para o app quem já entrou neste aparelho
     if (!MOCK) { try { if (u) localStorage.setItem('ted.entrou', '1'); else localStorage.removeItem('ted.entrou'); } catch (e) { } }
