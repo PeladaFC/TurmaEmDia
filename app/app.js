@@ -798,13 +798,19 @@ function telaCriarEscola(passo) {
       corpo: `<div class="ob-dias" id="wdias">${dias.map(d => `<button type="button" data-v="${d}" aria-pressed="${WZ.venc === d}">${d}</button>`).join('')}</div>
         <div class="field" style="max-width:200px;margin:0 auto"><label for="woutro">Ou outro dia (1 a 28)</label><input id="woutro" type="number" min="1" max="28" inputmode="numeric" value="${dias.includes(WZ.venc) ? '' : WZ.venc}" style="text-align:center"></div>
         <div class="ob-dica">💡<span>O app avisa as famílias 3 dias antes e no dia do vencimento.</span></div><div class="err" id="werr" role="alert"></div>`,
-      botao: '<button class="btn" id="wok">Criar escola</button>', dois: voltar });
+      botao: `<button class="btn" id="wok">${WZ.eid ? 'Próximo' : 'Criar escola'}</button>`, dois: voltar });
     $('wdias').querySelectorAll('[data-v]').forEach(b => b.onclick = () => { WZ.venc = Number(b.dataset.v); $('woutro').value = ''; $('wdias').querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
     $('woutro').oninput = () => { if ($('woutro').value) $('wdias').querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', 'false')); };
     $('wvolta').onclick = () => telaCriarEscola('mod');
     $('wok').onclick = async () => {
       if ($('woutro').value) { const v = Number($('woutro').value); if (!(v >= 1 && v <= 28)) return $('werr').textContent = 'O vencimento vai do dia 1 ao 28.'; WZ.venc = v; }
-      // a escola é criada aqui; depois vêm o cartão (obrigatório) e a primeira turma (dá para pular)
+      // a escola é criada aqui; depois vêm o cartão (opcional) e a primeira turma (dá para pular)
+      const seguir = eid => LOJA() ? telaCriarEscola(3) : telaCartaoEscola(eid, WZ.nome, () => telaCriarEscola(3), () => telaCriarEscola(2));
+      // voltou dos passos seguintes para corrigir: a escola já existe, só atualiza o que mudou
+      if (WZ.eid) { $('wok').disabled = true;
+        try { await B.lote([{ op: 'merge', p: 'escolas/' + WZ.eid, d: { nome: WZ.nome } }, { op: 'merge', p: `escolas/${WZ.eid}/config/geral`, d: { vencDia: WZ.venc, cidade: WZ.cidade, uf: WZ.uf, modalidades: WZ.modalidades || [] } }]);
+          await B.set('users/' + EU.uid, { escolas: { [WZ.eid]: { nome: WZ.nome } } }, { merge: true }); if (MINHAS[WZ.eid]) MINHAS[WZ.eid].nome = WZ.nome;
+          return seguir(WZ.eid); } catch (e) { $('werr').textContent = msgErro(e); $('wok').disabled = false; return; } }
       $('wok').disabled = true; const eid = novoId();
       try {
         await B.lote([
@@ -813,7 +819,7 @@ function telaCriarEscola(passo) {
         ]);
         await B.set('users/' + EU.uid, { escolas: { [eid]: { nome: WZ.nome, papel: 'admin' } } }, { merge: true });
         MINHAS[eid] = { nome: WZ.nome, papel: 'admin' }; WZ.eid = eid;
-        LOJA() ? telaCriarEscola(3) : telaCartaoEscola(eid, WZ.nome, () => telaCriarEscola(3));
+        seguir(eid);
       } catch (e) { $('werr').textContent = msgErro(e); $('wok').disabled = false; }
     };
   } else if (passo === 3) {
@@ -822,9 +828,11 @@ function telaCriarEscola(passo) {
       corpo: `<div class="two"><div class="field"><label for="wtnome">Nome da turma</label><input id="wtnome" maxlength="60" placeholder="Ex.: Balé Baby" value="${esc(WZ.turma.nome)}"></div>
         <div class="field"><label for="wtpreco">Mensalidade (R$)</label><input id="wtpreco" inputmode="decimal" placeholder="150,00" value="${esc(WZ.turma.preco)}"></div></div>
         ${camposHorariosHTML()}<div class="err" id="werr" role="alert"></div>`,
-      botao: '<button class="btn" id="wok">Criar turma</button>', links: '<button type="button" id="wpular">Pular</button>' });
+      botao: `<button class="btn" id="wok">${WZ.tid ? 'Salvar turma' : 'Criar turma'}</button>`, dois: voltar, links: '<button type="button" id="wpular">Pular</button>' });
     camposTurmaHorarios(WZ.turma.hs);
     const guardar = () => { WZ.turma.nome = $('wtnome').value.trim(); WZ.turma.preco = $('wtpreco').value.trim(); };
+    // voltar: cartão (fora da loja) ou vencimento; o que já foi digitado da turma fica guardado
+    $('wvolta').onclick = () => { guardar(); LOJA() ? telaCriarEscola(2) : telaCartaoEscola(WZ.eid, WZ.nome, () => telaCriarEscola(3), () => telaCriarEscola(2)); };
     $('wpular').onclick = () => { WZ.turmaFeita = false; telaCriarEscola(4); };
     $('wok').onclick = async () => {
       guardar(); const err = m => $('werr').textContent = m, preco = parseValor(WZ.turma.preco);
@@ -833,7 +841,7 @@ function telaCriarEscola(passo) {
       const H = salvarHorarios(WZ.turma.hs, ''); if (H.erro) return err(H.erro);
       if (!H.dias.length) return err('Marque os dias de aula da turma.');
       $('wok').disabled = true;
-      const eid = WZ.eid, tid = novoId();
+      const eid = WZ.eid, tid = WZ.tid || (WZ.tid = novoId());
       try {
         await B.set(`escolas/${eid}/turmas/${tid}`, { nome: WZ.turma.nome, todasIdades: true, idadeMin: null, idadeMax: null, professoraId: null, professoraIds: [], ...H, chamada: true, chamadaObrig: false, recebedor: 'escola', localId: null, preco, vagas: null, ordem: 1 });
         WZ.turmaFeita = true; telaCriarEscola(4);
@@ -843,14 +851,15 @@ function telaCriarEscola(passo) {
     const eid = WZ.eid;
     telaOb({ passo: LOJA() ? 5 : 6, rotulo: LOJA() ? 'Passo 5 de 5' : 'Passo 6 de 6', titulo: 'Tudo pronto! 🎉', sub: 'Agora é só seguir a lista. Ela fica no topo da aba Pendências até tudo ficar pronto.',
       corpo: `<div class="hero"><div class="passos">${PASSOS_ESCOLA.map(([k, t]) => `<div>${k === 'escola' || (k === 'turma' && WZ.turmaFeita) ? '<span class="ok">✓</span>' : '<span class="vazio"></span>'}${t}</div>`).join('')}</div></div>`,
-      botao: '<button class="btn" id="wok">Adicionar alunos</button>', links: '<button type="button" id="wdepois">Fazer depois</button>' });
+      botao: '<button class="btn" id="wok">Adicionar alunos</button>', dois: voltar, links: '<button type="button" id="wdepois">Fazer depois</button>' });
+    $('wvolta').onclick = () => telaCriarEscola(3);
     $('wok').onclick = () => { WZ = null; abrirEscola(eid, 'alunas').then(() => setTimeout(() => passoAbrir('alunos'), 300)); };
     $('wdepois').onclick = () => { WZ = null; abrirEscola(eid); };
   }
 }
 // cartão do plano, obrigatório ao criar a escola: o Mercado Pago confere se o cartão é válido,
 // e a primeira cobrança só acontece no fim dos 30 dias de teste grátis. Se a pessoa sair antes, a tela volta ao abrir a escola.
-async function telaCartaoEscola(eid, nome, depois) {
+async function telaCartaoEscola(eid, nome, depois, voltarPasso) {
   const S0 = S; S = { eid, escola: { nome }, alunas: {}, plano: null }; // o servidor do plano só precisa saber qual é a escola
   let R = null, campos = null, metodo = null;
   const sair = () => { if (campos) campos.sair(); campos = null; };
@@ -863,7 +872,8 @@ async function telaCartaoEscola(eid, nome, depois) {
       <div class="note">Depois do teste, o plano custa a partir de ${brl(C.PLANOS[0].mes)} por mês, conforme o número de alunos. Dá para cancelar antes.</div>
       <div class="note">🔒 O número vai direto para o Mercado Pago, que confere se o cartão é válido. O Turma em Dia não vê nem guarda o número.</div>
       <div class="err" id="ccerr" role="alert"></div>`,
-    botao: '<button class="btn" id="ccok">Salvar cartão</button>', links: '<button type="button" id="cccod">Tenho um cupom</button><button type="button" id="ccsair">Cadastrar depois</button>' });
+    botao: '<button class="btn" id="ccok">Salvar cartão</button>', ...(voltarPasso ? { dois: '<button class="btn ghost" id="ccvolta">Voltar</button>' } : {}), links: '<button type="button" id="cccod">Tenho um cupom</button><button type="button" id="ccsair">Cadastrar depois</button>' });
+  if ($('ccvolta')) $('ccvolta').onclick = () => { sair(); S = S0; voltarPasso(); };
   $('cccod').onclick = () => sheet(`<h3>Cupom</h3><div class="sub">Digite o cupom que o Turma em Dia mandou para a escola. Com ele, a escola ganha meses grátis e não precisa cadastrar o cartão agora.</div>
     <div class="field"><label for="cdcod">Cupom</label><input id="cdcod" autocapitalize="characters" autocomplete="off" maxlength="30" placeholder="Ex.: ESCOLA-AMIGA"></div>
     <div class="err" id="cderr" role="alert"></div>
