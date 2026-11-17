@@ -4750,10 +4750,10 @@ function heroCobrMes(mes) {
     </div>`;
 }
 function tFinanceiro(v) {
-  const aba = S.abaFin || 'escola', abas = [['escola', 'Escola'], ['taxas', 'Taxas'], ['turmas', 'Turmas'], ['prof', 'Professores']];
+  const aba = S.abaFin || 'escola', abas = [['escola', 'Escola'], ['turmas', 'Turmas'], ['prof', 'Professores']];
   v.innerHTML = `${heroCobrMes(S.mes)}<div class="seg">${abas.map(([k, n]) => `<button data-fa="${k}" aria-pressed="${aba === k}">${n}</button>`).join('')}</div><div id="fcorpo" style="display:flex;flex-direction:column;gap:16px"></div>`;
   v.querySelectorAll('[data-fa]').forEach(b => b.onclick = () => { S.abaFin = b.dataset.fa; render(); });
-  ({ prof: finProfessoras, taxas: finTaxas, turmas: finTurmas }[aba] || finEscola)($('fcorpo'));
+  ({ prof: finProfessoras, turmas: finTurmas }[aba] || finEscola)($('fcorpo'));
 }
 // contabilidade rápida da escola: o que caiu na conta da escola, saídas e saldo
 // gráfico de pizza das saídas por categoria, com a legenda (valor e %)
@@ -4773,13 +4773,7 @@ function pizzaHTML(cats) {
   return `<div class="pizza">${pizzaSVG(cats.map(([, x], i) => ({ v: x, cor: CORES_PIZZA[i % CORES_PIZZA.length] })), 'Saídas por categoria')}
     <ul class="pizza-leg">${cats.map(([c, x], i) => `<li><i style="background:${CORES_PIZZA[i % CORES_PIZZA.length]}"></i><span class="grow pz-nome">${esc(c)}</span><span class="pz-val"><b class="num">${brl(x)}</b><span class="s num">${Math.round(x / tot * 100)}%</span></span></li>`).join('')}</ul></div>`;
 }
-// Financeiro → Taxas: uniforme, taxa da federação, material, gastos iniciais… (as mesmas taxas da aba Eventos)
-function finTaxas(v) {
-  v.innerHTML = blocoTaxasFin();
-  $('ftxn').onclick = () => sheetExtra(null, { tipo: 'taxa' });
-  v.querySelectorAll('[data-ftx]').forEach(li => li.onclick = () => sheetExtra(li.dataset.ftx));
-}
-// Financeiro → Turmas: o valor mensal de cada turma, separado por professor. Mudar o valor pede confirmação duas vezes.
+// Financeiro → Turmas: o valor mensal de cada turma, separado por professor. Mudar o valor pede confirmação.
 function finTurmas(v) {
   const ts = ordenar(S.turmas), prof = t => S.profs[t.professoraId] ? t.professoraId : '';
   const grupos = [...porNome(S.profs).map(([pid, P]) => [pid, P.nome]), ['', 'Sem professor(a)']].map(([pid, nome]) => [pid, nome, ts.filter(([, t]) => prof(t) === pid)]).filter(g => g[2].length);
@@ -4790,7 +4784,7 @@ function finTurmas(v) {
     : '<div class="empty"><span>Nenhuma turma ainda. As turmas são criadas na aba Turmas.</span></div>';
   v.querySelectorAll('[data-ftu]').forEach(li => li.onclick = () => sheetPrecoTurma(li.dataset.ftu));
 }
-// mudar o valor de uma turma: digitar, conferir e confirmar de novo (é o que as famílias pagam todo mês)
+// mudar o valor de uma turma: digitar (Continuar) e conferir (Sim, mudar) (é o que as famílias pagam todo mês)
 function sheetPrecoTurma(tid, passo = 0, novo = null) {
   const t = S.turmas[tid]; if (!t) return fecharSheet();
   const atual = C.r2(Number(t.preco) || 0), n = alunasDaTurma(tid).length, P = S.profs[t.professoraId];
@@ -4806,27 +4800,14 @@ function sheetPrecoTurma(tid, passo = 0, novo = null) {
         if (v === atual) return $('tpverr').textContent = 'O valor é o mesmo de agora. Digite um valor diferente ou toque em Cancelar.';
         sheetPrecoTurma(tid, 1, v); }; });
   const txt = `<div class="faixa-card" style="background:var(--bg)"><span class="s">${quem}</span><b class="num" style="font-size:1.15rem">${atual > 0 ? brl(atual) : 'Sem valor'} → ${brl(novo)}</b><span class="s">por mês</span></div>`;
-  if (passo === 1) return sheet(`<h3>Confira a mudança</h3>${txt}
+  sheet(`<h3>Confira a mudança</h3>${txt}
     <p class="sub" style="margin:0">Vale para ${n > 1 ? `os ${nAl} desta turma` : n === 1 ? 'o aluno desta turma' : 'quem entrar nesta turma'}, nas mensalidades que ainda não foram pagas. O que já foi pago não muda.</p>
-    <div class="actions"><button class="btn ghost" id="tpvv">Voltar</button><button class="btn" id="tpvok">Sim, mudar</button></div>`, () => {
-      $('tpvv').onclick = () => sheetPrecoTurma(tid, 0, novo); $('tpvok').onclick = () => sheetPrecoTurma(tid, 2, novo); });
-  sheet(`<h3>Tem certeza?</h3>${txt}
-    <p class="sub" style="margin:0">Última confirmação. Depois de confirmar, as próximas cobranças de ${esc(t.nome)} saem com o valor novo.</p>
     <div class="err" id="tpverr" role="alert"></div>
-    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn danger" id="tpvok">Confirmar mudança</button></div>`, () => {
+    <div class="actions"><button class="btn ghost" id="tpvv">Voltar</button><button class="btn" id="tpvok">Sim, mudar</button></div>`, () => {
+      $('tpvv').onclick = () => sheetPrecoTurma(tid, 0, novo);
       $('tpvok').onclick = async () => { $('tpvok').disabled = true;
         try { await B.set(`escolas/${S.eid}/turmas/${tid}`, { preco: novo }, { merge: true }); fecharSheet(); aviso(`✓ ${t.nome}: ${brl(novo)} por mês`); }
         catch (e) { $('tpverr').textContent = msgErro(e); $('tpvok').disabled = false; } }; });
-}
-function blocoTaxasFin() {
-  const limite = isoDe(new Date(Date.now() - 180 * 864e5));
-  const L = Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && !x.matricula && String(x.venc || '') >= limite)
-    .sort((a, b) => String(b[1].venc || '').localeCompare(String(a[1].venc || '')));
-  const linha = ([id, x]) => { const n = [...(x.rateio && !x.rateio.fechadoEm ? (x.convidados || []) : C.alvoExtra(x, S.alunas, S.grupos))].filter(a => S.alunas[a]).length, ev = x.evento && S.extras[x.evento];
-    const onde = ev ? esc(ev.nome) : `vence ${dataBR(x.venc)}`;
-    return `<li class="tap" data-ftx="${esc(id)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(onde, `${n} aluno${n === 1 ? '' : 's'}${x.tamanhos ? ' · com tamanho' : ''}`)}</div>${valorCol(x.rateio && !x.rateio.fechadoEm ? (x.rateio.porAluno ? brl(x.rateio.porAluno) : 'Dividido') : brl(x.v), '', '')}</li>`; };
-  return `<section><div class="headrow"><h2>Taxas</h2><button class="add" id="ftxn">+ Taxa</button></div>
-    ${L.length ? `<ul class="list">${L.map(linha).join('')}</ul>` : `<div class="empty"><span>Uniforme, material, taxa da federação, gastos iniciais. Toque em "+ Taxa", escolha o valor e para quem é.</span></div>`}</section>`;
 }
 function finEscola(v) {
   const mes = S.mes, rs = recebidosNoMes(mes).filter(r => r.rec === 'escola');
@@ -4856,11 +4837,12 @@ function finEscola(v) {
       <ul class="list" style="margin-top:10px">${rs.map(r => `<li><div class="grow"><div class="t">${esc(r.aluna)}</div>${linhas(esc(r.cobranca), `<span class="num">${esc(r.forma)} em ${esc(r.data)}</span>`)}</div>${valorCol(brl(r.v), '', 'in')}</li>`).join('')}</ul></details>` : ''}
     <section><h2>Para onde foi o dinheiro</h2>${cats.length ? pizzaHTML(cats) : '<div class="sub">Nenhuma saída registrada neste mês.</div>'}</section>
     ${blocoFixas(fx, mes)}
-    <section><div class="headrow"><h2>Lançamentos</h2><button class="add" id="cnl">+ Lançamento</button></div>
+    <section><div class="headrow"><h2>Lançamentos</h2><span style="display:flex;gap:8px"><button class="add" id="ftxn">+ Taxa</button><button class="add" id="cnl">+ Lançamento</button></span></div>
       ${ls_.length ? `<ul class="list">${ls_.map(([id, l]) => `<li class="tap" data-l="${esc(id)}"><div class="grow"><div class="t">${esc(l.desc || l.cat)}</div>${linhas(esc(l.cat), `<span class="num">${dataBR(l.data)}${l.localId && S.locais[l.localId] ? ' · ' + esc(S.locais[l.localId].nome) : ''}</span>`)}</div>${valorCol(`${l.tipo === 'entrada' ? '+' : '−'} ${brl(l.v)}`, '', l.tipo === 'entrada' ? 'in' : 'out')}</li>`).join('')}</ul>`
         : `<div class="empty"><span>Registre aqui aluguel, salários, compra de aparelhos, inscrições, patrocínios. O que é pago pelo app entra sozinho.</span></div>`}
     </section>`;
   $('fcfg').onclick = () => sheetAjustes(); $('cnl').onclick = () => sheetLanc();
+  $('ftxn').onclick = () => sheetExtra(null, { tipo: 'taxa' }); // uniforme, material, taxa da federação: a mesma janela de taxa da aba Eventos
   // pendente: tocar abre o pagamento (de lá dá para editar a fixa); pago: abre a fixa
   v.querySelectorAll('[data-fx]').forEach(li => li.onclick = () => li.dataset.fxp ? sheetPagarFixa(li.dataset.fx, mes) : sheetFixa(li.dataset.fx));
   v.querySelectorAll('[data-l]').forEach(li => li.onclick = () => sheetLanc(li.dataset.l));
