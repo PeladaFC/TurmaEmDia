@@ -4582,6 +4582,7 @@ function salvarHorarios(hs, textoAntigo) {
 }
 let HS_TURMA = [];
 function sheetTurma(tid, depois) {
+  let precoOk = null; // valor novo já conferido
   const novoTid = tid || novoId(), t = tid ? S.turmas[tid] : null, n = tid ? Object.values(S.alunas).filter(a => (a.turmas || []).includes(tid)).length : 0, todas = t ? C.todasIdades(t) : false;
   sheetSimples({ titulo: t ? 'Editar turma' : 'Nova turma',
     campos: `<div class="field"><label for="tnome">Nome da turma</label><input id="tnome" maxlength="60" value="${esc(t ? t.nome : '')}" placeholder="Ex.: Iniciação"></div>
@@ -4602,8 +4603,10 @@ function sheetTurma(tid, depois) {
       <div class="field"><label for="trec">A mensalidade vai para</label><select id="trec">${opcoesRec(t && t.recebedor)}</select>
         <div class="note">O Pix da mensalidade cai direto na conta do Mercado Pago de quem você escolher aqui.</div></div>
       ${blocoNota('tnota', !!(t && t.nota === true), 'A nota sai no nome da escola, quando o pagamento entra.', t && t.recebedor)}
-      ${n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'} nesta turma. Mudar o valor vale para os meses que ainda não foram pagos.</div>` : ''}`,
-    montar: () => { const vob = () => { $('tobw').hidden = !$('tcham').checked; }; $('tcham').addEventListener('change', vob); vob();
+      ${n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'} nesta turma. Mudar o valor vale para os meses que ainda não foram pagos.</div>` : ''}
+      <div id="tconf"></div>`,
+    montar: () => { $('tpreco').addEventListener('input', () => { precoOk = null; $('tconf').innerHTML = ''; $('sok').textContent = 'Salvar'; });
+      const vob = () => { $('tobw').hidden = !$('tcham').checked; }; $('tcham').addEventListener('change', vob); vob();
       HS_TURMA = camposTurmaHorarios(horariosDe(t)); ligarBlocoNota('tnota', 'trec'); $('ttodas').onchange = e => { $('tmin').disabled = $('tmax').disabled = e.target.checked; }; if (!t) $('tprof').onchange = e => { if (e.target.value) $('trec').value = e.target.value; }; },
     salvar: async () => {
       const nome = $('tnome').value.trim(), preco = parseValor($('tpreco').value), todasN = $('ttodas').checked;
@@ -4612,6 +4615,12 @@ function sheetTurma(tid, depois) {
       if (!todasN && mn == null && mx == null) return 'Informe a faixa etária ou marque "Todas as faixas etárias".';
       if (!todasN && mn != null && mx != null && mn > mx) return 'A idade inicial não pode ser maior que a final.';
       if (!(preco >= 0)) return 'Informe o valor mensal da turma, como 150,00.';
+      // conferência do valor: na primeira vez mostra de quanto para quanto; só salva no "Confirmar e salvar"
+      const antes = C.r2(Number(t && t.preco) || 0);
+      if (t && C.r2(preco) !== antes && precoOk !== C.r2(preco)) { precoOk = C.r2(preco);
+        $('tconf').innerHTML = `<div class="faixa-card" style="background:var(--bg)"><span class="s">Confira o valor mensal de ${esc(t.nome)}</span><b class="num" style="font-size:1.15rem">${antes > 0 ? brl(antes) : 'Sem valor'} → ${brl(preco)}</b><span class="s">Vale ${n > 1 ? `para os ${n} alunos desta turma` : n === 1 ? 'para o aluno desta turma' : 'para quem entrar nesta turma'}, nas mensalidades ainda não pagas. O que já foi pago não muda.</span></div>`;
+        $('sok').textContent = 'Confirmar e salvar'; $('tconf').scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return 'Confira a mudança do valor e toque em "Confirmar e salvar".'; }
       const H = salvarHorarios(HS_TURMA, t && t.horario); if (H.erro) return H.erro;
       if ($('tcham').checked && $('tobrig').checked && (!H.dias.length || H.horarios.some(h => !h.ini))) return 'Para a chamada obrigatória, marque os dias de aula e o horário em que a aula começa.';
       await B.set(`escolas/${S.eid}/turmas/${novoTid}`, { ...(t || {}), nome, todasIdades: todasN, idadeMin: todasN ? null : mn, idadeMax: todasN ? null : mx, professoraId: $('tprof').value || null, professoraIds: $('tprof2').value && $('tprof2').value !== $('tprof').value ? [$('tprof2').value] : [], ...H, chamada: $('tcham').checked, chamadaObrig: $('tcham').checked && $('tobrig').checked, recebedor: $('trec').value || 'escola', localId: $('tloc').value || null, nota: notaSalvar('tnota', 'trec', t && t.nota === true), preco, vagas: Number($('tvag').value) || null, ordem: t ? t.ordem ?? 0 : Object.keys(S.turmas).length + 1 });
@@ -4750,10 +4759,10 @@ function heroCobrMes(mes) {
     </div>`;
 }
 function tFinanceiro(v) {
-  const aba = S.abaFin || 'escola', abas = [['escola', 'Escola'], ['turmas', 'Turmas'], ['prof', 'Professores']];
-  v.innerHTML = `${heroCobrMes(S.mes)}<div class="seg">${abas.map(([k, n]) => `<button data-fa="${k}" aria-pressed="${aba === k}">${n}</button>`).join('')}</div><div id="fcorpo" style="display:flex;flex-direction:column;gap:16px"></div>`;
+  const aba = S.abaFin || 'escola';
+  v.innerHTML = `${heroCobrMes(S.mes)}<div class="seg"><button data-fa="escola" aria-pressed="${aba === 'escola'}">Contas da escola</button><button data-fa="prof" aria-pressed="${aba === 'prof'}">Professores</button></div><div id="fcorpo" style="display:flex;flex-direction:column;gap:16px"></div>`;
   v.querySelectorAll('[data-fa]').forEach(b => b.onclick = () => { S.abaFin = b.dataset.fa; render(); });
-  ({ prof: finProfessoras, turmas: finTurmas }[aba] || finEscola)($('fcorpo'));
+  (aba === 'prof' ? finProfessoras : finEscola)($('fcorpo'));
 }
 // contabilidade rápida da escola: o que caiu na conta da escola, saídas e saldo
 // gráfico de pizza das saídas por categoria, com a legenda (valor e %)
@@ -4772,42 +4781,6 @@ function pizzaHTML(cats) {
   const tot = cats.reduce((s, [, x]) => s + x, 0) || 1;
   return `<div class="pizza">${pizzaSVG(cats.map(([, x], i) => ({ v: x, cor: CORES_PIZZA[i % CORES_PIZZA.length] })), 'Saídas por categoria')}
     <ul class="pizza-leg">${cats.map(([c, x], i) => `<li><i style="background:${CORES_PIZZA[i % CORES_PIZZA.length]}"></i><span class="grow pz-nome">${esc(c)}</span><span class="pz-val"><b class="num">${brl(x)}</b><span class="s num">${Math.round(x / tot * 100)}%</span></span></li>`).join('')}</ul></div>`;
-}
-// Financeiro → Turmas: o valor mensal de cada turma, separado por professor. Mudar o valor pede confirmação.
-function finTurmas(v) {
-  const ts = ordenar(S.turmas), prof = t => S.profs[t.professoraId] ? t.professoraId : '';
-  const grupos = [...porNome(S.profs).map(([pid, P]) => [pid, P.nome]), ['', 'Sem professor(a)']].map(([pid, nome]) => [pid, nome, ts.filter(([, t]) => prof(t) === pid)]).filter(g => g[2].length);
-  const linha = ([tid, t]) => { const n = alunasDaTurma(tid).length, p2 = (t.professoraIds || []).map(id => S.profs[id] && primeiro(S.profs[id].nome)).filter(Boolean);
-    return `<li class="tap" data-ftu="${esc(tid)}"><div class="grow"><div class="t">${esc(t.nome)}</div>${linhas(`${n} aluno${n === 1 ? '' : 's'}${p2.length ? ' · com ' + esc(p2.join(', ')) : ''}`)}</div>${valorCol(Number(t.preco) > 0 ? brl(t.preco) : 'Sem valor', 'por mês')}</li>`; };
-  v.innerHTML = ts.length ? `<div class="note">O valor mensal de cada turma. Toque numa turma para mudar o valor.</div>
-    ${grupos.map(([pid, nome, L]) => `<section><div class="headrow"><h2>${esc(nome)}</h2><span class="sub">${L.length} turma${L.length === 1 ? '' : 's'}</span></div><ul class="list">${L.map(linha).join('')}</ul></section>`).join('')}`
-    : '<div class="empty"><span>Nenhuma turma ainda. As turmas são criadas na aba Turmas.</span></div>';
-  v.querySelectorAll('[data-ftu]').forEach(li => li.onclick = () => sheetPrecoTurma(li.dataset.ftu));
-}
-// mudar o valor de uma turma: digitar (Continuar) e conferir (Sim, mudar) (é o que as famílias pagam todo mês)
-function sheetPrecoTurma(tid, passo = 0, novo = null) {
-  const t = S.turmas[tid]; if (!t) return fecharSheet();
-  const atual = C.r2(Number(t.preco) || 0), n = alunasDaTurma(tid).length, P = S.profs[t.professoraId];
-  const quem = `${esc(t.nome)}${P ? ` · ${esc(P.nome)}` : ''}`, nAl = `${n} aluno${n === 1 ? '' : 's'}`;
-  if (passo === 0) return sheet(`<h3>Valor da turma</h3><div class="sub">${quem}</div>
-    ${ddl([['Valor atual', `<b class="num">${atual > 0 ? brl(atual) : 'Sem valor'}</b> por mês`], ['Alunos na turma', nAl]])}
-    <div class="field"><label for="tpv">Novo valor mensal (R$)</label><input id="tpv" inputmode="decimal" value="${esc(fmtValor(novo != null ? novo : atual))}" placeholder="0,00"></div>
-    <div class="err" id="tpverr" role="alert"></div>
-    <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="tpvok">Continuar</button></div>`, () => {
-      $('tpv').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('tpvok').click(); } };
-      $('tpvok').onclick = () => { const raw = $('tpv').value.trim(), v = C.r2(parseValor(raw));
-        if (!raw || !(v >= 0)) return $('tpverr').textContent = 'Digite o novo valor, como 150,00.';
-        if (v === atual) return $('tpverr').textContent = 'O valor é o mesmo de agora. Digite um valor diferente ou toque em Cancelar.';
-        sheetPrecoTurma(tid, 1, v); }; });
-  const txt = `<div class="faixa-card" style="background:var(--bg)"><span class="s">${quem}</span><b class="num" style="font-size:1.15rem">${atual > 0 ? brl(atual) : 'Sem valor'} → ${brl(novo)}</b><span class="s">por mês</span></div>`;
-  sheet(`<h3>Confira a mudança</h3>${txt}
-    <p class="sub" style="margin:0">Vale para ${n > 1 ? `os ${nAl} desta turma` : n === 1 ? 'o aluno desta turma' : 'quem entrar nesta turma'}, nas mensalidades que ainda não foram pagas. O que já foi pago não muda.</p>
-    <div class="err" id="tpverr" role="alert"></div>
-    <div class="actions"><button class="btn ghost" id="tpvv">Voltar</button><button class="btn" id="tpvok">Sim, mudar</button></div>`, () => {
-      $('tpvv').onclick = () => sheetPrecoTurma(tid, 0, novo);
-      $('tpvok').onclick = async () => { $('tpvok').disabled = true;
-        try { await B.set(`escolas/${S.eid}/turmas/${tid}`, { preco: novo }, { merge: true }); fecharSheet(); aviso(`✓ ${t.nome}: ${brl(novo)} por mês`); }
-        catch (e) { $('tpverr').textContent = msgErro(e); $('tpvok').disabled = false; } }; });
 }
 function finEscola(v) {
   const mes = S.mes, rs = recebidosNoMes(mes).filter(r => r.rec === 'escola');
@@ -4837,12 +4810,11 @@ function finEscola(v) {
       <ul class="list" style="margin-top:10px">${rs.map(r => `<li><div class="grow"><div class="t">${esc(r.aluna)}</div>${linhas(esc(r.cobranca), `<span class="num">${esc(r.forma)} em ${esc(r.data)}</span>`)}</div>${valorCol(brl(r.v), '', 'in')}</li>`).join('')}</ul></details>` : ''}
     <section><h2>Para onde foi o dinheiro</h2>${cats.length ? pizzaHTML(cats) : '<div class="sub">Nenhuma saída registrada neste mês.</div>'}</section>
     ${blocoFixas(fx, mes)}
-    <section><div class="headrow"><h2>Lançamentos</h2><span style="display:flex;gap:8px"><button class="add" id="ftxn">+ Taxa</button><button class="add" id="cnl">+ Lançamento</button></span></div>
+    <section><div class="headrow"><h2>Lançamentos</h2><button class="add" id="cnl">+ Lançamento</button></div>
       ${ls_.length ? `<ul class="list">${ls_.map(([id, l]) => `<li class="tap" data-l="${esc(id)}"><div class="grow"><div class="t">${esc(l.desc || l.cat)}</div>${linhas(esc(l.cat), `<span class="num">${dataBR(l.data)}${l.localId && S.locais[l.localId] ? ' · ' + esc(S.locais[l.localId].nome) : ''}</span>`)}</div>${valorCol(`${l.tipo === 'entrada' ? '+' : '−'} ${brl(l.v)}`, '', l.tipo === 'entrada' ? 'in' : 'out')}</li>`).join('')}</ul>`
         : `<div class="empty"><span>Registre aqui aluguel, salários, compra de aparelhos, inscrições, patrocínios. O que é pago pelo app entra sozinho.</span></div>`}
     </section>`;
   $('fcfg').onclick = () => sheetAjustes(); $('cnl').onclick = () => sheetLanc();
-  $('ftxn').onclick = () => sheetExtra(null, { tipo: 'taxa' }); // uniforme, material, taxa da federação: a mesma janela de taxa da aba Eventos
   // pendente: tocar abre o pagamento (de lá dá para editar a fixa); pago: abre a fixa
   v.querySelectorAll('[data-fx]').forEach(li => li.onclick = () => li.dataset.fxp ? sheetPagarFixa(li.dataset.fx, mes) : sheetFixa(li.dataset.fx));
   v.querySelectorAll('[data-l]').forEach(li => li.onclick = () => sheetLanc(li.dataset.l));
