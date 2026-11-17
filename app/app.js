@@ -5592,17 +5592,21 @@ async function sheetErros() {
       b.disabled = true; try { for (let i = 0; i < g.ids.length; i += 400) await B.lote(g.ids.slice(i, i + 400).map(id => ({ op: 'del', p: 'erros/' + id }))); aviso('Erros apagados'); sheetErros(); } catch (e) { aviso('Não deu para apagar. Tente de novo.'); b.disabled = false; } });
   });
 }
-/* ================= Avisos do app (Painel do dono → Avisos) =================
-   O dono escreve o aviso (texto, imagem ou vídeo curto, botão com link) e escolhe para quem vai.
-   Ao abrir o app, aparece por cima de tudo. "Importante": só some marcando "Li e estou ciente" (cada pessoa,
-   cada administradora). "Novidade": "Agora não" ou "Entendi". "Agora não"/"Deixar para depois" volta na próxima abertura.
-   Banco: avisosApp/{id} (aviso), avisosApp/{id}/partes/{n} (a imagem ou o vídeo em pedaços),
-   avisosApp/{id}/cientes/{uid} (quem marcou), users/{uid}.avisosLidos (para não mostrar de novo). */
-const AV_PARTE = 700000, AV_VIDEO_MAX = 6 * 1048576, AV_PARA = [['admin', 'Escolas (cada administradora)'], ['professora', 'Professores'], ['familia', 'Famílias']];
+/* ================= Vitrine (Painel do dono → Vitrine): avisos e divulgação =================
+   O dono escreve (texto, imagem ou vídeo curto, botão com link), escolhe para quem vai (Escolas, Professores, Famílias)
+   e, para cada um, se precisa confirmar ("Li e estou ciente"). Formato: janela com texto ou imagem em tela cheia.
+   A prévia num celular desenhado mostra como fica. Ao abrir o app, aparece por cima de tudo; "Agora não"/"Mais tarde"
+   volta na próxima abertura. Banco: avisosApp/{id}; avisosApp/{id}/partes/{n} (mídia em pedaços);
+   avisosApp/{id}/cientes/{uid} (quem viu/confirmou); users/{uid}.avisosLidos (para não mostrar de novo). */
+const AV_PARTE = 700000, AV_VIDEO_MAX = 6 * 1048576, AV_PARA = [['admin', 'Escolas', 'cada administradora'], ['professora', 'Professores', ''], ['familia', 'Famílias', 'responsáveis']];
+const AV_NOME = { admin: 'Escolas', professora: 'Professores', familia: 'Famílias' };
 const AV_ADIADOS = new Set(); let AV_FILA = [], AV_ABERTO = false, AV_VEZ = 0;
 const hojeIso = () => isoDe(new Date());
 const avNoAr = a => a && a.ativo !== false && (!a.fim || a.fim >= hojeIso()) && (!a.inicio || a.inicio <= hojeIso());
 const meusPapeis = () => new Set(Object.values(MINHAS).map(e => e && e.papel).filter(Boolean));
+// precisa confirmar? (avisos antigos: tipo "importante" valia para escolas e professores)
+const avObrig = (a, p) => a.obrig ? !!a.obrig[p] : a.tipo === 'importante' && p !== 'familia';
+const avObrigPara = (a, papeis) => (a.para || []).some(p => papeis.has(p) && avObrig(a, p));
 async function midiaDoAviso(id, a) {
   if (!a.midia || !a.midia.partes) return null;
   const ps = await Promise.all(Array.from({ length: a.midia.partes }, (_, i) => B.get(`avisosApp/${id}/partes/${i}`)));
@@ -5610,75 +5614,82 @@ async function midiaDoAviso(id, a) {
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
   return URL.createObjectURL(new Blob([u8], { type: a.midia.mime || (a.midia.tipo === 'video' ? 'video/mp4' : 'image/jpeg') }));
 }
-const htmlMidiaAv = (a, url) => !url ? '' : a.midia.tipo === 'video'
-  ? `<video class="av-midia" src="${url}" autoplay muted loop playsinline controls></video>` : `<img class="av-midia" src="${url}" alt="">`;
-// procura os avisos no ar para quem entrou (chamado logo depois de entrar na conta)
 async function checarAvisos() {
   const vez = ++AV_VEZ; if (!EU || !B.onde) return;
   let lista; try { lista = await B.onde('avisosApp', 'ativo', '==', true); } catch (e) { return; }
   if (vez !== AV_VEZ || !EU) return;
   const papeis = meusPapeis(), lidos = (USR && USR.avisosLidos) || {};
-  AV_FILA = lista.filter(({ id, data: a }) => avNoAr(a) && !lidos[id] && !AV_ADIADOS.has(id) && (a.para || []).some(p => papeis.has(p) && !(p === 'familia' && a.tipo === 'importante')))
-    .sort((x, y) => (x.data.tipo === 'importante' ? 0 : 1) - (y.data.tipo === 'importante' ? 0 : 1) || (x.data.criadoEm || 0) - (y.data.criadoEm || 0));
+  AV_FILA = lista.filter(({ id, data: a }) => avNoAr(a) && !lidos[id] && !AV_ADIADOS.has(id) && (a.para || []).some(p => papeis.has(p)))
+    .map(x => ({ ...x, imp: avObrigPara(x.data, papeis) }))
+    .sort((x, y) => (x.imp ? 0 : 1) - (y.imp ? 0 : 1) || (x.data.criadoEm || 0) - (y.data.criadoEm || 0));
   mostrarProxAviso();
 }
 async function mostrarProxAviso() {
   if (AV_ABERTO || !AV_FILA.length) return;
-  const { id, data: a } = AV_FILA.shift(); AV_ABERTO = true;
+  const { id, data: a, imp } = AV_FILA.shift(); AV_ABERTO = true;
   const url = await midiaDoAviso(id, a).catch(() => null);
-  abrirAviso(a, url, async acao => {
+  abrirAviso(a, url, imp, async acao => {
     if (acao === 'depois') AV_ADIADOS.add(id);
-    else if (!a.previa) {
+    else {
       const em = Date.now(); USR.avisosLidos = { ...(USR.avisosLidos || {}), [id]: em };
       B.set('users/' + EU.uid, { avisosLidos: { [id]: em } }, { merge: true }).catch(() => { });
       const papeis = [...meusPapeis()].filter(p => (a.para || []).includes(p));
-      B.set(`avisosApp/${id}/cientes/${EU.uid}`, { em, nome: (EU.nome || '').slice(0, 80), email: (EU.email || '').slice(0, 120), papeis, escolas: Object.entries(MINHAS).filter(([, e]) => e && papeis.includes(e.papel)).map(([, e]) => String(e.nome || '').slice(0, 80)).slice(0, 10) }).catch(() => { });
+      B.set(`avisosApp/${id}/cientes/${EU.uid}`, { em, confirmou: !!imp, nome: (EU.nome || '').slice(0, 80), email: (EU.email || '').slice(0, 120), papeis, escolas: Object.entries(MINHAS).filter(([, e]) => e && papeis.includes(e.papel)).map(([, e]) => String(e.nome || '').slice(0, 80)).slice(0, 10) }).catch(() => { });
     }
     if (url) URL.revokeObjectURL(url);
     AV_ABERTO = false; setTimeout(mostrarProxAviso, 300);
   });
 }
-// a janela do aviso: por cima de tudo, só fecha pelos botões
-function abrirAviso(a, url, fim) {
-  const imp = a.tipo === 'importante', el = document.createElement('div');
-  el.className = 'av-bg'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
-  el.innerHTML = `<div class="av-caixa">
-      ${a.previa ? '<span class="av-previa">Prévia · só você está vendo</span>' : ''}
-      <span class="av-tag ${imp ? 'imp' : ''}">${imp ? 'Aviso importante' : 'Novidade'}</span>
-      <h3>${esc(a.titulo)}</h3>
-      ${htmlMidiaAv(a, url)}
-      ${a.texto ? `<div class="av-texto">${esc(a.texto).replace(/\n/g, '<br>')}</div>` : ''}
-      ${a.botao && a.botao.link ? `<button type="button" class="btn ghost" id="avlink">${esc(a.botao.texto || 'Saiba mais')}</button>` : ''}
-      ${imp ? `<label class="av-ciente"><input type="checkbox" id="avck"><span>Li e estou ciente</span></label>` : ''}
-      <div class="actions"><button type="button" class="btn ghost" id="avdep">${imp ? 'Mais tarde' : 'Agora não'}</button><button type="button" class="btn" id="avok" ${imp ? 'disabled' : ''}>${imp ? 'Confirmar' : 'Entendi'}</button></div></div>`;
-  document.body.appendChild(el); travarFundo(true);
-  const sair = acao => { el.remove(); if (!$('overlay').querySelector('.sheet')) travarFundo(false); fim(acao); };
-  if (imp) el.querySelector('#avck').onchange = e => { el.querySelector('#avok').disabled = !e.target.checked; };
-  el.querySelector('#avdep').onclick = () => sair('depois');
-  el.querySelector('#avok').onclick = () => sair('ok');
-  if (el.querySelector('#avlink')) el.querySelector('#avlink').onclick = () => window.open(a.botao.link, '_blank', 'noopener');
+// o desenho do aviso (o mesmo no app e na prévia do celular)
+function htmlAviso(a, url, imp) {
+  const cheia = a.formato === 'cheia' && url, midia = !url ? '' : a.midia && a.midia.tipo === 'video'
+    ? `<video class="av-midia" src="${url}" autoplay muted loop playsinline ${cheia ? '' : 'controls'}></video>` : `<img class="av-midia" src="${url}" alt="">`;
+  const fim = `${a.botao && a.botao.link ? `<button type="button" class="btn ghost av-link">${esc(a.botao.texto || 'Saiba mais')}</button>` : ''}
+    ${imp ? `<label class="av-ciente"><input type="checkbox" class="av-ck"><span>Li e estou ciente</span></label>` : ''}
+    <div class="actions"><button type="button" class="btn ghost av-dep">${imp ? 'Mais tarde' : 'Agora não'}</button><button type="button" class="btn av-ok" ${imp ? 'disabled' : ''}>${imp ? 'Confirmar' : 'Entendi'}</button></div>`;
+  if (cheia) return `<div class="av-cheia">${midia}<div class="av-rodape">${fim}</div></div>`;
+  return `<div class="av-caixa"><span class="av-tag ${imp ? 'imp' : ''}">${imp ? 'Aviso importante' : 'Novidade'}</span>
+    ${a.titulo ? `<h3>${esc(a.titulo)}</h3>` : ''}${midia}${a.texto ? `<div class="av-texto">${esc(a.texto).replace(/\n/g, '<br>')}</div>` : ''}${fim}</div>`;
 }
-// imagem: reduzida no celular (até 1400 px); vídeo: como veio (até 6 MB)
+function ligarAviso(el, a, fim) {
+  const ck = el.querySelector('.av-ck'), ok = el.querySelector('.av-ok');
+  if (ck) ck.onchange = () => { ok.disabled = !ck.checked; };
+  el.querySelector('.av-dep').onclick = () => fim('depois');
+  ok.onclick = () => fim('ok');
+  const l = el.querySelector('.av-link'); if (l) l.onclick = () => window.open(a.botao.link, '_blank', 'noopener');
+}
+// a janela de verdade: por cima de tudo, só fecha pelos botões
+function abrirAviso(a, url, imp, fim) {
+  const el = document.createElement('div');
+  el.className = 'av-bg' + (a.formato === 'cheia' && url ? ' cheia' : ''); el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+  el.innerHTML = htmlAviso(a, url, imp);
+  document.body.appendChild(el); travarFundo(true);
+  ligarAviso(el, a, acao => { el.remove(); if (!$('overlay').querySelector('.sheet')) travarFundo(false); fim(acao); });
+}
+// imagem: até 1600 px, fundo branco (PNG transparente); vídeo: como veio (até 6 MB)
 async function lerMidiaAviso(f) {
-  if (/^image\//.test(f.type)) { const c = await abrirImagem(f, 1400); let url = ''; for (const q of [0.82, 0.72, 0.6, 0.5]) { url = c.toDataURL('image/jpeg', q); if (url.length * 0.75 <= 450000) break; } return { tipo: 'img', mime: 'image/jpeg', dados: url.split(',')[1] }; }
+  if (/^image\//.test(f.type)) { const c0 = await abrirImagem(f, 1600), c = document.createElement('canvas'); c.width = c0.width; c.height = c0.height;
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(c0, 0, 0);
+    let url = ''; for (const q of [0.85, 0.75, 0.65, 0.55]) { url = c.toDataURL('image/jpeg', q); if (url.length * 0.75 <= 600000) break; }
+    return { tipo: 'img', mime: 'image/jpeg', dados: url.split(',')[1], w: c.width, h: c.height }; }
   if (/^video\//.test(f.type) || /\.(mp4|mov|m4v|webm)$/i.test(f.name || '')) {
     if (f.size > AV_VIDEO_MAX) throw new Error(`Esse vídeo tem ${kb(f.size)}. O limite é ${kb(AV_VIDEO_MAX)}: use um vídeo mais curto (até uns 15 segundos).`);
     const u = await lerDataUrl(f); return { tipo: 'video', mime: f.type || 'video/mp4', dados: u.split(',')[1] }; }
   throw new Error('Escolha uma foto ou um vídeo.');
 }
+const avParaTxt = a => (a.para || []).map(p => AV_NOME[p] + (avObrig(a, p) ? ' (confirma)' : '')).join(', ');
 async function sheetAvisosDono() {
-  const desenhar = (corpo, ligar) => sheet(`${abasDono('avisos')}<h3>Vitrine</h3><div class="sub">Avisos e divulgação (novidades do app, campeonatos, propagandas). Aparecem por cima de tudo quando a pessoa abre o app. "Importante" só some quando a pessoa marca que está ciente.</div>
+  const desenhar = (corpo, ligar) => sheet(`${abasDono('avisos')}<h3>Vitrine</h3><div class="sub">Avisos e divulgação (novidades do app, campeonatos, propagandas). Aparecem por cima de tudo quando a pessoa abre o app. Quem precisa confirmar só se livra do aviso marcando "Li e estou ciente".</div>
     <button type="button" class="btn" id="avnovo">+ Novo na vitrine</button>${corpo}<button class="btn ghost" data-fechar>Fechar</button>`,
     sh => { ligarAbasDono(); $('avnovo').onclick = () => abrirDe(sheetAvisosDono, () => sheetAvisoForm(null)); ligar && ligar(sh); });
   desenhar('<div class="empty">Carregando…</div>');
   let lista; try { lista = await B.ultimos('avisosApp', 'criadoEm', 100); }
-  catch (e) { return desenhar(`<div class="banner"><span>${e.code === 'permission-denied' ? 'Sem permissão. As regras novas do banco entram no ar com o próximo "Publique".' : 'Não consegui carregar os avisos. Tente de novo.'}</span></div>`); }
-  const est = a => a.ativo === false ? ['Pausado', ''] : a.fim && a.fim < hojeIso() ? ['Encerrado', ''] : a.inicio && a.inicio > hojeIso() ? ['Começa ' + dataBR(a.inicio), 'esp'] : ['No ar', 'ok'];
-  const para = a => (a.para || []).map(p => ({ admin: 'Escolas', professora: 'Professores', familia: 'Famílias' })[p]).filter(Boolean).join(', ');
+  catch (e) { return desenhar(`<div class="banner"><span>${e.code === 'permission-denied' ? 'Sem permissão. As regras novas do banco entram no ar com o próximo "Publique".' : 'Não consegui carregar. Tente de novo.'}</span></div>`); }
+  const est = a => a.ativo === false ? ['Pausado', ''] : a.fim && a.fim < hojeIso() ? ['Encerrado', ''] : a.inicio && a.inicio > hojeIso() ? ['Começa ' + dataBR(a.inicio), 'aberto'] : ['No ar', 'pago'];
   desenhar(!lista.length ? '<div class="empty"><span>A vitrine está vazia. Toque em "+ Novo na vitrine".</span></div>' : `<ul class="list">${lista.map(({ id, data: a }) => { const [st, c] = est(a);
-    return `<li class="nf-card"><div class="grow"><div class="nf-lin"><b>${esc(a.titulo)}</b><span class="chip ${c === 'ok' ? 'pago' : c === 'esp' ? 'aberto' : ''}">${st}</span></div>
-      <span class="s">${a.tipo === 'importante' ? 'Importante' : 'Novidade'} · para ${esc(para(a) || '—')}${a.midia ? ` · com ${a.midia.tipo === 'video' ? 'vídeo' : 'imagem'}` : ''}${a.fim ? ` · até ${dataBR(a.fim)}` : ''}</span>
-      <div class="nf-acoes"><button type="button" class="btn btn-mini" data-avver="${esc(id)}">${a.tipo === 'importante' ? 'Quem está ciente' : 'Quem viu'}</button><button type="button" class="btn ghost btn-mini" data-aved="${esc(id)}">Editar</button><button type="button" class="btn ghost btn-mini" data-avpa="${esc(id)}">${a.ativo === false ? 'Pôr no ar' : 'Pausar'}</button><button type="button" class="btn ghost btn-mini" data-avdel="${esc(id)}">Apagar</button></div></div></li>`; }).join('')}</ul>`, sh => {
+    return `<li class="nf-card"><div class="grow"><div class="nf-lin"><b>${esc(a.titulo || '(sem título)')}</b><span class="chip ${c}">${st}</span></div>
+      <span class="s">Para ${esc(avParaTxt(a) || '—')}${a.midia ? ` · com ${a.midia.tipo === 'video' ? 'vídeo' : 'imagem'}${a.formato === 'cheia' ? ' em tela cheia' : ''}` : ''}${a.fim ? ` · até ${dataBR(a.fim)}` : ''}</span>
+      <div class="nf-acoes"><button type="button" class="btn btn-mini" data-avver="${esc(id)}">Quem viu</button><button type="button" class="btn ghost btn-mini" data-aved="${esc(id)}">Editar</button><button type="button" class="btn ghost btn-mini" data-avpa="${esc(id)}">${a.ativo === false ? 'Pôr no ar' : 'Pausar'}</button><button type="button" class="btn ghost btn-mini" data-avdel="${esc(id)}">Apagar</button></div></div></li>`; }).join('')}</ul>`, sh => {
     const A = Object.fromEntries(lista.map(x => [x.id, x.data]));
     sh.querySelectorAll('[data-aved]').forEach(b => b.onclick = () => abrirDe(sheetAvisosDono, () => sheetAvisoForm(b.dataset.aved, A[b.dataset.aved])));
     sh.querySelectorAll('[data-avver]').forEach(b => b.onclick = () => abrirDe(sheetAvisosDono, () => sheetCientes(b.dataset.avver, A[b.dataset.avver])));
@@ -5690,55 +5701,76 @@ async function sheetAvisosDono() {
   });
 }
 async function sheetCientes(id, a) {
-  const imp = a.tipo === 'importante';
-  sheet(`<h3>${imp ? 'Quem está ciente' : 'Quem viu'}</h3><div class="sub">${esc(a.titulo)}</div><div class="empty">Carregando…</div>`);
+  sheet(`<h3>Quem viu</h3><div class="sub">${esc(a.titulo || '')}</div><div class="empty">Carregando…</div>`);
   let cs; try { cs = await B.ultimos(`avisosApp/${id}/cientes`, 'em', 5000); } catch (e) { cs = null; }
-  const P = { admin: 'Administração', professora: 'Professor(a)', familia: 'Família' };
-  sheet(`<h3>${imp ? 'Quem está ciente' : 'Quem viu'}</h3><div class="sub">${esc(a.titulo)}</div>
-    ${cs == null ? '<div class="banner"><span>Não consegui carregar. Tente de novo.</span></div>' : `<span class="s">${cs.length} pessoa${cs.length === 1 ? '' : 's'} ${imp ? 'marcaram "Li e estou ciente"' : 'tocaram em "Entendi"'}.</span>
-    ${cs.length ? `<ul class="list">${cs.map(({ data: c }) => `<li><div class="grow"><div class="t">${esc(c.nome || c.email || 'Sem nome')}</div><span class="s">${esc((c.papeis || []).map(p => P[p] || p).join(', '))}${(c.escolas || []).length ? ' · ' + esc(c.escolas.join(', ')) : ''}</span><span class="s">${new Date(c.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${c.email && c.nome ? ' · ' + esc(c.email) : ''}</span></div></li>`).join('')}</ul>` : ''}`}
+  const P = { admin: 'Administração', professora: 'Professor(a)', familia: 'Família' }, conf = cs ? cs.filter(c => c.data.confirmou).length : 0;
+  sheet(`<h3>Quem viu</h3><div class="sub">${esc(a.titulo || '')}</div>
+    ${cs == null ? '<div class="banner"><span>Não consegui carregar. Tente de novo.</span></div>' : `<span class="s">${cs.length} pessoa${cs.length === 1 ? '' : 's'} ${cs.length === 1 ? 'viu' : 'viram'}${conf ? `; ${conf} confirmou${conf === 1 ? '' : 'aram'} "Li e estou ciente"` : ''}.</span>
+    ${cs.length ? `<ul class="list">${cs.map(({ data: c }) => `<li><div class="grow"><div class="t">${esc(c.nome || c.email || 'Sem nome')}</div><span class="s">${esc((c.papeis || []).map(p => P[p] || p).join(', '))}${(c.escolas || []).length ? ' · ' + esc(c.escolas.join(', ')) : ''}</span><span class="s">${new Date(c.em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${c.email && c.nome ? ' · ' + esc(c.email) : ''}</span></div>${c.confirmou ? '<span class="chip pago">Confirmou</span>' : '<span class="chip">Viu</span>'}</li>`).join('')}</ul>` : ''}`}
     <button type="button" class="btn ghost" data-fechar>Voltar</button>`);
 }
 function sheetAvisoForm(id, a0) {
-  const a = a0 || { tipo: 'novidade', para: ['admin'] }; let midia = a.midia ? { ...a.midia, antiga: true } : null, tirouMidia = false;
+  const a = a0 || { para: ['admin'], formato: 'janela' };
+  const para0 = new Set(a.para || []), obrig0 = Object.fromEntries(AV_PARA.map(([k]) => [k, avObrig(a, k)]));
+  let midia = a.midia ? { ...a.midia, antiga: true } : null, tirouMidia = false, urlPrev = null, verComo = null;
   sheet(`<h3>${id ? 'Editar na vitrine' : 'Novo na vitrine'}</h3>
-    <div class="seg" id="avtipo"><button type="button" data-avt="novidade" aria-pressed="${a.tipo !== 'importante'}">Novidade ou divulgação</button><button type="button" data-avt="importante" aria-pressed="${a.tipo === 'importante'}">Importante</button></div>
-    <span class="s" id="avtiposub"></span>
-    <div class="field"><label for="avtit">Título</label><input id="avtit" maxlength="80" value="${esc(a.titulo || '')}" placeholder="Ex.: Mudou a forma de emitir nota fiscal"></div>
-    <div class="field"><label for="avtxt">Texto</label><textarea id="avtxt" rows="5" maxlength="1500" placeholder="Explique em poucas linhas.">${esc(a.texto || '')}</textarea></div>
-    <div class="field"><span class="lb">Imagem ou vídeo (opcional)</span><div id="avmid"></div><input type="file" id="avarq" accept="image/*,video/mp4,video/quicktime,video/webm" hidden><span class="sub">Vídeo: até 6 MB (uns 15 segundos). Prefira MP4, que abre em iPhone e Android.</span><span class="err" id="avmerr"></span></div>
-    <div class="field"><label for="avbtx">Botão com link (opcional)</label><input id="avbtx" maxlength="30" value="${esc((a.botao || {}).texto || '')}" placeholder="Ex.: Saiba mais, Inscreva-se"></div>
-    <div class="field"><label for="avblk">Link do botão</label><input id="avblk" inputmode="url" maxlength="300" value="${esc((a.botao || {}).link || '')}" placeholder="https://"></div>
-    <div class="field"><span class="lb">Para quem?</span><div id="avpara">${AV_PARA.map(([k, n]) => `<label class="liga liga-mini" data-avp="${k}"><span class="grow"><b>${n}</b></span><input type="checkbox" role="switch" value="${k}" ${(a.para || []).includes(k) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
+    <div class="field"><label for="avtit">Título</label><input id="avtit" maxlength="80" value="${esc(a.titulo || '')}" placeholder="Ex.: Copa Turma em Dia 2027"><span class="sub" id="avtitsub"></span></div>
+    <div class="field"><label for="avtxt">Texto</label><textarea id="avtxt" rows="4" maxlength="1500" placeholder="Explique em poucas linhas.">${esc(a.texto || '')}</textarea></div>
+    <div class="field"><span class="lb">Imagem ou vídeo (opcional)</span><div id="avmid"></div><input type="file" id="avarq" accept="image/*,video/mp4,video/quicktime,video/webm" hidden><span class="err" id="avmerr"></span></div>
+    <div class="field" id="avfmtw"><span class="lb">Como a imagem aparece</span><div class="seg"><button type="button" data-avf="janela">Janela com texto</button><button type="button" data-avf="cheia">Tela cheia</button></div><span class="sub" id="avfmtsub"></span></div>
+    <div class="two"><div class="field"><label for="avbtx">Botão (opcional)</label><input id="avbtx" maxlength="30" value="${esc((a.botao || {}).texto || '')}" placeholder="Ex.: Inscreva-se"></div><div class="field"><label for="avblk">Link do botão</label><input id="avblk" inputmode="url" maxlength="300" value="${esc((a.botao || {}).link || '')}" placeholder="https://"></div></div>
+    <div class="field"><span class="lb">Quem recebe?</span><div id="avpara">${AV_PARA.map(([k, n, s]) => `<label class="liga liga-mini"><span class="grow"><b>${n}</b>${s ? `<span class="s">${s}</span>` : ''}</span><input type="checkbox" role="switch" data-avp="${k}" ${para0.has(k) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
+    <div class="field" id="avobw"><span class="lb">Precisa confirmar que viu?</span><span class="sub">Ligado: a pessoa só se livra do aviso marcando "Li e estou ciente" (cada administradora marca a sua). Desligado: basta tocar em "Entendi".</span><div id="avob">${AV_PARA.map(([k, n]) => `<label class="liga liga-mini" data-avow="${k}"><span class="grow"><b>${n}</b></span><input type="checkbox" role="switch" data-avo="${k}" ${obrig0[k] ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
     <div class="two"><div class="field"><label for="avini">Começa em</label><input id="avini" type="date" value="${esc(a.inicio || hojeIso())}"></div><div class="field"><label for="avfim">Sai do ar em (opcional)</label><input id="avfim" type="date" value="${esc(a.fim || '')}"></div></div>
+    <div class="field av-prevw"><span class="lb">Como vai aparecer no celular</span><div class="seg" id="avcomo"></div><div class="av-fone"><div class="av-tela"><div class="av-app"></div><div class="av-bg av-dentro" id="avprev"></div></div></div><button type="button" class="btn ghost btn-mini" id="avreal">Ver em tamanho real</button></div>
     <span class="err" id="averr"></span>
-    <button type="button" class="btn ghost" id="avprev">Ver como fica</button>
     <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="avsal">${id ? 'Salvar' : 'Pôr no ar'}</button></div>`, sh => {
-    let tipo = a.tipo === 'importante' ? 'importante' : 'novidade';
-    const verTipo = () => { sh.querySelectorAll('[data-avt]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.avt === tipo)));
-      $('avtiposub').textContent = tipo === 'importante' ? 'Só some quando a pessoa marca "Li e estou ciente" ("Mais tarde" faz voltar na próxima abertura). Cada administradora marca a sua. Famílias não recebem aviso importante.' : 'A pessoa toca em "Entendi" ou "Agora não" (volta na próxima vez que abrir o app).';
-      const fam = sh.querySelector('[data-avp="familia"]'); fam.hidden = tipo === 'importante'; };
-    sh.querySelectorAll('[data-avt]').forEach(b => b.onclick = () => { tipo = b.dataset.avt; verTipo(); }); verTipo();
-    const verMid = () => { $('avmid').innerHTML = midia ? `<div class="ev-link"><span class="grow"><b>${midia.tipo === 'video' ? 'Vídeo' : 'Imagem'}</b><span class="s">${midia.antiga ? 'já salvo' : kb(Math.round(midia.dados.length * 0.75))}</span></span><button type="button" class="link" id="avmtroca">Trocar</button><button type="button" class="link arq-exc" id="avmtira">Tirar</button></div>` : '<button type="button" class="btn ghost btn-mini" id="avmadd">+ Imagem ou vídeo</button>';
+    let formato = a.formato === 'cheia' ? 'cheia' : 'janela';
+    const sel = () => AV_PARA.map(([k]) => k).filter(k => sh.querySelector(`[data-avp="${k}"]`).checked);
+    const obrig = () => Object.fromEntries(AV_PARA.map(([k]) => [k, sel().includes(k) && sh.querySelector(`[data-avo="${k}"]`).checked]));
+    const dados = () => ({ titulo: $('avtit').value.trim(), texto: $('avtxt').value.trim(), formato, midia, botao: $('avblk').value.trim() ? { texto: $('avbtx').value.trim() || 'Saiba mais', link: $('avblk').value.trim() } : null });
+    const urlMidia = async () => { if (urlPrev !== null) return urlPrev; if (!midia) return urlPrev = '';
+      urlPrev = midia.dados ? URL.createObjectURL(new Blob([bytesDeDataUrl('x,' + midia.dados)], { type: midia.mime })) : await midiaDoAviso(id, a).catch(() => '') || '';
+      return urlPrev; };
+    const desenharPrev = async () => {
+      const s = sel(); if (!s.includes(verComo)) verComo = s[0] || null;
+      $('avcomo').hidden = s.length < 2;
+      $('avcomo').innerHTML = s.map(k => `<button type="button" data-avc="${k}" aria-pressed="${k === verComo}">${AV_NOME[k]}</button>`).join('');
+      $('avcomo').querySelectorAll('[data-avc]').forEach(b => b.onclick = () => { verComo = b.dataset.avc; desenharPrev(); });
+      const url = await urlMidia(), d = dados(), imp = !!(verComo && obrig()[verComo]);
+      const p = $('avprev'); if (!p) return;
+      p.className = 'av-bg av-dentro' + (d.formato === 'cheia' && url ? ' cheia' : '');
+      p.innerHTML = htmlAviso(d, url, imp);
+      p.querySelectorAll('button,input').forEach(x => { x.tabIndex = -1; });
+      const v = p.querySelector('video'); if (v) v.muted = true; };
+    const verTudo = () => {
+      sh.querySelectorAll('[data-avf]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.avf === formato)));
+      $('avfmtw').hidden = !midia;
+      $('avfmtsub').textContent = formato === 'cheia' ? 'A imagem ocupa a tela toda, inteira, sem cortar (o título e o texto não aparecem, só os botões embaixo). Tamanho ideal: em pé, 1080 × 1920 (como um story).' : 'A imagem aparece inteira, com o título e o texto. Tamanho ideal: quadrada (1080 × 1080) ou deitada (1080 × 608).';
+      $('avtitsub').textContent = formato === 'cheia' && midia ? 'Em tela cheia o título não aparece no celular: serve para você achar na lista.' : '';
+      const s = sel(); $('avobw').hidden = !s.length;
+      sh.querySelectorAll('[data-avow]').forEach(l => { l.hidden = !s.includes(l.dataset.avow); });
+      desenharPrev(); };
+    sh.querySelectorAll('[data-avf]').forEach(b => b.onclick = () => { formato = b.dataset.avf; verTudo(); });
+    sh.querySelectorAll('[data-avp],[data-avo]').forEach(c => c.onchange = verTudo);
+    ['avtit', 'avtxt', 'avbtx', 'avblk'].forEach(k => $(k).addEventListener('input', desenharPrev));
+    const verMid = () => { $('avmid').innerHTML = midia ? `<div class="ev-link"><span class="grow"><b>${midia.tipo === 'video' ? 'Vídeo' : 'Imagem'}</b><span class="s">${midia.antiga ? 'já salvo' : kb(Math.round(midia.dados.length * 0.75))}${midia.w ? ` · ${midia.w} × ${midia.h}` : ''}</span></span><button type="button" class="link" id="avmtroca">Trocar</button><button type="button" class="link arq-exc" id="avmtira">Tirar</button></div>` : '<button type="button" class="btn ghost btn-mini" id="avmadd">+ Imagem ou vídeo</button><span class="sub">Vídeo: até 6 MB (uns 15 segundos). Prefira MP4, que abre em iPhone e Android.</span>';
       if ($('avmadd')) $('avmadd').onclick = () => $('avarq').click();
       if ($('avmtroca')) $('avmtroca').onclick = () => $('avarq').click();
-      if ($('avmtira')) $('avmtira').onclick = () => { midia = null; tirouMidia = true; verMid(); }; };
-    verMid();
+      if ($('avmtira')) $('avmtira').onclick = () => { midia = null; tirouMidia = true; urlPrev = null; verMid(); verTudo(); }; };
+    verMid(); verTudo();
     $('avarq').onchange = async () => { const f = $('avarq').files[0]; $('avarq').value = ''; $('avmerr').textContent = ''; if (!f) return;
-      try { $('avmerr').textContent = 'Preparando…'; midia = await lerMidiaAviso(f); tirouMidia = true; $('avmerr').textContent = ''; verMid(); } catch (e) { $('avmerr').textContent = e.message; } };
-    const ler = () => { const titulo = $('avtit').value.trim(), texto = $('avtxt').value.trim(), btx = $('avbtx').value.trim(), blk = $('avblk').value.trim();
-      const para = [...sh.querySelectorAll('#avpara input:checked')].map(c => c.value).filter(p => !(tipo === 'importante' && p === 'familia'));
-      if (!titulo) throw new Error('Escreva o título.');
-      if (!texto && !midia) throw new Error('Escreva o texto ou ponha uma imagem/vídeo.');
-      if (!para.length) throw new Error('Escolha para quem vai o aviso.');
-      if (blk && !/^https:\/\/[^\s]+\.[^\s]+/i.test(blk)) throw new Error('O link do botão precisa começar com https://');
+      try { $('avmerr').textContent = 'Preparando…'; midia = await lerMidiaAviso(f); tirouMidia = true; urlPrev = null; $('avmerr').textContent = '';
+        if (midia.w && midia.h > midia.w * 1.3) formato = 'cheia'; verMid(); verTudo(); } catch (e) { $('avmerr').textContent = e.message; } };
+    const ler = () => { const d = dados(), para = sel();
+      if (!d.titulo) throw new Error('Escreva o título.');
+      if (!d.texto && !midia) throw new Error('Escreva o texto ou ponha uma imagem/vídeo.');
+      if (!para.length) throw new Error('Escolha quem recebe.');
+      if (d.botao && !/^https:\/\/[^\s]+\.[^\s]+/i.test(d.botao.link)) throw new Error('O link do botão precisa começar com https://');
       const ini = $('avini').value || hojeIso(), fim = $('avfim').value || null;
       if (fim && fim < ini) throw new Error('A data de saída é antes da data de começo.');
-      return { titulo, texto, tipo, para, inicio: ini, fim, botao: blk ? { texto: btx || 'Saiba mais', link: blk } : null }; };
-    $('avprev').onclick = () => { $('averr').textContent = ''; let d; try { d = ler(); } catch (e) { return $('averr').textContent = e.message; }
-      const url = midia && midia.dados ? URL.createObjectURL(new Blob([bytesDeDataUrl('x,' + midia.dados)], { type: midia.mime })) : null;
-      const mostrar = u => abrirAviso({ ...d, midia, previa: true }, u, () => { if (u) URL.revokeObjectURL(u); });
-      if (url || !midia) mostrar(url); else midiaDoAviso(id, a).then(mostrar).catch(() => mostrar(null)); };
+      return { titulo: d.titulo, texto: d.texto, formato: midia ? formato : 'janela', para, obrig: obrig(), inicio: ini, fim, botao: d.botao }; };
+    $('avreal').onclick = async () => { const url = await urlMidia(), d = dados(); abrirAviso(d, url || null, !!(verComo && obrig()[verComo]), () => { }); };
     $('avsal').onclick = async () => { $('averr').textContent = ''; let d; try { d = ler(); } catch (e) { return $('averr').textContent = e.message; }
       const b = $('avsal'); b.disabled = true; b.textContent = 'Salvando…';
       try { const aid = id || novoId(), ops = [];
@@ -5747,8 +5779,9 @@ function sheetAvisoForm(id, a0) {
         if (ops.length) await B.lote(ops);
         if (midia && midia.dados) { const n = Math.ceil(midia.dados.length / AV_PARTE);
           for (let i = 0; i < n; i++) await B.set(`avisosApp/${aid}/partes/${i}`, { d: midia.dados.slice(i * AV_PARTE, (i + 1) * AV_PARTE) });
-          md = { tipo: midia.tipo, mime: midia.mime, partes: n, tam: Math.round(midia.dados.length * 0.75) }; }
-        await B.set('avisosApp/' + aid, { ...d, midia: md, ativo: id ? a.ativo !== false : true, criadoEm: (a0 && a0.criadoEm) || Date.now(), editadoEm: Date.now() });
+          md = { tipo: midia.tipo, mime: midia.mime, partes: n, tam: Math.round(midia.dados.length * 0.75), ...(midia.w ? { w: midia.w, h: midia.h } : {}) }; }
+        await B.set('avisosApp/' + aid, { ...d, midia: md, tipo: null, ativo: id ? a.ativo !== false : true, criadoEm: (a0 && a0.criadoEm) || Date.now(), editadoEm: Date.now() });
+        if (urlPrev) URL.revokeObjectURL(urlPrev);
         aviso(id ? 'Salvo' : 'No ar na vitrine'); SHEET_VOLTAR = null; sheetAvisosDono(); }
       catch (e) { $('averr').textContent = msgErro(e); b.disabled = false; b.textContent = id ? 'Salvar' : 'Pôr no ar'; } };
   });

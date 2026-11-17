@@ -69,7 +69,8 @@ service cloud.firestore {
       }
       match /cientes/{uid} {
         allow create: if logado() && uid == eu() && exists(/databases/$(database)/documents/avisosApp/$(id))
-          && request.resource.data.keys().hasOnly(['em', 'nome', 'email', 'papeis', 'escolas'])
+          && request.resource.data.keys().hasOnly(['em', 'nome', 'email', 'papeis', 'escolas', 'confirmou'])
+          && (!('confirmou' in request.resource.data) || request.resource.data.confirmou is bool)
           && request.resource.data.em is int && textoAte(request.resource.data, 'nome', 80) && textoAte(request.resource.data, 'email', 120)
           && (!('papeis' in request.resource.data) || (request.resource.data.papeis is list && request.resource.data.papeis.size() <= 3))
           && (!('escolas' in request.resource.data) || (request.resource.data.escolas is list && request.resource.data.escolas.size() <= 10));
