@@ -589,7 +589,7 @@ async function entrarComCodigo(valor, err) {
    para o título, o botão e os links ficarem sempre no mesmo lugar. */
 let USR = {}; // users/{uid}: perfil (responsável), perfilProf (professor)
 function telaOb({ passo, rotulo, titulo, sub, corpo, botao, dois, links }) {
-  const tot = LOJA() ? 4 : 5; // no app da loja não tem o passo do cartão
+  const tot = LOJA() ? 5 : 6; // no app da loja não tem o passo do cartão
   const topo = passo ? `<div class="ob-pp" aria-label="Passo ${passo} de ${tot}">${Array.from({ length: tot }, (_, i) => `<i class="${i < passo ? 'on' : ''}"></i>`).join('')}</div>`
     : `<span class="marca-mini">${MARCA_SVG}</span><b>${esc(NOME_APP())}</b>`;
   RAIZ().innerHTML = `<div class="ob"><div class="ob-topo">${topo}</div>
@@ -737,16 +737,14 @@ function telaCriarEscola(passo) {
   if (!WZ || passo === 1 && !WZ.nome) WZ = WZ || { nome: '', cidade: '', uf: '', modalidades: [], termos: false, venc: 10, turma: { nome: '', preco: '', hs: [{ dias: [], ini: '', fim: '' }] } };
   const voltar = '<button class="btn ghost" id="wvolta">Voltar</button>';
   if (passo === 1) {
-    telaOb({ passo: 1, rotulo: `Passo 1 de ${LOJA() ? 4 : 5}`, titulo: 'Como se chama sua escola?', sub: 'É o nome que as famílias vão ver no app.',
+    telaOb({ passo: 1, rotulo: `Passo 1 de ${LOJA() ? 5 : 6}`, titulo: 'Como se chama sua escola?', sub: 'É o nome que as famílias vão ver no app.',
       corpo: `<div class="field"><label for="wnome">Nome da escola</label><input id="wnome" maxlength="60" placeholder="Ex.: Escolinha Movimento" value="${esc(WZ.nome)}"></div>
         <div class="two"><div class="field"><label for="wuf">Estado</label><select id="wuf"><option value="">Escolha</option>${Object.keys(UF_NOMES).sort().map(u => `<option ${u === WZ.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
         <div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" list="wcids" autocomplete="off" placeholder="Digite a cidade" value="${esc(WZ.cidade)}"><datalist id="wcids"></datalist></div></div>
-        ${campoModalidades('wmod', WZ.modalidades)}
         <label class="check aceite"><input type="checkbox" id="wtermos" ${WZ.termos ? 'checked' : ''}><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>.</span></label>
         <div class="err" id="werr" role="alert"></div>`,
       botao: '<button class="btn" id="wok">Próximo</button>', dois: voltar });
     $('wvolta').onclick = () => { WZ = null; telaInicio(); };
-    ligarChipsSel('wmod');
     // estado primeiro; a cidade vira uma lista com as cidades daquele estado
     let cidades = null;
     const carregar = async () => { const uf = $('wuf').value; $('werr').textContent = '';
@@ -760,27 +758,36 @@ function telaCriarEscola(passo) {
     if (WZ.uf) carregar();
     $('wok').onclick = () => {
       const cid = cidades ? acharCidade(cidades, $('wcid').value) : '';
-      Object.assign(WZ, { nome: $('wnome').value.trim(), cidade: cid || $('wcid').value.trim(), uf: $('wuf').value, modalidades: lerChipsSel('wmod'), termos: $('wtermos').checked });
-      const err = m => $('werr').textContent = m;
+      Object.assign(WZ, { nome: $('wnome').value.trim(), cidade: cid || $('wcid').value.trim(), uf: $('wuf').value, termos: $('wtermos').checked });
+      // o aviso de erro fica no fim da tela: rola até ele para a pessoa ver por que não passou
+      const err = m => { $('werr').textContent = m; $('werr').scrollIntoView({ block: 'center', behavior: 'smooth' }); };
       if (!WZ.nome) return err('Digite o nome da escola.');
       if (!WZ.uf) return err('Escolha o estado da escola.');
       if (!WZ.cidade) return err('Digite a cidade da escola.');
       if (!cidades) return err('Não deu para carregar a lista de cidades. Confira a internet e escolha o estado de novo.');
       if (!cid) return err(`Não achamos "${$('wcid').value.trim()}" em ${UF_NOMES[WZ.uf]}. Escolha a cidade na lista.`);
-      if (!WZ.modalidades.length) return err('Escolha pelo menos uma modalidade que a escola oferece.');
       if (!WZ.termos) return err('Para criar a escola, aceite os Termos de uso e a Política de privacidade.');
-      telaCriarEscola(2);
+      telaCriarEscola('mod');
     };
+  } else if (passo === 'mod') {
+    telaOb({ passo: 2, rotulo: `Passo 2 de ${LOJA() ? 5 : 6}`, titulo: 'Quais modalidades?', sub: 'Escolha uma ou mais. Dá para mudar depois nos Ajustes.',
+      corpo: `${campoModalidades('wmod', '')}<div class="err" id="werr" role="alert"></div>`,
+      botao: '<button class="btn" id="wok">Próximo</button>', dois: voltar });
+    const M = ligarModalidades('wmod', WZ.modalidades || []);
+    $('wvolta').onclick = () => { WZ.modalidades = M.valor(); telaCriarEscola(1); };
+    $('wok').onclick = () => { WZ.modalidades = M.valor();
+      if (!WZ.modalidades.length) { $('werr').textContent = 'Escolha pelo menos uma modalidade.'; return $('werr').scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      telaCriarEscola(2); };
   } else if (passo === 2) {
     const dias = [5, 10, 15, 20, 25];
-    telaOb({ passo: 2, rotulo: `Passo 2 de ${LOJA() ? 4 : 5}`, titulo: 'Quando as famílias pagam?', sub: 'O dia do mês em que a mensalidade vence. Dá para mudar depois.',
+    telaOb({ passo: 3, rotulo: `Passo 3 de ${LOJA() ? 5 : 6}`, titulo: 'Quando as famílias pagam?', sub: 'O dia do mês em que a mensalidade vence. Dá para mudar depois.',
       corpo: `<div class="ob-dias" id="wdias">${dias.map(d => `<button type="button" data-v="${d}" aria-pressed="${WZ.venc === d}">${d}</button>`).join('')}</div>
         <div class="field" style="max-width:200px;margin:0 auto"><label for="woutro">Ou outro dia (1 a 28)</label><input id="woutro" type="number" min="1" max="28" inputmode="numeric" value="${dias.includes(WZ.venc) ? '' : WZ.venc}" style="text-align:center"></div>
         <div class="ob-dica">💡<span>O app avisa as famílias 3 dias antes e no dia do vencimento.</span></div><div class="err" id="werr" role="alert"></div>`,
       botao: '<button class="btn" id="wok">Criar escola</button>', dois: voltar });
     $('wdias').querySelectorAll('[data-v]').forEach(b => b.onclick = () => { WZ.venc = Number(b.dataset.v); $('woutro').value = ''; $('wdias').querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); });
     $('woutro').oninput = () => { if ($('woutro').value) $('wdias').querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', 'false')); };
-    $('wvolta').onclick = () => telaCriarEscola(1);
+    $('wvolta').onclick = () => telaCriarEscola('mod');
     $('wok').onclick = async () => {
       if ($('woutro').value) { const v = Number($('woutro').value); if (!(v >= 1 && v <= 28)) return $('werr').textContent = 'O vencimento vai do dia 1 ao 28.'; WZ.venc = v; }
       // a escola é criada aqui; depois vêm o cartão (obrigatório) e a primeira turma (dá para pular)
@@ -796,8 +803,8 @@ function telaCriarEscola(passo) {
       } catch (e) { $('werr').textContent = msgErro(e); $('wok').disabled = false; }
     };
   } else if (passo === 3) {
-    const n = LOJA() ? 3 : 4;
-    telaOb({ passo: n, rotulo: `Passo ${n} de ${LOJA() ? 4 : 5}`, titulo: 'Sua primeira turma', sub: 'Um grupo de alunos com a mesma mensalidade. Se preferir, pule e crie depois na aba Turmas.',
+    const n = LOJA() ? 4 : 5;
+    telaOb({ passo: n, rotulo: `Passo ${n} de ${LOJA() ? 5 : 6}`, titulo: 'Sua primeira turma', sub: 'Um grupo de alunos com a mesma mensalidade. Se preferir, pule e crie depois na aba Turmas.',
       corpo: `<div class="two"><div class="field"><label for="wtnome">Nome da turma</label><input id="wtnome" maxlength="60" placeholder="Ex.: Balé Baby" value="${esc(WZ.turma.nome)}"></div>
         <div class="field"><label for="wtpreco">Mensalidade (R$)</label><input id="wtpreco" inputmode="decimal" placeholder="150,00" value="${esc(WZ.turma.preco)}"></div></div>
         ${camposHorariosHTML()}<div class="err" id="werr" role="alert"></div>`,
@@ -820,7 +827,7 @@ function telaCriarEscola(passo) {
     };
   } else {
     const eid = WZ.eid;
-    telaOb({ passo: LOJA() ? 4 : 5, rotulo: LOJA() ? 'Passo 4 de 4' : 'Passo 5 de 5', titulo: 'Tudo pronto! 🎉', sub: 'Agora é só seguir a lista. Ela fica no topo da aba Pendências até tudo ficar pronto.',
+    telaOb({ passo: LOJA() ? 5 : 6, rotulo: LOJA() ? 'Passo 5 de 5' : 'Passo 6 de 6', titulo: 'Tudo pronto! 🎉', sub: 'Agora é só seguir a lista. Ela fica no topo da aba Pendências até tudo ficar pronto.',
       corpo: `<div class="hero"><div class="passos">${PASSOS_ESCOLA.map(([k, t]) => `<div>${k === 'escola' || (k === 'turma' && WZ.turmaFeita) ? '<span class="ok">✓</span>' : '<span class="vazio"></span>'}${t}</div>`).join('')}</div></div>`,
       botao: '<button class="btn" id="wok">Adicionar alunos</button>', links: '<button type="button" id="wdepois">Fazer depois</button>' });
     $('wok').onclick = () => { WZ = null; abrirEscola(eid, 'alunas').then(() => setTimeout(() => passoAbrir('alunos'), 300)); };
@@ -833,7 +840,7 @@ async function telaCartaoEscola(eid, nome, depois) {
   const S0 = S; S = { eid, escola: { nome }, alunas: {}, plano: null }; // o servidor do plano só precisa saber qual é a escola
   let R = null, campos = null, metodo = null;
   const sair = () => { if (campos) campos.sair(); campos = null; };
-  telaOb({ passo: 3, rotulo: 'Passo 3 de 5', titulo: 'Cadastre o cartão',
+  telaOb({ passo: 4, rotulo: 'Passo 4 de 6', titulo: 'Cadastre o cartão',
     sub: 'Opcional. Nada é cobrado até acabar o teste grátis de 30 dias. Pode aparecer uma cobrança pequena só para confirmar o cartão, devolvida em seguida.',
     corpo: `<div class="field"><label>Número do cartão</label><div class="mpcampo" id="ccnum"></div></div>
       <div class="two"><div class="field"><label>Validade</label><div class="mpcampo" id="ccval"></div></div><div class="field"><label>Código de segurança</label><div class="mpcampo" id="cccvv"></div></div></div>
@@ -983,19 +990,19 @@ function sheetCriarEscola() {
     <div class="field"><label for="cnome">Nome da escola</label><input id="cnome" maxlength="60" placeholder="Ex.: Escolinha Movimento"></div>
     <div class="two"><div class="field"><label for="cuf">Estado</label><select id="cuf"><option value="">Escolha</option>${UFS.map(u => `<option>${u}</option>`).join('')}</select></div>
     <div class="field"><label for="ccid">Cidade</label><select id="ccid" disabled><option value="">Escolha o estado</option></select></div></div>
-    ${campoModalidades('cmod', [])}
+    ${campoModalidades('cmod', 'Modalidades que a escola oferece')}
     <div class="two"><div class="field"><label for="cvenc">Vencimento (dia do mês)</label><input id="cvenc" type="number" min="1" max="28" value="10"></div>
     <div class="field"><label for="cloc">Local (opcional)</label><input id="cloc" maxlength="60" placeholder="Ex.: Unidade Centro"></div></div>
     <div class="note">Depois você cadastra as turmas, os grupos e os alunos.</div>
     <label class="check aceite"><input type="checkbox" id="ctermos"><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>. A escola é responsável pelos dados que cadastrar.</span></label>
     <div class="err" id="cerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="cok">Criar</button></div>`, () => {
-    ligarEstadoCidade('cuf', 'ccid', ''); ligarChipsSel('cmod');
+    ligarEstadoCidade('cuf', 'ccid', ''); const MC = ligarModalidades('cmod', [], true);
     $('cok').onclick = async () => {
       const nome = $('cnome').value.trim(), venc = Number($('cvenc').value), loc = $('cloc').value.trim();
       if (!nome) return $('cerr').textContent = 'Digite o nome da escola.';
       const cidade = $('ccid').value.trim(), uf = $('cuf').value; if (!cidade || !uf) return $('cerr').textContent = 'Escolha o estado e a cidade da escola.';
-      const modalidades = lerChipsSel('cmod'); if (!modalidades.length) return $('cerr').textContent = 'Escolha pelo menos uma modalidade que a escola oferece.';
+      const modalidades = MC.valor(); if (!modalidades.length) return $('cerr').textContent = 'Escolha pelo menos uma modalidade que a escola oferece.';
       if (!(venc >= 1 && venc <= 28)) return $('cerr').textContent = 'O vencimento vai do dia 1 ao 28.';
       if (!$('ctermos').checked) return $('cerr').textContent = 'Para criar a escola, aceite os Termos de uso e a Política de privacidade.';
       $('cok').disabled = true;
@@ -1560,11 +1567,32 @@ const ICO_WA = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentCol
 /* ================= Casca da escola ================= */
 /* ================= Aparência: cor e logo da escola ================= */
 // modalidades que a escola oferece (escolhe uma ou mais ao criar e nos Ajustes); usadas nos filtros da Vitrine
-const MODALIDADES = ['Futebol', 'Futsal', 'Vôlei', 'Basquete', 'Handebol', 'Natação', 'Ginástica rítmica', 'Ginástica artística', 'Ballet', 'Dança', 'Judô', 'Jiu-jítsu', 'Karatê', 'Taekwondo', 'Capoeira', 'Muay thai', 'Tênis', 'Beach tennis', 'Atletismo', 'Xadrez', 'Skate', 'Patinação', 'Funcional', 'Psicomotricidade', 'Outra'];
+// em ordem das mais comuns em escolinhas no Brasil (as mais prováveis primeiro); "Outra" sempre no fim
+const MODALIDADES = ['Futebol', 'Futsal', 'Natação', 'Ballet', 'Judô', 'Jiu-jítsu', 'Vôlei', 'Ginástica artística', 'Ginástica rítmica', 'Dança', 'Karatê', 'Basquete', 'Taekwondo', 'Capoeira', 'Handebol', 'Tênis', 'Beach tennis', 'Muay thai', 'Atletismo', 'Funcional', 'Psicomotricidade', 'Xadrez', 'Skate', 'Patinação', 'Outra'];
 const htmlChipsSel = (id, lista, sel) => `<div class="chips chips-sel" id="${id}">${lista.map(m => `<button type="button" data-ch="${esc(m)}" aria-pressed="${(sel || []).includes(m)}">${esc(m)}</button>`).join('')}</div>`;
 const ligarChipsSel = (id, mudou) => $(id).querySelectorAll('[data-ch]').forEach(b => b.onclick = () => { b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); mudou && mudou(); });
 const lerChipsSel = id => [...$(id).querySelectorAll('[data-ch][aria-pressed="true"]')].map(b => b.dataset.ch);
-const campoModalidades = (id, sel) => `<div class="field"><span class="lb">Modalidades que a escola oferece</span><span class="sub">Escolha uma ou mais.</span>${htmlChipsSel(id, MODALIDADES, sel)}</div>`;
+/* escolher modalidades: campo para digitar (filtra a lista), o quadro "Escolhidas" logo abaixo (sempre à vista) e a lista em grade
+   (toca para marcar/desmarcar); com as marcadas em destaque (toca no × para tirar). compacto: a lista só abre ao digitar ou em "Ver todas". */
+const campoModalidades = (id, titulo) => `<div class="field mod-pick" id="${id}">${titulo ? `<span class="lb">${titulo}</span>` : ''}
+  <input class="mod-busca" placeholder="Digite para procurar (ex.: nat, vôl)" autocomplete="off" enterkeyhint="done">
+  <div class="mod-quadro"><span class="mod-qt">Escolhidas</span><div class="mod-sel"></div></div>
+  <div class="mod-grade"></div><button type="button" class="link mod-todas" hidden>Ver todas as modalidades</button></div>`;
+function ligarModalidades(id, sel0, compacto) {
+  const raiz = $(id), sel = [...(sel0 || [])], busca = raiz.querySelector('.mod-busca'); let aberta = !compacto;
+  const ver = () => { const q = semAcento(busca.value.trim()), lista = MODALIDADES.filter(m => !q || semAcento(m).includes(q));
+    const mostra = aberta || !!q; raiz.querySelector('.mod-todas').hidden = mostra;
+    raiz.querySelector('.mod-grade').innerHTML = !mostra ? '' : lista.length ? lista.map(m => `<button type="button" data-md="${esc(m)}" aria-pressed="${sel.includes(m)}">${sel.includes(m) ? '✓ ' : ''}${esc(m)}</button>`).join('') : '<span class="sub">Nenhuma com esse nome. Escolha "Outra".</span>';
+    raiz.querySelector('.mod-sel').innerHTML = sel.length ? sel.map(m => `<span class="mod-tag">${esc(m)}<button type="button" data-mx="${esc(m)}" aria-label="Tirar ${esc(m)}">×</button></span>`).join('') : '<span class="sub">Nenhuma escolhida ainda.</span>';
+    raiz.querySelectorAll('[data-md]').forEach(b => b.onclick = () => { const m = b.dataset.md, i = sel.indexOf(m); i >= 0 ? sel.splice(i, 1) : sel.push(m);
+      if (busca.value) { busca.value = ''; } ver(); });
+    raiz.querySelectorAll('[data-mx]').forEach(b => b.onclick = () => { sel.splice(sel.indexOf(b.dataset.mx), 1); ver(); }); };
+  busca.oninput = ver;
+  busca.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const q = semAcento(busca.value.trim()), m = q && MODALIDADES.find(x => semAcento(x).includes(q)); if (m && !sel.includes(m)) sel.push(m); busca.value = ''; ver(); } };
+  raiz.querySelector('.mod-todas').onclick = () => { aberta = true; ver(); };
+  ver();
+  return { valor: () => MODALIDADES.filter(m => sel.includes(m)) };
+}
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 const COR_PADRAO = '#8B6B47';
 const CORES = [['#8B6B47', 'Bege'], ['#C2305A', 'Rosa'], ['#2357C6', 'Azul'], ['#0E7C86', 'Turquesa'], ['#1E7F4F', 'Verde'], ['#D2601A', 'Laranja'], ['#C62828', 'Vermelho'], ['#6B3FC0', 'Roxo'], ['#22252E', 'Grafite']];
@@ -7909,7 +7937,7 @@ function sheetAjustes() {
       <div class="field"><label for="jnome">Nome da escola</label><input id="jnome" maxlength="60" value="${esc(S.escola.nome || '')}"></div>
       <div class="two"><div class="field"><label for="juf">Estado</label><select id="juf"><option value="">Escolha</option>${UFS.map(u => `<option ${c.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
       <div class="field"><label for="jcid">Cidade</label><select id="jcid" ${c.uf ? '' : 'disabled'}>${c.cidade ? `<option selected>${esc(c.cidade)}</option>` : `<option value="">${c.uf ? 'Carregando…' : 'Escolha o estado'}</option>`}</select></div></div>
-      ${campoModalidades('jmod', c.modalidades || [])}
+      ${campoModalidades('jmod', 'Modalidades que a escola oferece')}
       <div class="two"><div class="field"><label for="jvenc">Vencimento (dia)</label><input id="jvenc" type="number" min="1" max="28" value="${esc(c.vencDia || 10)}"></div>
       <div class="field"><label for="jmatv">Taxa de matrícula (R$)</label><input id="jmatv" inputmode="decimal" value="${esc((c.matricula || {}).valor ? fmtValor(c.matricula.valor) : '')}" placeholder="0,00 = não cobra"></div></div>
       <div class="note" style="margin-top:-6px;margin-bottom:12px">Com valor, ao cadastrar um aluno novo o app já lança a taxa de matrícula (dá para desmarcar na hora). Ela aparece no contrato.</div>
@@ -7959,7 +7987,7 @@ function sheetAjustes() {
     if ($('jsimv')) { const verJ = ligarSimTaxa('jsim', () => $('jrep').checked); $('jrep').addEventListener('change', verJ); }
     const err = m => $('jerr').textContent = m;
     if ($('juf')) ligarEstadoCidade('juf', 'jcid', S.cfg.cidade || '');
-    if ($('jmod')) ligarChipsSel('jmod');
+    const MJ = $('jmod') ? ligarModalidades('jmod', c.modalidades || [], true) : null;
     if ($('jnotas')) $('jnotas').onclick = () => abrirDe(sheetAjustes, sheetNotasEscola);
     if ($('jnf')) $('jnf').onclick = () => abrirDe(sheetAjustes, () => sheetNotaFiscal());
     if ($('jct')) $('jct').onclick = () => abrirDe(sheetAjustes, () => sheetContratoModelo());
@@ -7989,7 +8017,7 @@ function sheetAjustes() {
       if (!(aMul >= 0) || aMul > MULTA_MAX) return err('A multa por atraso pode ser de no máximo 2%, pela lei.');
       if (!(aJur >= 0) || aJur > JUROS_MAX) return err('Os juros por atraso podem ser de no máximo 1% ao mês, pela lei.');
       $('jok').disabled = true;
-      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, pushFamilias: $('jpushf').checked, matricula: { valor: C.r2(matV) }, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, modalidades: $('jmod') ? lerChipsSel('jmod') : (c.modalidades || []), atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
+      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, pushFamilias: $('jpushf').checked, matricula: { valor: C.r2(matV) }, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, modalidades: MJ ? MJ.valor() : (c.modalidades || []), atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
       catch (e) { err(msgErro(e)); $('jok').disabled = false; }
     };
   });
