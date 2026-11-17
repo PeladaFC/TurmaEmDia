@@ -5720,7 +5720,7 @@ function sheetAvisoForm(id, a0) {
     <div class="field" id="avfmtw"><span class="lb">Como a imagem aparece</span><div class="seg"><button type="button" data-avf="janela">Janela com texto</button><button type="button" data-avf="cheia">Tela cheia</button></div><span class="sub" id="avfmtsub"></span></div>
     <div class="two"><div class="field"><label for="avbtx">Botão (opcional)</label><input id="avbtx" maxlength="30" value="${esc((a.botao || {}).texto || '')}" placeholder="Ex.: Inscreva-se"></div><div class="field"><label for="avblk">Link do botão</label><input id="avblk" inputmode="url" maxlength="300" value="${esc((a.botao || {}).link || '')}" placeholder="https://"></div></div>
     <div class="field"><span class="lb">Quem recebe?</span><div id="avpara">${AV_PARA.map(([k, n, s]) => `<label class="liga liga-mini"><span class="grow"><b>${n}</b>${s ? `<span class="s">${s}</span>` : ''}</span><input type="checkbox" role="switch" data-avp="${k}" ${para0.has(k) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
-    <div class="field" id="avobw"><span class="lb">Precisa confirmar que viu?</span><span class="sub">Ligado: a caixinha diz "Li e estou ciente" e a pessoa só se livra do aviso marcando (cada administradora marca a sua). Desligado: a caixinha diz "Entendi". Nos dois, "Ver depois" faz voltar na próxima vez que abrir o app.</span><div id="avob">${AV_PARA.map(([k, n]) => `<label class="liga liga-mini" data-avow="${k}"><span class="grow"><b>${n}</b></span><input type="checkbox" role="switch" data-avo="${k}" ${obrig0[k] ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
+    <div class="field" id="avobw"><span class="lb">Precisa confirmar que viu?</span><span class="sub">Ligado: a caixinha diz "Li e estou ciente" e a pessoa só se livra do aviso marcando (cada administradora marca a sua). Desligado: a caixinha diz "Entendi". Nos dois, "Ver depois" faz voltar na próxima vez que abrir o app.</span><div id="avob">${AV_PARA.map(([k, n]) => `<label class="liga liga-mini" data-avow="${k}"><span class="grow"><b>${n}</b><span class="s av-nrec">não recebe este aviso</span></span><input type="checkbox" role="switch" data-avo="${k}" ${obrig0[k] ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
     <div class="two"><div class="field"><label for="avini">Começa em</label><input id="avini" type="date" value="${esc(a.inicio || hojeIso())}"></div><div class="field"><label for="avfim">Sai do ar em (opcional)</label><input id="avfim" type="date" value="${esc(a.fim || '')}"></div></div>
     <div class="field av-prevw"><span class="lb">Como vai aparecer no celular</span><div class="seg" id="avcomo"></div><div class="av-fone"><div class="av-tela"><div class="av-app"></div><div class="av-bg av-dentro" id="avprev"></div></div></div><button type="button" class="btn ghost btn-mini" id="avreal">Ver em tamanho real</button></div>
     <span class="err" id="averr"></span>
@@ -5734,9 +5734,8 @@ function sheetAvisoForm(id, a0) {
       return urlPrev; };
     const desenharPrev = async () => {
       const s = sel(); if (!s.includes(verComo)) verComo = s[0] || null;
-      $('avcomo').hidden = s.length < 2;
-      $('avcomo').innerHTML = s.map(k => `<button type="button" data-avc="${k}" aria-pressed="${k === verComo}">${AV_NOME[k]}</button>`).join('');
-      $('avcomo').querySelectorAll('[data-avc]').forEach(b => b.onclick = () => { verComo = b.dataset.avc; desenharPrev(); });
+      $('avcomo').innerHTML = AV_PARA.map(([k]) => `<button type="button" data-avc="${k}" aria-pressed="${k === verComo}" ${s.includes(k) ? '' : 'disabled'}>${AV_NOME[k]}</button>`).join('');
+      $('avcomo').querySelectorAll('[data-avc]:not([disabled])').forEach(b => b.onclick = () => { verComo = b.dataset.avc; desenharPrev(); });
       const url = await urlMidia(), d = dados(), imp = !!(verComo && obrig()[verComo]);
       const p = $('avprev'); if (!p) return;
       p.className = 'av-bg av-dentro' + (d.formato === 'cheia' && url ? ' cheia' : '');
@@ -5748,8 +5747,9 @@ function sheetAvisoForm(id, a0) {
       $('avfmtw').hidden = !midia;
       $('avfmtsub').textContent = formato === 'cheia' ? 'A imagem ocupa a tela toda, inteira, sem cortar (o título e o texto não aparecem, só os botões embaixo). Tamanho ideal: em pé, 1080 × 1920 (como um story).' : 'A imagem aparece inteira, com o título e o texto. Tamanho ideal: quadrada (1080 × 1080) ou deitada (1080 × 608).';
       $('avtitsub').textContent = formato === 'cheia' && midia ? 'Em tela cheia o título não aparece no celular: serve para você achar na lista.' : '';
-      const s = sel(); $('avobw').hidden = !s.length;
-      sh.querySelectorAll('[data-avow]').forEach(l => { l.hidden = !s.includes(l.dataset.avow); });
+      // os três aparecem sempre; quem não recebe fica apagado (não dá para marcar)
+      const s = sel();
+      sh.querySelectorAll('[data-avow]').forEach(l => { const on = s.includes(l.dataset.avow), c = l.querySelector('input'); l.classList.toggle('av-off', !on); c.disabled = !on; if (!on) c.checked = false; });
       desenharPrev(); };
     sh.querySelectorAll('[data-avf]').forEach(b => b.onclick = () => { formato = b.dataset.avf; verTudo(); });
     sh.querySelectorAll('[data-avp],[data-avo]').forEach(c => c.onchange = verTudo);
