@@ -5,7 +5,7 @@
 #   2. No Cloud Shell, clique nos três pontinhos (⋮) → "Fazer upload" e envie o arquivo do certificado.
 #   3. Tenha em mãos o que a contadora informou: código do serviço (6 dígitos) e o percentual de tributos do Simples.
 # Rodar no Cloud Shell (https://shell.cloud.google.com/?project=turma-em-dia-57c1e):
-#   curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/configurar-nfse.sh | bash
+#   (repositório privado desde a Fase 5) o Claude manda num bloco só: cat > configurar-nfse.sh <<'FIM' … FIM; depois: bash configurar-nfse.sh
 # O certificado e a configuração vão para servidor/nfse_cert e servidor/nfse, que o app não consegue ler.
 set -euo pipefail
 PROJ=turma-em-dia-57c1e

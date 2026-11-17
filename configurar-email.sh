@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Turma em Dia · liga os e-mails com a cara do app (confirmar e-mail e trocar senha), enviados pelo Resend (resend.com).
 # Rodar no Cloud Shell, logado com a conta dona do projeto Firebase:
-#   curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/configurar-email.sh | bash
+#   (repositório privado desde a Fase 5) o Claude manda num bloco só: cat > configurar-email.sh <<'FIM' … FIM; depois: bash configurar-email.sh
 # A chave vai direto para o banco (servidor/email), que o app não consegue ler.
 set -euo pipefail
-PROJ="${1:-$(curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/.firebaserc | python3 -c 'import json,sys;print(json.load(sys.stdin)["projects"]["default"])')}"
+PROJ="${1:-turma-em-dia-57c1e}"
 [ -n "$PROJ" ] && [ "$PROJ" != "SEU-PROJETO" ] || { echo "Não achei o id do projeto. Use: bash configurar-email.sh id-do-projeto"; exit 1; }
 echo "Projeto: $PROJ"
 echo "==> Chave do Resend (resend.com → API Keys → Create API Key). Começa com re_"

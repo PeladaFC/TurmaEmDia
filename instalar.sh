@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Turma em Dia · instala/atualiza o servidor (Pix automático, convites, eventos) e as regras de segurança do banco.
 # Rodar no Cloud Shell do Google (shell.cloud.google.com), logado com a conta dona do projeto:
-#   curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/instalar.sh | bash
+#   APOSENTADO na Fase 5 (repositório privado): o Cloud Shell não baixa mais do GitHub.
+#   Para publicar servidor e regras à mão: GitHub → Actions → "Publicar no Firebase" → Run workflow → marcar "tudo".
 set -euo pipefail
 REPO="${1:-PeladaFC/TurmaEmDia}"
 DIR="$HOME/$(basename "$REPO")"

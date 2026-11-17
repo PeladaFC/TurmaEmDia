@@ -5,9 +5,9 @@
 #     da escola ir direto do celular para o Mercado Pago, no plano do app);
 #   - automatico: ligue só quando o Mercado Pago liberar os "Pagamentos automáticos" para a aplicação.
 # Rodar no Cloud Shell, logado com a conta dona do projeto Firebase:
-#   curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/configurar-cartao.sh | bash
+#   (repositório privado desde a Fase 5) o Claude manda num bloco só: cat > configurar-cartao.sh <<'FIM' … FIM; depois: bash configurar-cartao.sh
 set -euo pipefail
-PROJ="${1:-$(curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/.firebaserc | python3 -c 'import json,sys;print(json.load(sys.stdin)["projects"]["default"])')}"
+PROJ="${1:-turma-em-dia-57c1e}"
 [ -n "$PROJ" ] && [ "$PROJ" != "SEU-PROJETO" ] || { echo "Não achei o id do projeto. Use: bash configurar-cartao.sh id-do-projeto"; exit 1; }
 echo "Projeto: $PROJ"
 echo "==> No Mercado Pago: Suas integrações → aplicação do Turma em Dia → Credenciais de produção → Public Key"

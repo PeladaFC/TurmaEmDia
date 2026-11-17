@@ -2,10 +2,10 @@
 # Turma em Dia · grava as credenciais da aplicação do Mercado Pago da PLATAFORMA (aplicação própria do Turma em Dia,
 # criada na mesma conta do Mercado Pago que recebe a comissão do Pelada FC).
 # Rodar no Cloud Shell, logado com a conta dona do projeto Firebase:
-#   curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/configurar-mp.sh | bash
+#   (repositório privado desde a Fase 5) o Claude manda num bloco só: cat > configurar-mp.sh <<'FIM' … FIM; depois: bash configurar-mp.sh
 # Os dados vão direto para o banco (servidor/mp), que o app não consegue ler.
 set -euo pipefail
-PROJ="${1:-$(curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/.firebaserc | python3 -c 'import json,sys;print(json.load(sys.stdin)["projects"]["default"])')}"
+PROJ="${1:-turma-em-dia-57c1e}"
 [ -n "$PROJ" ] && [ "$PROJ" != "SEU-PROJETO" ] || { echo "Não achei o id do projeto. Use: bash configurar-mp.sh id-do-projeto"; exit 1; }
 echo "Projeto: $PROJ"
 echo "==> Credenciais da aplicação do Mercado Pago (Suas integrações → sua aplicação → Credenciais de produção)"

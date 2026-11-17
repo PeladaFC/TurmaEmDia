@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Turma em Dia · libera o relatório de notas fiscais da comissão para os e-mails da empresa e publica o servidor.
 # Rodar no Cloud Shell (https://shell.cloud.google.com/?project=turma-em-dia-57c1e), logado com a conta dona do projeto:
-#   curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/configurar-notas.sh | bash
+#   (repositório privado desde a Fase 5) o Claude manda num bloco só: cat > configurar-notas.sh <<'FIM' … FIM; depois: bash configurar-notas.sh
 # Os e-mails vão para servidor/plataforma, que o app não consegue ler.
 set -euo pipefail
 PROJ=turma-em-dia-57c1e
@@ -18,4 +18,4 @@ rm -f /tmp/ted_resp.json
 if [ "$COD" != "200" ]; then echo "Não deu certo (código $COD). Mande uma foto desta tela."; exit 1; fi
 echo "    ✅ e-mails liberados"
 echo
-curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/main/instalar.sh | bash
+echo "✅ Pronto! (O servidor é publicado sozinho pelo GitHub a cada \"Publique\"; não precisa fazer mais nada aqui.)"

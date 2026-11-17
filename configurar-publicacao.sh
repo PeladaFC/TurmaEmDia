@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Turma em Dia · deixa o GitHub publicar sozinho no Firebase (site, servidor e regras) quando a branch main muda.
 # Roda UMA VEZ no Cloud Shell, logado com a conta dona do projeto, ANTES de o repositório ficar privado:
-#   curl -sL https://raw.githubusercontent.com/PeladaFC/TurmaEmDia/rascunho/configurar-publicacao.sh | bash
+#   (repositório privado desde a Fase 5) o Claude manda num bloco só: cat > configurar-publicacao.sh <<'FIM' … FIM; depois: bash configurar-publicacao.sh
 # Não guarda senha nem chave em lugar nenhum: o Google só aceita o pedido se vier do repositório PeladaFC/TurmaEmDia
 # (federação de identidade do Google Cloud, sem custo). Pode rodar de novo sem problema: o que já existe é mantido.
 set -uo pipefail
