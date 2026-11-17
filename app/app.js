@@ -1568,30 +1568,45 @@ const ICO_WA = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentCol
 /* ================= Aparência: cor e logo da escola ================= */
 // modalidades que a escola oferece (escolhe uma ou mais ao criar e nos Ajustes); usadas nos filtros da Vitrine
 // em ordem das mais comuns em escolinhas no Brasil (as mais prováveis primeiro); "Outra" sempre no fim
-const MODALIDADES = ['Futebol', 'Futsal', 'Natação', 'Ballet', 'Judô', 'Jiu-jítsu', 'Vôlei', 'Ginástica artística', 'Ginástica rítmica', 'Dança', 'Karatê', 'Basquete', 'Taekwondo', 'Capoeira', 'Handebol', 'Tênis', 'Beach tennis', 'Muay thai', 'Atletismo', 'Funcional', 'Psicomotricidade', 'Xadrez', 'Skate', 'Patinação', 'Outra'];
+const MODALIDADES = ['Futebol', 'Futsal', 'Natação', 'Ballet', 'Judô', 'Jiu-jítsu', 'Vôlei', 'Ginástica artística', 'Ginástica rítmica', 'Dança', 'Karatê', 'Basquete', 'Taekwondo', 'Capoeira', 'Handebol', 'Tênis', 'Beach tennis', 'Muay thai', 'Atletismo', 'Funcional', 'Psicomotricidade', 'Xadrez', 'Skate', 'Patinação'];
+// "Mostrar mais": olímpicos (verão e inverno), paralímpicos, lutas, danças, praia, aquáticos, aventura e atividades para crianças (ordem alfabética)
+const MODALIDADES_MAIS = ['Acrobacia', 'Aikido', 'Alongamento', 'Arco e flecha', 'Badminton', 'Basquete 3x3', 'Basquete em cadeira de rodas', 'Beisebol', 'BMX', 'Bocha', 'Bocha paralímpica', 'Bodyboard', 'Boliche', 'Boxe', 'Breaking', 'Canoagem', 'Canto', 'Cheerleading', 'Ciclismo', 'Circo', 'Corrida de rua', 'Críquete', 'CrossFit', 'Curling', 'Damas', 'Dança contemporânea', 'Dança de salão', 'Escalada', 'Esgrima', 'Esqui', 'Flag football', 'Forró', 'Frescobol', 'Frevo', 'Futebol americano', 'Futebol de areia', 'Futebol society', 'Futevôlei', 'Ginástica acrobática', 'Ginástica de trampolim', 'Goalball', 'Golfe', 'Halterofilismo', 'Handebol de areia', 'Hapkido', 'Hidroginástica', 'Hip hop', 'Hipismo', 'Hóquei na grama', 'Hóquei no gelo', 'Iniciação esportiva', 'Jazz', 'Jiu-jítsu kids', 'Judô kids', 'Kart', 'Kendo', 'Kickboxing', 'Kitesurf', 'Krav maga', 'Kung fu', 'Lacrosse', 'Levantamento de peso', 'Luta olímpica', 'MMA', 'Mountain bike', 'Mergulho', 'Musculação', 'Música', 'Nado artístico', 'Natação adaptada', 'Natação para bebês', 'Orientação', 'Padel', 'Parkour', 'Patinação artística', 'Patinação no gelo', 'Patins', 'Pentatlo moderno', 'Peteca', 'Pickleball', 'Pilates', 'Polo aquático', 'Recreação', 'Remo', 'Robótica', 'Rugby', 'Rugby em cadeira de rodas', 'Saltos ornamentais', 'Sapateado', 'Slackline', 'Snowboard', 'Softbol', 'Squash', 'Stand up paddle', 'Sumô', 'Surfe', 'Teatro', 'Tênis de mesa', 'Tênis em cadeira de rodas', 'Tiro com arco', 'Tiro esportivo', 'Triatlo', 'Vela', 'Vôlei de praia', 'Vôlei sentado', 'Wakeboard', 'Wrestling', 'Wushu', 'Yoga', 'Zumba'];
+const MODALIDADES_TODAS = [...MODALIDADES, ...MODALIDADES_MAIS];
+// em ordem: as da lista primeiro (na ordem dela), depois as que a escola escreveu
+const ordemMod = l => [...l].sort((x, y) => { const i = MODALIDADES_TODAS.indexOf(x), j = MODALIDADES_TODAS.indexOf(y); return (i < 0 ? 999 : i) - (j < 0 ? 999 : j) || x.localeCompare(y, 'pt-BR'); });
 const htmlChipsSel = (id, lista, sel) => `<div class="chips chips-sel" id="${id}">${lista.map(m => `<button type="button" data-ch="${esc(m)}" aria-pressed="${(sel || []).includes(m)}">${esc(m)}</button>`).join('')}</div>`;
 const ligarChipsSel = (id, mudou) => $(id).querySelectorAll('[data-ch]').forEach(b => b.onclick = () => { b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); mudou && mudou(); });
 const lerChipsSel = id => [...$(id).querySelectorAll('[data-ch][aria-pressed="true"]')].map(b => b.dataset.ch);
 /* escolher modalidades: campo para digitar (filtra a lista), o quadro "Escolhidas" logo abaixo (sempre à vista) e a lista em grade
    (toca para marcar/desmarcar); com as marcadas em destaque (toca no × para tirar). compacto: a lista só abre ao digitar ou em "Ver todas". */
 const campoModalidades = (id, titulo) => `<div class="field mod-pick" id="${id}">${titulo ? `<span class="lb">${titulo}</span>` : ''}
-  <input class="mod-busca" placeholder="Digite para procurar (ex.: nat, vôl)" autocomplete="off" enterkeyhint="done">
+  <input class="mod-busca" placeholder="Digite 3 letras para procurar (ex.: nat, sur)" autocomplete="off" enterkeyhint="done">
   <div class="mod-quadro"><span class="mod-qt">Escolhidas</span><div class="mod-sel"></div></div>
   <div class="mod-grade"></div><button type="button" class="link mod-todas" hidden>Ver todas as modalidades</button></div>`;
 function ligarModalidades(id, sel0, compacto) {
-  const raiz = $(id), sel = [...(sel0 || [])], busca = raiz.querySelector('.mod-busca'); let aberta = !compacto;
-  const ver = () => { const q = semAcento(busca.value.trim()), lista = MODALIDADES.filter(m => !q || semAcento(m).includes(q));
-    const mostra = aberta || !!q; raiz.querySelector('.mod-todas').hidden = mostra;
-    raiz.querySelector('.mod-grade').innerHTML = !mostra ? '' : lista.length ? lista.map(m => `<button type="button" data-md="${esc(m)}" aria-pressed="${sel.includes(m)}">${sel.includes(m) ? '✓ ' : ''}${esc(m)}</button>`).join('') : '<span class="sub">Nenhuma com esse nome. Escolha "Outra".</span>';
-    raiz.querySelector('.mod-sel').innerHTML = sel.length ? sel.map(m => `<span class="mod-tag">${esc(m)}<button type="button" data-mx="${esc(m)}" aria-label="Tirar ${esc(m)}">×</button></span>`).join('') : '<span class="sub">Nenhuma escolhida ainda.</span>';
+  const raiz = $(id), sel = [...(sel0 || [])], busca = raiz.querySelector('.mod-busca'); let aberta = !compacto, mais = false;
+  const tile = (m) => `<button type="button" data-md="${esc(m)}" aria-pressed="${sel.includes(m)}">${sel.includes(m) ? '✓ ' : ''}${esc(m)}</button>`;
+  const ver = () => { const q0 = busca.value.trim(), q = semAcento(q0), mostra = aberta || !!q; raiz.querySelector('.mod-todas').hidden = mostra;
+    let html = '';
+    if (q) { // procura em todas (e nas que a escola escreveu); sem resultado, oferece adicionar o nome digitado
+      const l = [...MODALIDADES_TODAS, ...sel.filter(m => !MODALIDADES_TODAS.includes(m))].filter(m => semAcento(m).includes(q));
+      html = l.map(tile).join('') + (l.length ? '' : `<button type="button" class="mod-add" data-madd="1">+ Adicionar "${esc(q0.slice(0, 40))}"</button>`);
+    } else if (mostra) {
+      html = MODALIDADES.map(tile).join('') + (mais ? MODALIDADES_MAIS.map(tile).join('') : '') + `<button type="button" class="mod-mais" data-mmais="1">${mais ? 'Mostrar menos ▴' : 'Mostrar mais ▾'}</button>`;
+    }
+    raiz.querySelector('.mod-grade').innerHTML = html;
+    raiz.querySelector('.mod-sel').innerHTML = sel.length ? ordemMod(sel).map(m => `<span class="mod-tag">${esc(m)}<button type="button" data-mx="${esc(m)}" aria-label="Tirar ${esc(m)}">×</button></span>`).join('') : '<span class="sub">Nenhuma escolhida ainda.</span>';
     raiz.querySelectorAll('[data-md]').forEach(b => b.onclick = () => { const m = b.dataset.md, i = sel.indexOf(m); i >= 0 ? sel.splice(i, 1) : sel.push(m);
-      if (busca.value) { busca.value = ''; } ver(); });
+      if (busca.value) busca.value = ''; ver(); });
+    raiz.querySelectorAll('[data-madd]').forEach(b => b.onclick = () => { const nome = q0.replace(/\s+/g, ' ').slice(0, 40), cap = nome.charAt(0).toUpperCase() + nome.slice(1);
+      if (cap && !sel.includes(cap)) sel.push(cap); busca.value = ''; ver(); });
+    raiz.querySelectorAll('[data-mmais]').forEach(b => b.onclick = () => { mais = !mais; ver(); if (mais) { const pm = raiz.querySelector(`[data-md="${MODALIDADES_MAIS[0]}"]`); if (pm) pm.scrollIntoView({ block: 'start', behavior: 'smooth' }); } });
     raiz.querySelectorAll('[data-mx]').forEach(b => b.onclick = () => { sel.splice(sel.indexOf(b.dataset.mx), 1); ver(); }); };
   busca.oninput = ver;
-  busca.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const q = semAcento(busca.value.trim()), m = q && MODALIDADES.find(x => semAcento(x).includes(q)); if (m && !sel.includes(m)) sel.push(m); busca.value = ''; ver(); } };
+  busca.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); const q = semAcento(busca.value.trim()), m = q && MODALIDADES_TODAS.find(x => semAcento(x).startsWith(q)) || MODALIDADES_TODAS.find(x => q && semAcento(x).includes(q)); if (m && !sel.includes(m)) sel.push(m); busca.value = ''; ver(); } };
   raiz.querySelector('.mod-todas').onclick = () => { aberta = true; ver(); };
   ver();
-  return { valor: () => MODALIDADES.filter(m => sel.includes(m)) };
+  return { valor: () => ordemMod(sel) };
 }
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 const COR_PADRAO = '#8B6B47';
@@ -5788,7 +5803,7 @@ function sheetAvisoForm(id, a0) {
       if (todasEsc) { $('avesc').innerHTML = `<span class="sub">Vai para todas as escolas${DONO_ESC ? ` (hoje são ${DONO_ESC.length})` : ''}, inclusive as que forem criadas enquanto estiver no ar.</span>`; return; }
       if (!DONO_ESC) { $('avesc').innerHTML = '<div class="empty">Carregando as escolas…</div>';
         (MOCK ? mockDono({ acao: 'donoEscolas' }) : servidor('plano', { acao: 'donoEscolas' })).then(r => { DONO_ESC = (r && r.escolas) || []; if ($('avesc')) verAlvo(); }).catch(e => { if ($('avesc')) $('avesc').innerHTML = `<div class="banner"><span>${esc(msgErro(e))}</span></div>`; }); return; }
-      const ufs = [...new Set(DONO_ESC.map(e => e.uf).filter(Boolean))].sort(), mods = MODALIDADES.filter(m => DONO_ESC.some(e => (e.modalidades || []).includes(m)));
+      const ufs = [...new Set(DONO_ESC.map(e => e.uf).filter(Boolean))].sort(), mods = ordemMod([...new Set(DONO_ESC.flatMap(e => e.modalidades || []))]);
       $('avesc').innerHTML = `<div class="av-filtros">
           <input id="aveq" placeholder="Buscar pelo nome da escola ou cidade" value="${esc(F.q)}">
           <span class="lb">Região</span>${htmlChipsSel('averg', Object.keys(REGS).filter(r => ufs.some(u => REGS[r].includes(u))), [...F.reg])}
