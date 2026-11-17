@@ -2569,6 +2569,11 @@ const eventosAtivos = () => Object.entries(S.extras).filter(([, x]) => eventoNov
 function quadrosDe(selA, comEventos, foco) {
   const ativos = porNome(S.alunas).filter(([id, a]) => (C.ativaNoMes(a, mesHoje()) && !a.anonimizadoEm) || selA.has(id)).map(([id]) => id);
   const q = [['todos', 'Todos os alunos', ativos]];
+  // atalho para taxas de quem acabou de entrar (uniforme, gastos iniciais): matrícula, rematrícula ou cadastro de 2 meses para cá,
+  // incluindo quem só começa num mês que ainda vem
+  if (comEventos) { const desde = mesMais(mesHoje(), -1), lim = Date.now() - 62 * 864e5;
+    const novos = porNome(S.alunas).filter(([, a]) => !a.anonimizadoEm && !a.fim && a.ativa !== false && ((a.inicio && a.inicio >= desde) || (a.criadoEm || 0) > lim || (a.rematriculaEm || 0) > lim)).map(([id]) => id);
+    q.push(['novos', `Alunos novos · desde ${C.nomeMes(desde)}`, novos]); }
   if (comEventos) { const lim = isoDe(new Date(Date.now() - 90 * 864e5));
     for (const [xid, x] of eventosAtivos().filter(([, x]) => fimDe(x) >= lim)) { const cv = convidadosDe(x);
       // evento escolhido na taxa: todas as respostas, cada uma no seu quadro
@@ -2674,19 +2679,13 @@ function sheetExtra(xid, op = {}) {
   const selA = new Set(x ? [...C.alvoExtra(x, S.alunas, S.grupos)] : pre.ids || []), vals = { ...((x && x.valores) || {}) };
   const o0 = (x && x.origem) || x || {}, usados = new Set([...(o0.todos ? ['todos'] : []), ...(o0.grupos || []).map(g => 'g:' + g), ...(o0.turmas || []).map(t => 't:' + t), ...(o0.eventos || []), ...(pre.quadro ? [pre.quadro] : [])]);
   let evento = x ? x.evento || null : pre.evento || null, quadros = quadrosDe(selA, true, evento);
-  // taxa ligada à matrícula (ex.: uniforme): todo aluno novo entra; 'incluso' = sem cobrar a mais, 'cobrar' = cobrada à parte
-  let matLig = x ? ((x.matriculaLig || {}).modo || null) : pre.matricula ? 'incluso' : null;
   const padrao = () => parseValor(($('xval') || {}).value || '') || 0;
   const evsTaxa = eventosAtivos().filter(([id, e]) => id === evento || fimDe(e) >= isoDe(new Date(Date.now() - 90 * 864e5)));
   sheet(`<h3>${ed ? (legado ? 'Editar cobrança do evento' : 'Editar taxa') : 'Lançar'}</h3>
     ${ed ? '' : `<div class="seg">${TIPOS_LANCAR.map(([k, n]) => `<button type="button" data-t="${k}" aria-pressed="${k === 'taxa'}">${n}</button>`).join('')}</div>`}
     <div class="field"><label for="xnome">Descrição</label><input id="xnome" maxlength="60" value="${esc(x ? x.nome : pre.nome || '')}" placeholder="Ex.: Ajuda de custo, uniforme, taxa da federação"></div>
-    ${!legado ? `<div class="field"><label for="xev">Ligada a um evento ou à matrícula?</label><select id="xev"><option value="">Não, é uma taxa avulsa</option><option value="__mat" ${matLig ? 'selected' : ''}>Matrícula: todo aluno novo entra</option>${evsTaxa.map(([id, e]) => `<option value="${esc(id)}" ${id === evento ? 'selected' : ''}>${esc(e.nome)} · ${esc(periodoTxt(e))}</option>`).join('')}</select>
-      <span class="sub" id="xevnota"></span></div>
-      <div id="xmatw" ${matLig ? '' : 'hidden'}><div class="field"><span class="lb">Na matrícula, esta taxa é</span><div class="insc-ops">
-        <button type="button" class="insc-op" data-xmm="incluso" aria-pressed="${matLig !== 'cobrar'}"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>Inclusa na matrícula</b><span class="s">O aluno ganha, sem pagar a mais. Ex.: uniforme que vem com a matrícula.</span></span></button>
-        <button type="button" class="insc-op" data-xmm="cobrar" aria-pressed="${matLig === 'cobrar'}"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>Cobrada à parte</b><span class="s">Entra junto com a matrícula, com o próprio valor. Vence com a taxa de matrícula.</span></span></button></div></div>
-        <div class="note">Ao cadastrar um aluno novo, ele já entra nesta taxa (dá para desmarcar na hora). Abaixo, você também pode marcar alunos que já estão matriculados.</div></div>` : ''}
+    ${!legado && evsTaxa.length ? `<div class="field"><label for="xev">É de algum evento?</label><select id="xev"><option value="">Não, é uma taxa avulsa</option>${evsTaxa.map(([id, e]) => `<option value="${esc(id)}" ${id === evento ? 'selected' : ''}>${esc(e.nome)} · ${esc(periodoTxt(e))}</option>`).join('')}</select>
+      <span class="sub" id="xevnota"></span></div>` : ''}
     ${legado ? `<div class="note">Evento ${esc(periodoTxt(x))}${x.local ? ' · ' + esc(x.local) : ''}. Esta é uma cobrança antiga, feita pelo app.</div>` : ''}
     ${ed || evento ? '' : `<div class="field"><span class="lb">Como cobrar</span><div class="insc-ops" id="xmodo">
       <button type="button" class="insc-op" data-xm="aluno" aria-pressed="true"><span class="insc-bola" aria-hidden="true"></span><span class="grow"><b>Valor por aluno</b><span class="s">Cada aluno paga o mesmo valor.</span></span></button>
@@ -2713,13 +2712,12 @@ function sheetExtra(xid, op = {}) {
     const resumo = () => {
       if (dividir && todos) { const n = [...selA].filter(id => S.alunas[id]).length, tot = parseValor(($('xtot') || {}).value || ''); $('xcont').innerHTML = n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'}${tot > 0 ? `: ${brl(C.rateioCada(tot, n))} para cada um` : ''}. A cobrança chega na hora.</div>` : '<div class="note">Nenhum aluno marcado ainda.</div>'; return; }
       if (convite()) { const n = [...selA].filter(id => S.alunas[id]).length; $('xcont').innerHTML = n ? `<div class="note">${n} aluno${n === 1 ? '' : 's'} convidado${n === 1 ? '' : 's'}. Ninguém é cobrado agora: a cobrança chega só para quem aceitar, quando as respostas fecharem.</div>` : '<div class="note">Nenhum aluno convidado ainda.</div>'; return; }
-      if (matLig === 'incluso') { const n = [...selA].filter(id => S.alunas[id]).length; $('xcont').innerHTML = `<div class="note">Todo aluno novo entra sem pagar a mais${n ? `, e mais ${n} já matriculado${n === 1 ? '' : 's'}` : ''}.</div>`; return; }
       const ids = [...selA].filter(id => S.alunas[id]), tot = C.r2(ids.reduce((t, id) => t + sel.valDe(id), 0)), dif = ids.filter(id => vals[id] != null && vals[id] !== padrao());
       $('xcont').innerHTML = ids.length ? `<details class="historico"><summary><span class="grow"><b>${ids.length} aluno${ids.length === 1 ? '' : 's'} · total ${brl(tot)}</b><span class="s">${dif.length ? `${dif.length} com valor diferente do padrão` : padrao() ? `${brl(padrao())} cada` : 'Informe o valor padrão'} · toque para ver a lista</span></span><span class="seta" aria-hidden="true">▾</span></summary>
         <div class="conta" style="padding:0 14px 14px">${porNome(Object.fromEntries(ids.map(id => [id, S.alunas[id]]))).map(([id, a]) => contaL(esc(a.nome), brl(sel.valDe(id)), vals[id] != null && vals[id] !== padrao() ? 'dif' : '')).join('')}${contaL('<b>Total</b>', `<b>${brl(tot)}</b>`, 'total')}</div></details>`
-        : `<div class="note">${matLig ? 'Só os alunos novos entram (nenhum já matriculado marcado).' : 'Nenhum aluno marcado ainda.'}</div>`;
+        : '<div class="note">Nenhum aluno marcado ainda.</div>';
     };
-    const opSel = () => ({ quadros, selA, usados, vals, comValor: !dividir && todos && matLig !== 'incluso', padrao, travado: pagou, subDe: id => { if (pagou(id)) return 'Já pagou'; const e = evento && S.extras[evento], st = e && partDe(e, id); return st === 'inscrito' ? 'Inscrição confirmada' : st === 'interesse' ? 'Disse que vai' : turmasTxt(S.alunas[id]) || 'Sem turma'; }, aoMudar: () => resumo() });
+    const opSel = () => ({ quadros, selA, usados, vals, comValor: !dividir && todos, padrao, travado: pagou, subDe: id => { if (pagou(id)) return 'Já pagou'; const e = evento && S.extras[evento], st = e && partDe(e, id); return st === 'inscrito' ? 'Inscrição confirmada' : st === 'interesse' ? 'Disse que vai' : turmasTxt(S.alunas[id]) || 'Sem turma'; }, aoMudar: () => resumo() });
     let sel = seletorAtletas($('xquadros'), opSel());
     // taxa de um evento: os quadros desse evento vêm primeiro e quem já confirmou a inscrição (ou, se ninguém, quem disse que vai) já vem marcado
     const escolherEvento = (marcar) => {
@@ -2756,20 +2754,7 @@ function sheetExtra(xid, op = {}) {
       if (convite() && $('xven').value < $('xpdia').value) $('xven').value = somaDias($('xpdia').value, 5); }
     if ($('xtodos')) { $('xtodos').onchange = () => { todos = $('xtodos').checked; verTodos(); sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); resumo(); }; verTodos(); }
     if ($('xtot')) $('xtot').oninput = () => resumo();
-    const campo_ = id => $(id) && ($(id).closest('.field') || $(id).closest('label'));
-    function verMat() {
-      if (!$('xmatw')) return; $('xmatw').hidden = !matLig;
-      s.querySelectorAll('[data-xmm]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.xmm === (matLig || 'incluso'))));
-      if (matLig) { dividir = false; todos = true; if ($('xtodos')) $('xtodos').checked = true; if ($('xdivw')) $('xdivw').hidden = true; if ($('xprazow')) $('xprazow').hidden = true; }
-      [campo_('xmodo'), campo_('xtodos')].forEach(e => { if (e) e.hidden = !!matLig; });
-      const inc = matLig === 'incluso';
-      if ($('xvalw')) $('xvalw').hidden = inc || dividir; if (campo_('xven')) campo_('xven').hidden = inc; if (campo_('xrec')) campo_('xrec').hidden = inc;
-      $('xparalb').textContent = matLig ? 'Alunos já matriculados que também entram (opcional)' : convite() ? 'Quem pode participar? Toque num quadro para escolher os atletas' : 'Para quem? Toque num quadro para escolher os atletas';
-      $('xok').textContent = convite() ? 'Convidar' : 'Salvar';
-    }
-    s.querySelectorAll('[data-xmm]').forEach(b => b.onclick = () => { matLig = b.dataset.xmm; verMat(); resumo(); });
-    if ($('xev')) $('xev').onchange = () => { const vx = $('xev').value; matLig = vx === '__mat' ? (matLig || 'incluso') : null; evento = vx && vx !== '__mat' ? vx : null; escolherEvento(true); verTamEv(); verMat(); sel = seletorAtletas($('xquadros'), opSel()); sel.desenhar(); resumo(); };
-    if (matLig) setTimeout(() => { verMat(); resumo(); }, 0);
+    if ($('xev')) $('xev').onchange = () => { evento = $('xev').value || null; escolherEvento(true); verTamEv(); };
     if (evento) setTimeout(() => escolherEvento(false), 0);
     s.querySelectorAll('[data-t]').forEach(b => b.onclick = () => { if (b.dataset.t === 'evento') sheetEvento(null); });
     $('xval').oninput = () => { s.querySelectorAll('[data-xv]').forEach(i => { if (vals[i.dataset.xv] == null && !i.classList.contains('pend')) i.value = fmtValor(padrao()); }); resumo(); };
@@ -2806,16 +2791,15 @@ function sheetExtra(xid, op = {}) {
         return;
       }
       if (!nome) { $('xnome').focus(); $('xnome').scrollIntoView({ block: 'center', behavior: 'smooth' }); return err('Preencha a descrição da taxa, como "Ajuda de custo · Copa" ou "Taxa da federação".'); }
-      const inc = matLig === 'incluso';
-      if (!inc && !(v > 0)) return err('Informe o valor padrão por aluno(a), como 85,00.');
-      if (!inc && !/^\d{4}-\d{2}-\d{2}$/.test(venc)) return err('Escolha a data de vencimento.');
+      if (!(v > 0)) return err('Informe o valor padrão por aluno(a), como 85,00.');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(venc)) return err('Escolha a data de vencimento.');
       const p = sel.pendente(); if (p) return err(`Toque em OK para confirmar o valor de ${p.nome}, ou volte ao valor anterior.`);
-      const ids = [...selA].filter(id => S.alunas[id]); if (!ids.length && !matLig) return err('Toque num quadro e marque os atletas desta cobrança.');
-      const valores = {}; if (!inc) for (const id of ids) if (vals[id] != null && C.r2(vals[id]) !== C.r2(v)) { if (!(vals[id] > 0)) return err(`Confira o valor de ${S.alunas[id].nome}.`); valores[id] = C.r2(vals[id]); }
+      const ids = [...selA].filter(id => S.alunas[id]); if (!ids.length) return err('Toque num quadro e marque os atletas desta cobrança.');
+      const valores = {}; for (const id of ids) if (vals[id] != null && C.r2(vals[id]) !== C.r2(v)) { if (!(vals[id] > 0)) return err(`Confira o valor de ${S.alunas[id].nome}.`); valores[id] = C.r2(vals[id]); }
       $('xok').disabled = true;
       const base = legado ? { tipo: x.tipo, data: x.data || null, dataFim: x.dataFim || null, local: x.local || null } : { tipo: 'taxa' };
       const idT = xid || novoId();
-      try { await B.set(`escolas/${S.eid}/extras/${idT}`, { ...base, arquivos: arqsX.lista(), nome, v: inc ? 0 : v, venc: inc ? (/^\d{4}-\d{2}-\d{2}$/.test(venc) ? venc : hoje()) : venc, matriculaLig: matLig ? { modo: matLig } : null, ...(x && x.tamEsc ? { tamEsc: x.tamEsc } : {}), ...(x && x.vencs ? { vencs: x.vencs } : {}), tamanhos: tamSalvar(), nota: notaSalvar('xnota', 'xrec', x && x.nota === true), alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); await arqsX.gravar(idT).catch(() => aviso('A taxa foi salva, mas algum arquivo não. Tente de novo.')); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
+      try { await B.set(`escolas/${S.eid}/extras/${idT}`, { ...base, arquivos: arqsX.lista(), nome, v, venc, ...(x && x.tamEsc ? { tamEsc: x.tamEsc } : {}), tamanhos: tamSalvar(), nota: notaSalvar('xnota', 'xrec', x && x.nota === true), alunas: ids, valores, grupos: [], turmas: [], origem: sel.origem(), evento: evento || null, recebedor: S.admin && $('xrec') ? $('xrec').value : (x ? x.recebedor || 'escola' : 'escola'), lancadoPor: x ? x.lancadoPor || null : (S.prof || 'admin'), criadoEm: x ? x.criadoEm || Date.now() : Date.now() }); await arqsX.gravar(idT).catch(() => aviso('A taxa foi salva, mas algum arquivo não. Tente de novo.')); fecharSheet(); aviso(ed ? 'Cobrança atualizada' : 'Taxa lançada'); }
       catch (e) { err(msgErro(e)); $('xok').disabled = false; }
     };
     if ($('xdel')) $('xdel').onclick = () => temPag ? ($('xerr').textContent = 'Esta cobrança já tem pagamentos e não pode ser excluída. Desmarque os alunos que não vão participar.') : confirmar('Excluir cobrança?', `"${esc(x.nome)}" sai da lista de todos os alunos.`, 'Excluir', () => B.del(`escolas/${S.eid}/extras/${xid}`));
@@ -3511,7 +3495,6 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
       <div class="note" id="apmnota"></div></div>` : ''}
     ${ed ? `<label class="check"><input type="checkbox" id="aativa" ${ativa ? 'checked' : ''}> Aluno(a) ativo(a)</label>` : ''}
     ${!ed && adm && ((S.cfg.matricula || {}).valor > 0) ? `<label class="check" style="font-weight:500"><input type="checkbox" id="amat" checked> Cobrar a taxa de matrícula (${brl(S.cfg.matricula.valor)})</label>` : ''}
-    ${!ed && adm ? Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && x.matriculaLig).map(([xid, x]) => `<label class="check" style="font-weight:500"><input type="checkbox" data-txmat="${esc(xid)}" checked> ${esc(x.nome)} (${x.matriculaLig.modo === 'cobrar' ? brl(x.v) + ' à parte' : 'inclusa na matrícula'})</label>`).join('') : ''}
     <div class="err" id="aerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="aok">Salvar</button></div>
     ${ed && adm ? `<div class="actions"><button class="btn ghost" id="acob">Ver cobranças</button><button class="btn ghost" id="adel" style="color:var(--out)">Excluir aluno(a)</button></div>${a && !a.anonimizadoEm ? '<button class="btn ghost" id="aanon" style="color:var(--out)">Apagar dados pessoais (LGPD)</button>' : ''}` : ''}`, s => {
@@ -3610,7 +3593,7 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         const id = alid || novoId(), ops = []; let r = rid;
         if (r) ops.push({ op: 'merge', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim() } });
         else { r = novoId(); const cod = novoCodigo(); ops.push({ op: 'set', p: `escolas/${S.eid}/responsaveis/${r}`, d: { nome: rn, telefone: rt, cpf: rc, endereco: $('rend').value.trim(), codigo: cod, criadoEm: Date.now() } }, { op: 'set', p: 'codigos/' + cod, d: { eid: S.eid, rid: r } }); }
-        ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, ...($('acat') ? { categoria: $('acat').value || null } : {}), turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ...(primeiroMes() !== undefined ? { primeiroMes: primeiroMes() } : {}),
+        ops.push({ op: 'set', p: `escolas/${S.eid}/alunas/${id}`, d: { ...(a || {}), nome, responsavelId: r, nascimento: $('anasc').value || null, ...($('acat') ? { categoria: $('acat').value || null } : {}), turmas: ts, desc: descAtual(), ...(adm ? { descIrmaOk: $('adirma').checked, descMultiOk: $('admulti').checked } : {}), inicio: ini, fim, ...(a ? {} : { criadoEm: Date.now() }), ...(primeiroMes() !== undefined ? { primeiroMes: primeiroMes() } : {}),
           // aluno novo depois do vencimento do mês: a primeira mensalidade vence em 3 dias, sem multa
           ...(!ed && C.vencMens(ini, S.cfg) < hoje() ? { vencPrimeiro: new Date(Date.now() + 3 * 864e5 - 3 * 36e5).toISOString().slice(0, 10) } : {}), ativa: ativaN, ...(a ? {} : { cadastradaPor: S.prof ? 'professora' : 'administracao' }) } });
         if (S.docs[id] && S.docs[id].responsavelId !== r) ops.push({ op: 'merge', p: `escolas/${S.eid}/docsAlunos/${id}`, d: { responsavelId: r } });
@@ -3619,10 +3602,6 @@ function sheetAluna(alid, ridPadrao, turmaPadrao) {
         // aluno novo: taxa de matrícula (uma cobrança extra só dele, vence em 3 dias)
         if ($('amat') && $('amat').checked) { const d7 = new Date(Date.now() + 3 * 864e5 - 3 * 36e5).toISOString().slice(0, 10);
           ops.push({ op: 'set', p: `escolas/${S.eid}/extras/${novoId()}`, d: { tipo: 'taxa', matricula: true, nome: 'Taxa de matrícula', v: C.r2(S.cfg.matricula.valor), venc: d7, alunas: [id], valores: {}, grupos: [], turmas: [], recebedor: 'escola', nota: false, criadoEm: Date.now() } }); }
-                // taxas ligadas à matrícula (ex.: uniforme): o aluno novo entra; cobrada à parte vence junto com a matrícula
-        { const d3 = new Date(Date.now() + 3 * 864e5 - 3 * 36e5).toISOString().slice(0, 10);
-          s.querySelectorAll('[data-txmat]').forEach(c => { const x = S.extras[c.dataset.txmat]; if (!c.checked || !x) return;
-            ops.push({ op: 'merge', p: `escolas/${S.eid}/extras/${c.dataset.txmat}`, d: { alunas: [...new Set([...(x.alunas || []), id])], ...(x.matriculaLig.modo === 'cobrar' ? { vencs: { [id]: d3 } } : {}) } }); }); }
         await B.lote(ops); if (novaFoto) FOTOS[id] = novaFoto; fecharSheet(); aviso(ed ? 'Aluno(a) atualizado(a)' : 'Aluno(a) cadastrado(a)');
         if (!ed && adm) { const cod = ((ops.find(o => o.p === `escolas/${S.eid}/responsaveis/${r}`) || {}).d || {}).codigo || (S.resps[r] || {}).codigo; sheetAvisarResp({ nome: rn, telefone: rt, codigo: cod }, r, nome); }
       } catch (e) { err(msgErro(e)); $('aok').disabled = false; }
@@ -4783,16 +4762,16 @@ function pizzaHTML(cats) {
   return `<div class="pizza">${pizzaSVG(cats.map(([, x], i) => ({ v: x, cor: CORES_PIZZA[i % CORES_PIZZA.length] })), 'Saídas por categoria')}
     <ul class="pizza-leg">${cats.map(([c, x], i) => `<li><i style="background:${CORES_PIZZA[i % CORES_PIZZA.length]}"></i><span class="grow pz-nome">${esc(c)}</span><span class="pz-val"><b class="num">${brl(x)}</b><span class="s num">${Math.round(x / tot * 100)}%</span></span></li>`).join('')}</ul></div>`;
 }
-// Financeiro → Taxas: uniforme, taxa da federação, material… (as mesmas taxas da aba Eventos), e as ligadas à matrícula
+// Financeiro → Taxas: uniforme, taxa da federação, material, gastos iniciais… (as mesmas taxas da aba Eventos)
 function blocoTaxasFin() {
   const limite = isoDe(new Date(Date.now() - 180 * 864e5));
-  const L = Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && !x.matricula && (x.matriculaLig || String(x.venc || '') >= limite))
-    .sort((a, b) => (!!b[1].matriculaLig - !!a[1].matriculaLig) || String(b[1].venc || '').localeCompare(String(a[1].venc || '')));
+  const L = Object.entries(S.extras || {}).filter(([, x]) => x && x.tipo === 'taxa' && !x.matricula && String(x.venc || '') >= limite)
+    .sort((a, b) => String(b[1].venc || '').localeCompare(String(a[1].venc || '')));
   const linha = ([id, x]) => { const n = [...(x.rateio && !x.rateio.fechadoEm ? (x.convidados || []) : C.alvoExtra(x, S.alunas, S.grupos))].filter(a => S.alunas[a]).length, ev = x.evento && S.extras[x.evento];
-    const onde = x.matriculaLig ? `<span class="chip">Matrícula · ${x.matriculaLig.modo === 'cobrar' ? 'à parte' : 'inclusa'}</span>` : ev ? esc(ev.nome) : `vence ${dataBR(x.venc)}`;
-    return `<li class="tap" data-ftx="${esc(id)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(onde, `${n} aluno${n === 1 ? '' : 's'}${x.tamanhos ? ' · com tamanho' : ''}`)}</div>${valorCol(x.matriculaLig && x.matriculaLig.modo === 'incluso' ? 'Inclusa' : x.rateio && !x.rateio.fechadoEm ? (x.rateio.porAluno ? brl(x.rateio.porAluno) : 'Dividido') : brl(x.v), '', '')}</li>`; };
+    const onde = ev ? esc(ev.nome) : `vence ${dataBR(x.venc)}`;
+    return `<li class="tap" data-ftx="${esc(id)}"><div class="grow"><div class="t">${esc(x.nome)}</div>${linhas(onde, `${n} aluno${n === 1 ? '' : 's'}${x.tamanhos ? ' · com tamanho' : ''}`)}</div>${valorCol(x.rateio && !x.rateio.fechadoEm ? (x.rateio.porAluno ? brl(x.rateio.porAluno) : 'Dividido') : brl(x.v), '', '')}</li>`; };
   return `<section><div class="headrow"><h2>Taxas</h2><button class="add" id="ftxn">+ Taxa</button></div>
-    ${L.length ? `<ul class="list">${L.map(linha).join('')}</ul>` : `<div class="empty"><span>Uniforme, material, taxa da federação. Dá para ligar uma taxa à matrícula: todo aluno novo entra nela (inclusa ou cobrada à parte).</span></div>`}</section>`;
+    ${L.length ? `<ul class="list">${L.map(linha).join('')}</ul>` : `<div class="empty"><span>Uniforme, material, taxa da federação, gastos iniciais. Ao escolher quem paga, use o quadro "Alunos novos" para marcar de uma vez quem acabou de entrar.</span></div>`}</section>`;
 }
 function finEscola(v) {
   const mes = S.mes, rs = recebidosNoMes(mes).filter(r => r.rec === 'escola');

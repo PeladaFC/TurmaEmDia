@@ -146,11 +146,7 @@
       if (((pag.extras || {})[xid] || {}).s === 'acordo') continue;
       const p = stPag((pag.extras || {})[xid]);
       if (!p && !alvoExtra(x, d.alunas, d.grupos).has(alid)) continue;
-      // taxa inclusa na matrícula (ex.: uniforme que vem com a matrícula): o aluno ganha, não é cobrança
-      if (!p && x.matriculaLig && x.matriculaLig.modo === 'incluso') continue;
-      // quem entrou pela matrícula tem o próprio vencimento (junto com a taxa de matrícula)
-      const vencX = (x.vencs && x.vencs[alid]) || x.venc;
-      itens.push({ k: `x:${xid}:${alid}`, tipo: 'x', alid, xid, mes: String(vencX || '').slice(0, 7), desc: x.nome || TIPOS_EXTRA[x.tipo] || 'Cobrança extra', detalhe: TIPOS_EXTRA[x.tipo] || 'Extra', tipoExtra: x.tipo, v: p ? r2(p.v) : valorExtra(x, alid), total: valorExtra(x, alid), partes: p ? null : { [recDe(x)]: valorExtra(x, alid) }, venc: vencX, pago: p });
+      itens.push({ k: `x:${xid}:${alid}`, tipo: 'x', alid, xid, mes: String(x.venc || '').slice(0, 7), desc: x.nome || TIPOS_EXTRA[x.tipo] || 'Cobrança extra', detalhe: TIPOS_EXTRA[x.tipo] || 'Extra', tipoExtra: x.tipo, v: p ? r2(p.v) : valorExtra(x, alid), total: valorExtra(x, alid), partes: p ? null : { [recDe(x)]: valorExtra(x, alid) }, venc: x.venc, pago: p });
     }
     // acordos: as cobranças atrasadas viram parcelas, cada uma com o seu vencimento
     for (const [aid, A] of Object.entries(d.acordos || {})) {
