@@ -1061,6 +1061,24 @@ let TRAVA_Y = 0;
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { setTimeout(conferir, 350); setTimeout(conferir, 1200); } });
   if (vv) vv.addEventListener('resize', () => setTimeout(conferir, 400));
 })();
+// iPhone: ao escolher numa lista (ex.: "Cobrar a partir de") ou fechar o teclado, a janela às vezes pula para o
+// início e o campo some da vista. Logo depois de mexer num campo de uma janela, confere se ele continua visível;
+// se sumiu, rola a janela de volta até ele. Só age nos instantes seguintes à mudança (nunca briga com a rolagem da pessoa).
+(function manterCampoNaJanela() {
+  let ult = null, ate = 0;
+  const marcar = el => { const sh = el && el.closest && el.closest('#overlay .sheet'); if (!sh || el === sh) return; ult = { el, sh }; ate = Date.now() + 1800; };
+  const conferir = () => {
+    if (!ult || Date.now() > ate) return;
+    const { el, sh } = ult; if (!el.isConnected || !sh.isConnected) { ult = null; return; }
+    const r = el.getBoundingClientRect(), rs = sh.getBoundingClientRect(); if (!r.height) return;
+    if (r.bottom < rs.top + 12 || r.top > rs.bottom - 12) sh.scrollTop += r.top - rs.top - Math.min(rs.height * 0.35, 220);
+  };
+  const depois = () => [80, 300, 700, 1200].forEach(t => setTimeout(conferir, t));
+  document.addEventListener('focusin', e => marcar(e.target));
+  document.addEventListener('change', e => { marcar(e.target); depois(); }, true);
+  document.addEventListener('focusout', e => { if (ult && e.target === ult.el) { ate = Date.now() + 1800; depois(); } });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => { if (ult && Date.now() < ate + 1500) { ate = Math.max(ate, Date.now() + 1200); depois(); } });
+})();
 let JANELA_TECLADO = () => { };
 // iPhone: com o teclado aberto, a área visível encolhe e o Safari "empurra" a página para cima (a janela dava uma pancada).
 // A janela aberta acompanha só a parte visível da tela: fica parada, logo acima do teclado, e só o teclado sobe.
