@@ -5644,18 +5644,18 @@ async function mostrarProxAviso() {
 function htmlAviso(a, url, imp) {
   const cheia = a.formato === 'cheia' && url, midia = !url ? '' : a.midia && a.midia.tipo === 'video'
     ? `<video class="av-midia" src="${url}" autoplay muted loop playsinline ${cheia ? '' : 'controls'}></video>` : `<img class="av-midia" src="${url}" alt="">`;
+  // sem botão forte: a pessoa marca a caixinha (de propósito) e o aviso fecha; "depois" fica discreto
   const fim = `${a.botao && a.botao.link ? `<button type="button" class="btn ghost av-link">${esc(a.botao.texto || 'Saiba mais')}</button>` : ''}
-    ${imp ? `<label class="av-ciente"><input type="checkbox" class="av-ck"><span>Li e estou ciente</span></label>` : ''}
-    <div class="actions"><button type="button" class="btn ghost av-dep">${imp ? 'Mais tarde' : 'Agora não'}</button><button type="button" class="btn av-ok" ${imp ? 'disabled' : ''}>${imp ? 'Confirmar' : 'Entendi'}</button></div>`;
+    <label class="av-ciente"><input type="checkbox" class="av-ck"><span>${imp ? 'Li e estou ciente' : 'Entendi'}</span></label>
+    <button type="button" class="av-dep">${imp ? 'Ver mais tarde' : 'Ver depois'}</button>`;
   if (cheia) return `<div class="av-cheia">${midia}<div class="av-rodape">${fim}</div></div>`;
   return `<div class="av-caixa"><span class="av-tag ${imp ? 'imp' : ''}">${imp ? 'Aviso importante' : 'Novidade'}</span>
     ${a.titulo ? `<h3>${esc(a.titulo)}</h3>` : ''}${midia}${a.texto ? `<div class="av-texto">${esc(a.texto).replace(/\n/g, '<br>')}</div>` : ''}${fim}</div>`;
 }
 function ligarAviso(el, a, fim) {
-  const ck = el.querySelector('.av-ck'), ok = el.querySelector('.av-ok');
-  if (ck) ck.onchange = () => { ok.disabled = !ck.checked; };
-  el.querySelector('.av-dep').onclick = () => fim('depois');
-  ok.onclick = () => fim('ok');
+  const ck = el.querySelector('.av-ck'); let foi = false;
+  ck.onchange = () => { if (!ck.checked || foi) return; foi = true; ck.closest('.av-ciente').classList.add('ok'); setTimeout(() => fim('ok'), 450); };
+  el.querySelector('.av-dep').onclick = () => { if (!foi) { foi = true; fim('depois'); } };
   const l = el.querySelector('.av-link'); if (l) l.onclick = () => window.open(a.botao.link, '_blank', 'noopener');
 }
 // a janela de verdade: por cima de tudo, só fecha pelos botões
@@ -5720,7 +5720,7 @@ function sheetAvisoForm(id, a0) {
     <div class="field" id="avfmtw"><span class="lb">Como a imagem aparece</span><div class="seg"><button type="button" data-avf="janela">Janela com texto</button><button type="button" data-avf="cheia">Tela cheia</button></div><span class="sub" id="avfmtsub"></span></div>
     <div class="two"><div class="field"><label for="avbtx">Botão (opcional)</label><input id="avbtx" maxlength="30" value="${esc((a.botao || {}).texto || '')}" placeholder="Ex.: Inscreva-se"></div><div class="field"><label for="avblk">Link do botão</label><input id="avblk" inputmode="url" maxlength="300" value="${esc((a.botao || {}).link || '')}" placeholder="https://"></div></div>
     <div class="field"><span class="lb">Quem recebe?</span><div id="avpara">${AV_PARA.map(([k, n, s]) => `<label class="liga liga-mini"><span class="grow"><b>${n}</b>${s ? `<span class="s">${s}</span>` : ''}</span><input type="checkbox" role="switch" data-avp="${k}" ${para0.has(k) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
-    <div class="field" id="avobw"><span class="lb">Precisa confirmar que viu?</span><span class="sub">Ligado: a pessoa só se livra do aviso marcando "Li e estou ciente" (cada administradora marca a sua). Desligado: basta tocar em "Entendi".</span><div id="avob">${AV_PARA.map(([k, n]) => `<label class="liga liga-mini" data-avow="${k}"><span class="grow"><b>${n}</b></span><input type="checkbox" role="switch" data-avo="${k}" ${obrig0[k] ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
+    <div class="field" id="avobw"><span class="lb">Precisa confirmar que viu?</span><span class="sub">Ligado: a caixinha diz "Li e estou ciente" e a pessoa só se livra do aviso marcando (cada administradora marca a sua). Desligado: a caixinha diz "Entendi". Nos dois, "Ver depois" faz voltar na próxima vez que abrir o app.</span><div id="avob">${AV_PARA.map(([k, n]) => `<label class="liga liga-mini" data-avow="${k}"><span class="grow"><b>${n}</b></span><input type="checkbox" role="switch" data-avo="${k}" ${obrig0[k] ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
     <div class="two"><div class="field"><label for="avini">Começa em</label><input id="avini" type="date" value="${esc(a.inicio || hojeIso())}"></div><div class="field"><label for="avfim">Sai do ar em (opcional)</label><input id="avfim" type="date" value="${esc(a.fim || '')}"></div></div>
     <div class="field av-prevw"><span class="lb">Como vai aparecer no celular</span><div class="seg" id="avcomo"></div><div class="av-fone"><div class="av-tela"><div class="av-app"></div><div class="av-bg av-dentro" id="avprev"></div></div></div><button type="button" class="btn ghost btn-mini" id="avreal">Ver em tamanho real</button></div>
     <span class="err" id="averr"></span>
