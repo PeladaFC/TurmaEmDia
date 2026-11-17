@@ -123,7 +123,7 @@ module.exports = (db, P) => {
       // quem criou a escola (escolas/{eid}.dono): nome e e-mail guardados na criação; o WhatsApp vem do cadastro da pessoa, se tiver
       const di = (x.adminsInfo || {})[x.dono] || {}, pf = x.dono ? (((await ler(`users/${x.dono}`)) || {}).perfil || {}) : {};
       const dono = x.dono ? { nome: di.nome || pf.nome || '', email: di.email || pf.email || '', telefone: pf.telefone || '' } : null;
-      out.push({ eid: e.id, nome: x.nome || 'Escola', cidade: (cfg || {}).cidade || '', uf: (cfg || {}).uf || '', criadaEm: x.criadaEm || null, alunos: n, pix: !!(cfg || {}).mpConectadoEm, dono,
+      out.push({ eid: e.id, nome: x.nome || 'Escola', cidade: (cfg || {}).cidade || '', uf: (cfg || {}).uf || '', modalidades: Array.isArray((cfg || {}).modalidades) ? cfg.modalidades.slice(0, 30) : [], criadaEm: x.criadaEm || null, alunos: n, pix: !!(cfg || {}).mpConectadoEm, dono,
         fase: sit.fase, venc: sit.venc || null, atraso: sit.atraso || 0, forma: (p || {}).forma || null, ciclo: (p || {}).ciclo || 'mensal', plano: pr.plano.nome, cheio: pr.cheio, valor: pr.valor,
         desconto: (p || {}).desconto || null, cortesiaAte: (p || {}).cortesiaAte || null, cortesiaMotivo: (p || {}).cortesiaMotivo || '', historico: ((p || {}).historico || []).slice(-6) });
     }

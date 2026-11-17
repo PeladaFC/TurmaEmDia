@@ -734,17 +734,19 @@ async function cidadesDoEstado(uf) {
 }
 const acharCidade = (l, v) => l.find(c => semAcento(c) === semAcento(String(v || '').trim())) || '';
 function telaCriarEscola(passo) {
-  if (!WZ || passo === 1 && !WZ.nome) WZ = WZ || { nome: '', cidade: '', uf: '', termos: false, venc: 10, turma: { nome: '', preco: '', hs: [{ dias: [], ini: '', fim: '' }] } };
+  if (!WZ || passo === 1 && !WZ.nome) WZ = WZ || { nome: '', cidade: '', uf: '', modalidades: [], termos: false, venc: 10, turma: { nome: '', preco: '', hs: [{ dias: [], ini: '', fim: '' }] } };
   const voltar = '<button class="btn ghost" id="wvolta">Voltar</button>';
   if (passo === 1) {
     telaOb({ passo: 1, rotulo: `Passo 1 de ${LOJA() ? 4 : 5}`, titulo: 'Como se chama sua escola?', sub: 'É o nome que as famílias vão ver no app.',
       corpo: `<div class="field"><label for="wnome">Nome da escola</label><input id="wnome" maxlength="60" placeholder="Ex.: Escolinha Movimento" value="${esc(WZ.nome)}"></div>
         <div class="two"><div class="field"><label for="wuf">Estado</label><select id="wuf"><option value="">Escolha</option>${Object.keys(UF_NOMES).sort().map(u => `<option ${u === WZ.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
         <div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" list="wcids" autocomplete="off" placeholder="Digite a cidade" value="${esc(WZ.cidade)}"><datalist id="wcids"></datalist></div></div>
+        ${campoModalidades('wmod', WZ.modalidades)}
         <label class="check aceite"><input type="checkbox" id="wtermos" ${WZ.termos ? 'checked' : ''}><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>.</span></label>
         <div class="err" id="werr" role="alert"></div>`,
       botao: '<button class="btn" id="wok">Próximo</button>', dois: voltar });
     $('wvolta').onclick = () => { WZ = null; telaInicio(); };
+    ligarChipsSel('wmod');
     // estado primeiro; a cidade vira uma lista com as cidades daquele estado
     let cidades = null;
     const carregar = async () => { const uf = $('wuf').value; $('werr').textContent = '';
@@ -758,13 +760,14 @@ function telaCriarEscola(passo) {
     if (WZ.uf) carregar();
     $('wok').onclick = () => {
       const cid = cidades ? acharCidade(cidades, $('wcid').value) : '';
-      Object.assign(WZ, { nome: $('wnome').value.trim(), cidade: cid || $('wcid').value.trim(), uf: $('wuf').value, termos: $('wtermos').checked });
+      Object.assign(WZ, { nome: $('wnome').value.trim(), cidade: cid || $('wcid').value.trim(), uf: $('wuf').value, modalidades: lerChipsSel('wmod'), termos: $('wtermos').checked });
       const err = m => $('werr').textContent = m;
       if (!WZ.nome) return err('Digite o nome da escola.');
       if (!WZ.uf) return err('Escolha o estado da escola.');
       if (!WZ.cidade) return err('Digite a cidade da escola.');
       if (!cidades) return err('Não deu para carregar a lista de cidades. Confira a internet e escolha o estado de novo.');
       if (!cid) return err(`Não achamos "${$('wcid').value.trim()}" em ${UF_NOMES[WZ.uf]}. Escolha a cidade na lista.`);
+      if (!WZ.modalidades.length) return err('Escolha pelo menos uma modalidade que a escola oferece.');
       if (!WZ.termos) return err('Para criar a escola, aceite os Termos de uso e a Política de privacidade.');
       telaCriarEscola(2);
     };
@@ -785,7 +788,7 @@ function telaCriarEscola(passo) {
       try {
         await B.lote([
           { op: 'set', p: 'escolas/' + eid, d: { nome: WZ.nome, dono: EU.uid, admins: [EU.uid], adminsInfo: { [EU.uid]: { nome: EU.nome || '', email: EU.email || '', em: Date.now() } }, criadaEm: Date.now(), termosAceitos: { em: Date.now(), versao: VERSAO_TERMOS, uid: EU.uid } } },
-          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: WZ.venc, pixRepassa: false, descIrmas: 0, descMulti: 0, cidade: WZ.cidade, uf: WZ.uf, primeirosPassos: true } }
+          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: WZ.venc, pixRepassa: false, descIrmas: 0, descMulti: 0, cidade: WZ.cidade, uf: WZ.uf, modalidades: WZ.modalidades || [], primeirosPassos: true } }
         ]);
         await B.set('users/' + EU.uid, { escolas: { [eid]: { nome: WZ.nome, papel: 'admin' } } }, { merge: true });
         MINHAS[eid] = { nome: WZ.nome, papel: 'admin' }; WZ.eid = eid;
@@ -980,17 +983,19 @@ function sheetCriarEscola() {
     <div class="field"><label for="cnome">Nome da escola</label><input id="cnome" maxlength="60" placeholder="Ex.: Escolinha Movimento"></div>
     <div class="two"><div class="field"><label for="cuf">Estado</label><select id="cuf"><option value="">Escolha</option>${UFS.map(u => `<option>${u}</option>`).join('')}</select></div>
     <div class="field"><label for="ccid">Cidade</label><select id="ccid" disabled><option value="">Escolha o estado</option></select></div></div>
+    ${campoModalidades('cmod', [])}
     <div class="two"><div class="field"><label for="cvenc">Vencimento (dia do mês)</label><input id="cvenc" type="number" min="1" max="28" value="10"></div>
     <div class="field"><label for="cloc">Local (opcional)</label><input id="cloc" maxlength="60" placeholder="Ex.: Unidade Centro"></div></div>
     <div class="note">Depois você cadastra as turmas, os grupos e os alunos.</div>
     <label class="check aceite"><input type="checkbox" id="ctermos"><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>. A escola é responsável pelos dados que cadastrar.</span></label>
     <div class="err" id="cerr" role="alert"></div>
     <div class="actions"><button class="btn ghost" data-fechar>Cancelar</button><button class="btn" id="cok">Criar</button></div>`, () => {
-    ligarEstadoCidade('cuf', 'ccid', '');
+    ligarEstadoCidade('cuf', 'ccid', ''); ligarChipsSel('cmod');
     $('cok').onclick = async () => {
       const nome = $('cnome').value.trim(), venc = Number($('cvenc').value), loc = $('cloc').value.trim();
       if (!nome) return $('cerr').textContent = 'Digite o nome da escola.';
       const cidade = $('ccid').value.trim(), uf = $('cuf').value; if (!cidade || !uf) return $('cerr').textContent = 'Escolha o estado e a cidade da escola.';
+      const modalidades = lerChipsSel('cmod'); if (!modalidades.length) return $('cerr').textContent = 'Escolha pelo menos uma modalidade que a escola oferece.';
       if (!(venc >= 1 && venc <= 28)) return $('cerr').textContent = 'O vencimento vai do dia 1 ao 28.';
       if (!$('ctermos').checked) return $('cerr').textContent = 'Para criar a escola, aceite os Termos de uso e a Política de privacidade.';
       $('cok').disabled = true;
@@ -998,7 +1003,7 @@ function sheetCriarEscola() {
       try {
         const ops = [
           { op: 'set', p: 'escolas/' + eid, d: { nome, dono: EU.uid, admins: [EU.uid], adminsInfo: { [EU.uid]: { nome: EU.nome || '', email: EU.email || '', em: Date.now() } }, criadaEm: Date.now(), termosAceitos: { em: Date.now(), versao: VERSAO_TERMOS, uid: EU.uid } } },
-          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: venc, pixRepassa: false, descIrmas: 0, descMulti: 0, cidade, uf } }
+          { op: 'set', p: `escolas/${eid}/config/geral`, d: { vencDia: venc, pixRepassa: false, descIrmas: 0, descMulti: 0, cidade, uf, modalidades } }
         ];
         if (loc) ops.push({ op: 'set', p: `escolas/${eid}/locais/${novoId()}`, d: { nome: loc, ordem: 1 } });
         await B.lote(ops);
@@ -1554,6 +1559,12 @@ const ICO_WA = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentCol
 
 /* ================= Casca da escola ================= */
 /* ================= Aparência: cor e logo da escola ================= */
+// modalidades que a escola oferece (escolhe uma ou mais ao criar e nos Ajustes); usadas nos filtros da Vitrine
+const MODALIDADES = ['Futebol', 'Futsal', 'Vôlei', 'Basquete', 'Handebol', 'Natação', 'Ginástica rítmica', 'Ginástica artística', 'Ballet', 'Dança', 'Judô', 'Jiu-jítsu', 'Karatê', 'Taekwondo', 'Capoeira', 'Muay thai', 'Tênis', 'Beach tennis', 'Atletismo', 'Xadrez', 'Skate', 'Patinação', 'Funcional', 'Psicomotricidade', 'Outra'];
+const htmlChipsSel = (id, lista, sel) => `<div class="chips chips-sel" id="${id}">${lista.map(m => `<button type="button" data-ch="${esc(m)}" aria-pressed="${(sel || []).includes(m)}">${esc(m)}</button>`).join('')}</div>`;
+const ligarChipsSel = (id, mudou) => $(id).querySelectorAll('[data-ch]').forEach(b => b.onclick = () => { b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true')); mudou && mudou(); });
+const lerChipsSel = id => [...$(id).querySelectorAll('[data-ch][aria-pressed="true"]')].map(b => b.dataset.ch);
+const campoModalidades = (id, sel) => `<div class="field"><span class="lb">Modalidades que a escola oferece</span><span class="sub">Escolha uma ou mais.</span>${htmlChipsSel(id, MODALIDADES, sel)}</div>`;
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 const COR_PADRAO = '#8B6B47';
 const CORES = [['#8B6B47', 'Bege'], ['#C2305A', 'Rosa'], ['#2357C6', 'Azul'], ['#0E7C86', 'Turquesa'], ['#1E7F4F', 'Verde'], ['#D2601A', 'Laranja'], ['#C62828', 'Vermelho'], ['#6B3FC0', 'Roxo'], ['#22252E', 'Grafite']];
@@ -5600,13 +5611,16 @@ async function sheetErros() {
    avisosApp/{id}/cientes/{uid} (quem viu/confirmou); users/{uid}.avisosLidos (para não mostrar de novo). */
 const AV_PARTE = 700000, AV_VIDEO_MAX = 6 * 1048576, AV_PARA = [['admin', 'Escolas', 'cada administradora'], ['professora', 'Professores', ''], ['familia', 'Famílias', 'responsáveis']];
 const AV_NOME = { admin: 'Escolas', professora: 'Professores', familia: 'Famílias' };
-const AV_ADIADOS = new Set(); let AV_FILA = [], AV_ABERTO = false, AV_VEZ = 0;
+const AV_ADIADOS = new Set(); let AV_FILA = [], AV_ABERTO = false, AV_VEZ = 0, AV_TIMER = null;
 const hojeIso = () => isoDe(new Date());
 const avNoAr = a => a && a.ativo !== false && (!a.fim || a.fim >= hojeIso()) && (!a.inicio || a.inicio <= hojeIso());
 const meusPapeis = () => new Set(Object.values(MINHAS).map(e => e && e.papel).filter(Boolean));
 // precisa confirmar? (avisos antigos: tipo "importante" valia para escolas e professores)
 const avObrig = (a, p) => a.obrig ? !!a.obrig[p] : a.tipo === 'importante' && p !== 'familia';
-const avObrigPara = (a, papeis) => (a.para || []).some(p => papeis.has(p) && avObrig(a, p));
+// para quais escolas: alvo.todas (ou sem alvo: avisos antigos) = todas; alvo.escolas = só essas
+const avAlvoOk = (a, eid) => !a.alvo || a.alvo.todas || (a.alvo.escolas || []).includes(eid);
+// as escolas desta pessoa que o aviso alcança (pelo papel nela e pela escolha de escolas)
+const avMinhas = a => Object.entries(MINHAS).filter(([eid, e]) => e && (a.para || []).includes(e.papel) && avAlvoOk(a, eid));
 async function midiaDoAviso(id, a) {
   if (!a.midia || !a.midia.partes) return null;
   const ps = await Promise.all(Array.from({ length: a.midia.partes }, (_, i) => B.get(`avisosApp/${id}/partes/${i}`)));
@@ -5618,13 +5632,15 @@ async function checarAvisos() {
   const vez = ++AV_VEZ; if (!EU || !B.onde) return;
   let lista; try { lista = await B.onde('avisosApp', 'ativo', '==', true); } catch (e) { return; }
   if (vez !== AV_VEZ || !EU) return;
-  const papeis = meusPapeis(), lidos = (USR && USR.avisosLidos) || {};
-  AV_FILA = lista.filter(({ id, data: a }) => avNoAr(a) && !lidos[id] && !AV_ADIADOS.has(id) && (a.para || []).some(p => papeis.has(p)))
-    .map(x => ({ ...x, imp: avObrigPara(x.data, papeis) }))
+  const lidos = (USR && USR.avisosLidos) || {};
+  AV_FILA = lista.filter(({ id, data: a }) => avNoAr(a) && !lidos[id] && !AV_ADIADOS.has(id) && avMinhas(a).length)
+    .map(x => ({ ...x, imp: avMinhas(x.data).some(([, e]) => avObrig(x.data, e.papel)) }))
     .sort((x, y) => (x.imp ? 0 : 1) - (y.imp ? 0 : 1) || (x.data.criadoEm || 0) - (y.data.criadoEm || 0));
   mostrarProxAviso();
 }
 async function mostrarProxAviso() {
+  // pula o que já foi visto ou adiado enquanto esperava na fila (a fila pode ter sido montada duas vezes)
+  while (AV_FILA.length && ((USR && USR.avisosLidos || {})[AV_FILA[0].id] || AV_ADIADOS.has(AV_FILA[0].id))) AV_FILA.shift();
   if (AV_ABERTO || !AV_FILA.length) return;
   const { id, data: a, imp } = AV_FILA.shift(); AV_ABERTO = true;
   const url = await midiaDoAviso(id, a).catch(() => null);
@@ -5633,8 +5649,8 @@ async function mostrarProxAviso() {
     else {
       const em = Date.now(); USR.avisosLidos = { ...(USR.avisosLidos || {}), [id]: em };
       B.set('users/' + EU.uid, { avisosLidos: { [id]: em } }, { merge: true }).catch(() => { });
-      const papeis = [...meusPapeis()].filter(p => (a.para || []).includes(p));
-      B.set(`avisosApp/${id}/cientes/${EU.uid}`, { em, confirmou: !!imp, nome: (EU.nome || '').slice(0, 80), email: (EU.email || '').slice(0, 120), papeis, escolas: Object.entries(MINHAS).filter(([, e]) => e && papeis.includes(e.papel)).map(([, e]) => String(e.nome || '').slice(0, 80)).slice(0, 10) }).catch(() => { });
+      const ms = avMinhas(a), papeis = [...new Set(ms.map(([, e]) => e.papel))];
+      B.set(`avisosApp/${id}/cientes/${EU.uid}`, { em, confirmou: !!imp, nome: (EU.nome || '').slice(0, 80), email: (EU.email || '').slice(0, 120), papeis, escolas: ms.map(([, e]) => String(e.nome || '').slice(0, 80)).slice(0, 10) }).catch(() => { });
     }
     if (url) URL.revokeObjectURL(url);
     AV_ABERTO = false; setTimeout(mostrarProxAviso, 300);
@@ -5688,7 +5704,7 @@ async function sheetAvisosDono() {
   const est = a => a.ativo === false ? ['Pausado', ''] : a.fim && a.fim < hojeIso() ? ['Encerrado', ''] : a.inicio && a.inicio > hojeIso() ? ['Começa ' + dataBR(a.inicio), 'aberto'] : ['No ar', 'pago'];
   desenhar(!lista.length ? '<div class="empty"><span>A vitrine está vazia. Toque em "+ Novo na vitrine".</span></div>' : `<ul class="list">${lista.map(({ id, data: a }) => { const [st, c] = est(a);
     return `<li class="nf-card"><div class="grow"><div class="nf-lin"><b>${esc(a.titulo || '(sem título)')}</b><span class="chip ${c}">${st}</span></div>
-      <span class="s">Para ${esc(avParaTxt(a) || '—')}${a.midia ? ` · com ${a.midia.tipo === 'video' ? 'vídeo' : 'imagem'}${a.formato === 'cheia' ? ' em tela cheia' : ''}` : ''}${a.fim ? ` · até ${dataBR(a.fim)}` : ''}</span>
+      <span class="s">${!a.alvo || a.alvo.todas ? 'Todas as escolas' : `${(a.alvo.escolas || []).length} escola${(a.alvo.escolas || []).length === 1 ? '' : 's'}`} · para ${esc(avParaTxt(a) || '—')}${a.midia ? ` · com ${a.midia.tipo === 'video' ? 'vídeo' : 'imagem'}${a.formato === 'cheia' ? ' em tela cheia' : ''}` : ''}${a.fim ? ` · até ${dataBR(a.fim)}` : ''}</span>
       <div class="nf-acoes"><button type="button" class="btn btn-mini" data-avver="${esc(id)}">Quem viu</button><button type="button" class="btn ghost btn-mini" data-aved="${esc(id)}">Editar</button><button type="button" class="btn ghost btn-mini" data-avpa="${esc(id)}">${a.ativo === false ? 'Pôr no ar' : 'Pausar'}</button><button type="button" class="btn ghost btn-mini" data-avdel="${esc(id)}">Apagar</button></div></div></li>`; }).join('')}</ul>`, sh => {
     const A = Object.fromEntries(lista.map(x => [x.id, x.data]));
     sh.querySelectorAll('[data-aved]').forEach(b => b.onclick = () => abrirDe(sheetAvisosDono, () => sheetAvisoForm(b.dataset.aved, A[b.dataset.aved])));
@@ -5719,6 +5735,7 @@ function sheetAvisoForm(id, a0) {
     <div class="field"><span class="lb">Imagem ou vídeo (opcional)</span><div id="avmid"></div><input type="file" id="avarq" accept="image/*,video/mp4,video/quicktime,video/webm" hidden><span class="err" id="avmerr"></span></div>
     <div class="field" id="avfmtw"><span class="lb">Como a imagem aparece</span><div class="seg"><button type="button" data-avf="janela">Janela com texto</button><button type="button" data-avf="cheia">Tela cheia</button></div><span class="sub" id="avfmtsub"></span></div>
     <div class="two"><div class="field"><label for="avbtx">Botão (opcional)</label><input id="avbtx" maxlength="30" value="${esc((a.botao || {}).texto || '')}" placeholder="Ex.: Inscreva-se"></div><div class="field"><label for="avblk">Link do botão</label><input id="avblk" inputmode="url" maxlength="300" value="${esc((a.botao || {}).link || '')}" placeholder="https://"></div></div>
+    <div class="field"><span class="lb">Quais escolas?</span><div class="seg" id="avalvo"><button type="button" data-ava="todas">Todas as escolas</button><button type="button" data-ava="escolher">Escolher escolas</button></div><div id="avesc"></div></div>
     <div class="field"><span class="lb">Quem recebe?</span><div id="avpara">${AV_PARA.map(([k, n, s]) => `<label class="liga liga-mini"><span class="grow"><b>${n}</b>${s ? `<span class="s">${s}</span>` : ''}</span><input type="checkbox" role="switch" data-avp="${k}" ${para0.has(k) ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
     <div class="field" id="avobw"><span class="lb">Precisa confirmar que viu?</span><span class="sub">Ligado: a caixinha diz "Li e estou ciente" e a pessoa só se livra do aviso marcando (cada administradora marca a sua). Desligado: a caixinha diz "Entendi". Nos dois, "Ver depois" faz voltar na próxima vez que abrir o app.</span><div id="avob">${AV_PARA.map(([k, n]) => `<label class="liga liga-mini" data-avow="${k}"><span class="grow"><b>${n}</b><span class="s av-nrec">não recebe este aviso</span></span><input type="checkbox" role="switch" data-avo="${k}" ${obrig0[k] ? 'checked' : ''}><span class="trilho" aria-hidden="true"></span></label>`).join('')}</div></div>
     <div class="two"><div class="field"><label for="avini">Começa em</label><input id="avini" type="date" value="${esc(a.inicio || hojeIso())}"></div><div class="field"><label for="avfim">Sai do ar em (opcional)</label><input id="avfim" type="date" value="${esc(a.fim || '')}"></div></div>
@@ -5726,6 +5743,39 @@ function sheetAvisoForm(id, a0) {
     <span class="err" id="averr"></span>
     <div class="actions"><button type="button" class="btn ghost" data-fechar>Cancelar</button><button type="button" class="btn" id="avsal">${id ? 'Salvar' : 'Pôr no ar'}</button></div>`, sh => {
     let formato = a.formato === 'cheia' ? 'cheia' : 'janela';
+    // escolas: todas (inclusive as que forem criadas depois) ou escolhidas com filtros (nome, região, estado, modalidade)
+    let todasEsc = !a.alvo || !!a.alvo.todas; const escSel = new Set((a.alvo && a.alvo.escolas) || []);
+    const F = { q: '', reg: new Set(), uf: new Set(), mod: new Set() };
+    const REGS = { Norte: ['AC', 'AP', 'AM', 'PA', 'RO', 'RR', 'TO'], Nordeste: ['AL', 'BA', 'CE', 'MA', 'PB', 'PE', 'PI', 'RN', 'SE'], 'Centro-Oeste': ['DF', 'GO', 'MT', 'MS'], Sudeste: ['ES', 'MG', 'RJ', 'SP'], Sul: ['PR', 'RS', 'SC'] };
+    const semAc = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const filtradas = () => (DONO_ESC || []).filter(e => (!F.q || semAc(`${e.nome} ${e.cidade}`).includes(semAc(F.q)))
+      && (!F.reg.size && !F.uf.size || F.uf.has(e.uf) || [...F.reg].some(r => (REGS[r] || []).includes(e.uf)))
+      && (!F.mod.size || (e.modalidades || []).some(m => F.mod.has(m))));
+    const verLista = () => { if (!$('avelist')) return; const L = filtradas(), n = L.filter(e => escSel.has(e.eid)).length;
+      $('avecont').innerHTML = `<b>${L.length}</b> escola${L.length === 1 ? '' : 's'} no filtro · <b>${escSel.size}</b> escolhida${escSel.size === 1 ? '' : 's'}`;
+      $('avetodas').textContent = L.length && n === L.length ? 'Desmarcar as do filtro' : 'Marcar todas do filtro';
+      $('avelist').innerHTML = L.length ? L.map(e => `<label class="av-esc"><input type="checkbox" data-ave="${esc(e.eid)}" ${escSel.has(e.eid) ? 'checked' : ''}><span class="grow"><b>${esc(e.nome)}</b><span class="s">${esc([e.cidade, e.uf].filter(Boolean).join(' · ') || 'Sem cidade')}${(e.modalidades || []).length ? ' · ' + esc(e.modalidades.join(', ')) : ' · sem modalidade informada'}</span></span></label>`).join('') : '<div class="empty"><span>Nenhuma escola com esses filtros.</span></div>';
+      $('avelist').querySelectorAll('[data-ave]').forEach(c => c.onchange = () => { c.checked ? escSel.add(c.dataset.ave) : escSel.delete(c.dataset.ave); verLista(); }); };
+    const verAlvo = () => { sh.querySelectorAll('[data-ava]').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.ava === 'todas') === todasEsc)));
+      if (todasEsc) { $('avesc').innerHTML = `<span class="sub">Vai para todas as escolas${DONO_ESC ? ` (hoje são ${DONO_ESC.length})` : ''}, inclusive as que forem criadas enquanto estiver no ar.</span>`; return; }
+      if (!DONO_ESC) { $('avesc').innerHTML = '<div class="empty">Carregando as escolas…</div>';
+        (MOCK ? mockDono({ acao: 'donoEscolas' }) : servidor('plano', { acao: 'donoEscolas' })).then(r => { DONO_ESC = (r && r.escolas) || []; if ($('avesc')) verAlvo(); }).catch(e => { if ($('avesc')) $('avesc').innerHTML = `<div class="banner"><span>${esc(msgErro(e))}</span></div>`; }); return; }
+      const ufs = [...new Set(DONO_ESC.map(e => e.uf).filter(Boolean))].sort(), mods = MODALIDADES.filter(m => DONO_ESC.some(e => (e.modalidades || []).includes(m)));
+      $('avesc').innerHTML = `<div class="av-filtros">
+          <input id="aveq" placeholder="Buscar pelo nome da escola ou cidade" value="${esc(F.q)}">
+          <span class="lb">Região</span>${htmlChipsSel('averg', Object.keys(REGS).filter(r => ufs.some(u => REGS[r].includes(u))), [...F.reg])}
+          <span class="lb">Estado</span>${htmlChipsSel('aveuf', ufs, [...F.uf])}
+          ${mods.length ? `<span class="lb">Modalidade</span>${htmlChipsSel('avemd', mods, [...F.mod])}` : '<span class="sub">Nenhuma escola informou as modalidades ainda.</span>'}</div>
+        <div class="av-esc-topo"><span class="s" id="avecont"></span><button type="button" class="btn ghost btn-mini" id="avetodas"></button></div>
+        <div class="av-esc-lista" id="avelist"></div>`;
+      $('aveq').oninput = () => { F.q = $('aveq').value; verLista(); };
+      ligarChipsSel('averg', () => { F.reg = new Set(lerChipsSel('averg')); verLista(); });
+      ligarChipsSel('aveuf', () => { F.uf = new Set(lerChipsSel('aveuf')); verLista(); });
+      if ($('avemd')) ligarChipsSel('avemd', () => { F.mod = new Set(lerChipsSel('avemd')); verLista(); });
+      $('avetodas').onclick = () => { const L = filtradas(), todos = L.length && L.every(e => escSel.has(e.eid)); L.forEach(e => todos ? escSel.delete(e.eid) : escSel.add(e.eid)); verLista(); };
+      verLista(); };
+    sh.querySelectorAll('[data-ava]').forEach(b => b.onclick = () => { todasEsc = b.dataset.ava === 'todas'; verAlvo(); });
+    verAlvo();
     const sel = () => AV_PARA.map(([k]) => k).filter(k => sh.querySelector(`[data-avp="${k}"]`).checked);
     const obrig = () => Object.fromEntries(AV_PARA.map(([k]) => [k, sel().includes(k) && sh.querySelector(`[data-avo="${k}"]`).checked]));
     const dados = () => ({ titulo: $('avtit').value.trim(), texto: $('avtxt').value.trim(), formato, midia, botao: $('avblk').value.trim() ? { texto: $('avbtx').value.trim() || 'Saiba mais', link: $('avblk').value.trim() } : null });
@@ -5766,10 +5816,11 @@ function sheetAvisoForm(id, a0) {
       if (!d.titulo) throw new Error('Escreva o título.');
       if (!d.texto && !midia) throw new Error('Escreva o texto ou ponha uma imagem/vídeo.');
       if (!para.length) throw new Error('Escolha quem recebe.');
+      if (!todasEsc && !escSel.size) throw new Error('Escolha pelo menos uma escola (ou "Todas as escolas").');
       if (d.botao && !/^https:\/\/[^\s]+\.[^\s]+/i.test(d.botao.link)) throw new Error('O link do botão precisa começar com https://');
       const ini = $('avini').value || hojeIso(), fim = $('avfim').value || null;
       if (fim && fim < ini) throw new Error('A data de saída é antes da data de começo.');
-      return { titulo: d.titulo, texto: d.texto, formato: midia ? formato : 'janela', para, obrig: obrig(), inicio: ini, fim, botao: d.botao }; };
+      return { titulo: d.titulo, texto: d.texto, formato: midia ? formato : 'janela', para, obrig: obrig(), alvo: todasEsc ? { todas: true } : { escolas: [...escSel] }, inicio: ini, fim, botao: d.botao }; };
     $('avreal').onclick = async () => { const url = await urlMidia(), d = dados(); abrirAviso(d, url || null, !!(verComo && obrig()[verComo]), () => { }); };
     $('avsal').onclick = async () => { $('averr').textContent = ''; let d; try { d = ler(); } catch (e) { return $('averr').textContent = e.message; }
       const b = $('avsal'); b.disabled = true; b.textContent = 'Salvando…';
@@ -7782,8 +7833,8 @@ async function mockCodigos(b) {
   return { codigos: MOCK_CODIGOS.map(k => ({ ...k, escolas: [...k.escolas] })) };
 }
 async function mockDono(b) {
-  const h = hoje(), base = [['e1', 'Escolinha Movimento', 'Recife', 'PE', 64, { testeAte: C.maisDias(h, 23) }], ['e2', 'Ballet Arte', 'Olinda', 'PE', 28, { testeAte: '2026-08-01', pagoAte: C.maisDias(h, 12), forma: 'cartao' }], ['e3', 'Escola de Futebol Craques do Amanhã', 'Recife', 'PE', 132, { testeAte: '2026-09-01', pagoAte: C.maisDias(h, -9) }], ['e4', 'Judô Kids', 'Caruaru', 'PE', 18, { testeAte: '2026-06-01', pagoAte: C.maisDias(h, -40) }]];
-  for (const [eid, nome, cidade, uf, alunos, p] of base) if (!MOCK_DONO[eid]) MOCK_DONO[eid] = { eid, nome, cidade, uf, alunos, pix: eid !== 'e4', ciclo: 'mensal', dono: eid === 'e4' ? null : { nome: 'Ana Souza', email: 'ana@exemplo.com', telefone: '(81) 99999-0000' }, ...p };
+  const h = hoje(), base = [['e1', 'Escolinha Movimento', 'Recife', 'PE', 64, { testeAte: C.maisDias(h, 23) }], ['e2', 'Ballet Arte', 'Olinda', 'PE', 28, { testeAte: '2026-08-01', pagoAte: C.maisDias(h, 12), forma: 'cartao' }], ['e3', 'Escola de Futebol Craques do Amanhã', 'Recife', 'PE', 132, { testeAte: '2026-09-01', pagoAte: C.maisDias(h, -9) }], ['e4', 'Judô Kids', 'Caruaru', 'PE', 18, { testeAte: '2026-06-01', pagoAte: C.maisDias(h, -40) }], ['e5', 'Ginástica Estrela', 'São Paulo', 'SP', 45, { testeAte: C.maisDias(h, 10) }], ['e6', 'Arena Vôlei Kids', 'Natal', 'RN', 37, { testeAte: C.maisDias(h, 15) }]];
+  for (const [eid, nome, cidade, uf, alunos, p] of base) if (!MOCK_DONO[eid]) MOCK_DONO[eid] = { eid, nome, cidade, uf, modalidades: ({ e1: ['Futebol', 'Futsal'], e2: ['Ballet', 'Ginástica rítmica'], e3: ['Futebol'], e4: ['Judô'], e5: ['Ginástica rítmica', 'Ballet'], e6: ['Vôlei', 'Beach tennis'] })[eid] || [], alunos, pix: eid !== 'e4', ciclo: 'mensal', dono: eid === 'e4' ? null : { nome: 'Ana Souza', email: 'ana@exemplo.com', telefone: '(81) 99999-0000' }, ...p };
   const x = MOCK_DONO[b.eid];
   if (b.acao === 'donoCortesia') { const bs = [h, x.testeAte || '', x.pagoAte || '', x.cortesiaAte || ''].sort().pop(); x.cortesiaAte = C.maisMeses(bs, b.meses); x.cortesiaMotivo = b.motivo || ''; }
   if (b.acao === 'donoTirarCortesia') { x.cortesiaAte = null; x.cortesiaMotivo = ''; }
@@ -7858,6 +7909,7 @@ function sheetAjustes() {
       <div class="field"><label for="jnome">Nome da escola</label><input id="jnome" maxlength="60" value="${esc(S.escola.nome || '')}"></div>
       <div class="two"><div class="field"><label for="juf">Estado</label><select id="juf"><option value="">Escolha</option>${UFS.map(u => `<option ${c.uf === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
       <div class="field"><label for="jcid">Cidade</label><select id="jcid" ${c.uf ? '' : 'disabled'}>${c.cidade ? `<option selected>${esc(c.cidade)}</option>` : `<option value="">${c.uf ? 'Carregando…' : 'Escolha o estado'}</option>`}</select></div></div>
+      ${campoModalidades('jmod', c.modalidades || [])}
       <div class="two"><div class="field"><label for="jvenc">Vencimento (dia)</label><input id="jvenc" type="number" min="1" max="28" value="${esc(c.vencDia || 10)}"></div>
       <div class="field"><label for="jmatv">Taxa de matrícula (R$)</label><input id="jmatv" inputmode="decimal" value="${esc((c.matricula || {}).valor ? fmtValor(c.matricula.valor) : '')}" placeholder="0,00 = não cobra"></div></div>
       <div class="note" style="margin-top:-6px;margin-bottom:12px">Com valor, ao cadastrar um aluno novo o app já lança a taxa de matrícula (dá para desmarcar na hora). Ela aparece no contrato.</div>
@@ -7907,6 +7959,7 @@ function sheetAjustes() {
     if ($('jsimv')) { const verJ = ligarSimTaxa('jsim', () => $('jrep').checked); $('jrep').addEventListener('change', verJ); }
     const err = m => $('jerr').textContent = m;
     if ($('juf')) ligarEstadoCidade('juf', 'jcid', S.cfg.cidade || '');
+    if ($('jmod')) ligarChipsSel('jmod');
     if ($('jnotas')) $('jnotas').onclick = () => abrirDe(sheetAjustes, sheetNotasEscola);
     if ($('jnf')) $('jnf').onclick = () => abrirDe(sheetAjustes, () => sheetNotaFiscal());
     if ($('jct')) $('jct').onclick = () => abrirDe(sheetAjustes, () => sheetContratoModelo());
@@ -7936,7 +7989,7 @@ function sheetAjustes() {
       if (!(aMul >= 0) || aMul > MULTA_MAX) return err('A multa por atraso pode ser de no máximo 2%, pela lei.');
       if (!(aJur >= 0) || aJur > JUROS_MAX) return err('Os juros por atraso podem ser de no máximo 1% ao mês, pela lei.');
       $('jok').disabled = true;
-      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, pushFamilias: $('jpushf').checked, matricula: { valor: C.r2(matV) }, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
+      try { await B.lote([{ op: 'merge', p: `escolas/${S.eid}/config/geral`, d: { vencDia: venc, pushFamilias: $('jpushf').checked, matricula: { valor: C.r2(matV) }, descIrmas: irm / 100, descMulti: mul / 100, pixRepassa: $('jrep').checked, pixChave: $('jpix').value.trim(), cidade: $('jcid').value.trim(), uf: $('juf').value, modalidades: $('jmod') ? lerChipsSel('jmod') : (c.modalidades || []), atraso: { ativo: $('jatr').checked, multa: aMul, juros: aJur } } }, { op: 'merge', p: 'escolas/' + S.eid, d: { nome } }]); fecharSheet(); aviso('Ajustes salvos'); }
       catch (e) { err(msgErro(e)); $('jok').disabled = false; }
     };
   });
@@ -8186,7 +8239,7 @@ async function semearMock() {
     if (MOCK) ls.set('escolinha.mockLogin', u ? u.email || null : null);
     if (u) { INTRO_VISTA = true; ls.set('escolinha.introVista', '1'); } // já entrou: daqui em diante abre direto
     if (u) setTimeout(enviarErros, 3000); // erros guardados antes do login
-    AV_VEZ++; AV_FILA = []; AV_ABERTO = false; document.querySelectorAll('.av-bg').forEach(e => e.remove()); if (u) setTimeout(checarAvisos, 4000); // avisos do app (Painel do dono → Avisos)
+    AV_VEZ++; AV_FILA = []; AV_ABERTO = false; document.querySelectorAll('.av-bg').forEach(e => e.remove()); clearTimeout(AV_TIMER); if (u) AV_TIMER = setTimeout(checarAvisos, 4000); // avisos do app (Painel do dono → Avisos)
     DONO_VEZ++; DONO_EST = null; NOTAS_PLAT = undefined; if (u) setTimeout(checarDono, 600); // Painel do dono no canto de cima
     // o site de entrada (turmaemdia.com.br) manda direto para o app quem já entrou neste aparelho
     if (!MOCK) { try { if (u) localStorage.setItem('ted.entrou', '1'); else localStorage.removeItem('ted.entrou'); } catch (e) { } }

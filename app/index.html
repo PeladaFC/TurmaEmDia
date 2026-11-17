@@ -433,6 +433,13 @@ img.av-midia{background:var(--surface2)}
 .legend .s{display:block;font-size:.78rem;color:var(--muted)}
 .sw{width:12px;height:12px;border-radius:4px;flex:none}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
+.chips-sel{gap:6px;margin-top:6px}.chips-sel button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 12px;font-size:.85rem;font-weight:600;cursor:pointer}
+.chips-sel button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.av-filtros{display:flex;flex-direction:column;gap:6px;margin-top:10px}.av-filtros .lb{margin-top:6px}
+.av-esc-topo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:12px 0 6px}
+.av-esc-lista{display:flex;flex-direction:column;gap:6px;max-height:340px;overflow:auto;overscroll-behavior:contain}
+.av-esc{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;cursor:pointer}
+.av-esc input{width:20px;height:20px;accent-color:var(--accent);flex:none;margin-top:2px}.av-esc .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
 .pick{border:1px solid var(--line);background:var(--surface);border-radius:4px;padding:7px 12px;font-weight:600;font-size:.88rem}
 .pick[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .pick[disabled]{opacity:.4;cursor:default}
@@ -1134,11 +1141,11 @@ img.dot.foto-dot{object-fit:cover;background:var(--surface2)}
 <div id="overlay"></div>
 <div class="toast" id="toast" role="status" hidden></div>
 <script src="config.js"></script>
-<script src="regras.js?v=202611172145"></script>
-<script src="qrcode.js?v=202611172145"></script>
-<script src="pdf-simples.js?v=202611172145"></script>
-<script src="scanner.js?v=202611172145"></script>
-<script src="relatorio.js?v=202611172145"></script>
-<script type="module" src="app.js?v=202611172145"></script>
+<script src="regras.js?v=202611172230"></script>
+<script src="qrcode.js?v=202611172230"></script>
+<script src="pdf-simples.js?v=202611172230"></script>
+<script src="scanner.js?v=202611172230"></script>
+<script src="relatorio.js?v=202611172230"></script>
+<script type="module" src="app.js?v=202611172230"></script>
 </body>
 </html>
