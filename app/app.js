@@ -740,7 +740,8 @@ function telaCriarEscola(passo) {
     telaOb({ passo: 1, rotulo: `Passo 1 de ${LOJA() ? 5 : 6}`, titulo: 'Como se chama sua escola?', sub: 'É o nome que as famílias vão ver no app.',
       corpo: `<div class="field"><label for="wnome">Nome da escola</label><input id="wnome" maxlength="60" placeholder="Ex.: Escolinha Movimento" value="${esc(WZ.nome)}"></div>
         <div class="two"><div class="field"><label for="wuf">Estado</label><select id="wuf"><option value="">Escolha</option>${Object.keys(UF_NOMES).sort().map(u => `<option ${u === WZ.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
-        <div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" list="wcids" autocomplete="off" placeholder="Digite a cidade" value="${esc(WZ.cidade)}"><datalist id="wcids"></datalist></div></div>
+        <div class="field"><label for="wcid">Cidade</label><input id="wcid" maxlength="60" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="Digite a cidade" value="${esc(WZ.cidade)}"></div></div>
+        <div class="cid-sug" id="wcids" hidden></div>
         <label class="check aceite"><input type="checkbox" id="wtermos" ${WZ.termos ? 'checked' : ''}><span>Li e aceito os <button type="button" class="link" data-doc="termos">Termos de uso</button> e a <button type="button" class="link" data-doc="privacidade">Política de privacidade</button>.</span></label>
         <div class="err" id="werr" role="alert"></div>`,
       botao: '<button class="btn" id="wok">Próximo</button>', dois: voltar });
@@ -748,10 +749,23 @@ function telaCriarEscola(passo) {
     // estado primeiro; a cidade vira uma lista com as cidades daquele estado
     let cidades = null;
     const carregar = async () => { const uf = $('wuf').value; $('werr').textContent = '';
-      cidades = null; $('wcids').innerHTML = ''; if (!uf) return;
+      cidades = null; sugCid(); if (!uf) return;
       cidades = await cidadesDoEstado(uf); if (!$('wuf') || $('wuf').value !== uf || !cidades) return; // a tela já mudou
-      $('wcids').innerHTML = cidades.map(c => `<option value="${esc(c)}">`).join('');
-      if ($('wcid').value && !acharCidade(cidades, $('wcid').value)) $('wcid').value = ''; };
+      if ($('wcid').value && !acharCidade(cidades, $('wcid').value)) $('wcid').value = '';
+      sugCid(); };
+    // lista própria de cidades embaixo do campo (a lista do iPhone no teclado não filtra direito):
+    // ao digitar, mostra as que começam com o que foi digitado (depois as que contêm); toca para escolher
+    const sugCid = () => { const box = $('wcids'); if (!box) return; const q = semAcento($('wcid').value.trim()), foco = document.activeElement === $('wcid');
+      if (!foco || !$('wuf').value) { box.hidden = true; return; }
+      if (!cidades) { box.hidden = false; box.innerHTML = '<span class="sub">Carregando as cidades…</span>'; return; }
+      if (!q) { box.hidden = false; box.innerHTML = `<span class="sub">Digite as primeiras letras da cidade (${cidades.length} cidades em ${esc(UF_NOMES[$('wuf').value] || '')}).</span>`; return; }
+      const com = cidades.filter(c => semAcento(c).startsWith(q)), tem = cidades.filter(c => !semAcento(c).startsWith(q) && semAcento(c).includes(q)), l = [...com, ...tem].slice(0, 8);
+      if (l.length === 1 && semAcento(l[0]) === q) { box.hidden = true; return; }
+      box.hidden = false; box.innerHTML = l.length ? l.map(c => `<button type="button" data-cid="${esc(c)}">${esc(c)}</button>`).join('') : '<span class="sub">Nenhuma cidade com esse nome neste estado.</span>';
+      box.querySelectorAll('[data-cid]').forEach(b => { b.onpointerdown = e => e.preventDefault(); b.onclick = () => { $('wcid').value = b.dataset.cid; $('werr').textContent = ''; box.hidden = true; $('wcid').blur(); }; }); };
+    $('wcid').addEventListener('input', sugCid);
+    $('wcid').addEventListener('focus', () => setTimeout(sugCid, 0));
+    $('wcid').addEventListener('blur', () => setTimeout(() => { if ($('wcids')) $('wcids').hidden = true; }, 150));
     $('wuf').onchange = () => { carregar(); if (!$('wcid').value) setTimeout(() => $('wcid').focus(), 50); };
     // cidade antes do estado: avisa (a lista de cidades depende do estado)
     $('wcid').addEventListener('focus', () => { if (!$('wuf').value) $('werr').textContent = 'Escolha também o estado, ao lado.'; });
